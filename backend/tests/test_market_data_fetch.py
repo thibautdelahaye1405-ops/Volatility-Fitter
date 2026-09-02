@@ -275,10 +275,16 @@ def test_asof_payload_skips_holidays():
     assert asof_svc._prev_business_day(date(2026, 7, 6)) == date(2026, 7, 2)
 
 
-def test_massive_history_lists_trading_days_only_and_needs_the_flat_store():
-    prov = MassiveProvider(["SPY"], api_key="k")
-    assert prov.available_history("SPY") == []  # no flat store
-    assert prov.intraday_capable() is False and prov.historical_quote_kind() == "marks"
+def test_massive_history_lists_trading_days_only_and_needs_a_key_or_the_flat_store():
+    from volfit.data.expiry_time import is_trading_day
+
+    prov = MassiveProvider(["SPY"], api_key="k")  # the per-contract NBBO history
+    hist = prov.available_history("SPY")
+    assert len(hist) == 20 and all(is_trading_day(d) for d in hist)
+    assert prov.intraday_capable() is True and prov.historical_quote_kind() == "quotes"
+    marks = MassiveProvider(["SPY"], api_key="k", hist_nbbo=False)  # aggregate closes only
+    assert marks.historical_quote_kind() == "marks"
+    assert MassiveProvider(["SPY"], api_key="").available_history("SPY") == []
 
 
 # ------------------------------------------------------ marks on the smile

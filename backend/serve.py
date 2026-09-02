@@ -13,6 +13,9 @@ Environment variables:
                      -> nasdaq -> asx -> hkex -> sgx -> eurex -> yahoo -> massive -> synthetic).
     VOLFIT_TICKERS   comma-separated watchlist (default SPY,QQQ,AAPL)
     VOLFIT_MASSIVE_KEY  Massive API key; without it Massive shows Red.
+    VOLFIT_MASSIVE_HIST_NBBO  "0" pins Massive's past-day chains to aggregate
+                     marks (bid = ask closes); default: real NBBO history per
+                     contract (volfit.data.massive_history), marks as fallback.
     VOLFIT_DB        SQLite path for fit-history persistence (every fit is
                      recorded keyed by snapshot timestamp; GET /history/...).
                      Unset by default: no on-disk side effects unless opted in.
@@ -107,6 +110,10 @@ def _build_providers() -> dict:
             api_key=os.environ.get("VOLFIT_MASSIVE_KEY", "").strip(),
             ws_url=(os.environ.get("VOLFIT_MASSIVE_WS_URL", "").strip() or None),
             flat_store=_flat_store(),
+            # Past-day chains as real two-sided NBBO (per-contract history);
+            # VOLFIT_MASSIVE_HIST_NBBO=0 pins the aggregate-marks path instead.
+            hist_nbbo=os.environ.get("VOLFIT_MASSIVE_HIST_NBBO", "1").strip().lower()
+            not in ("0", "false", "no", "off"),
         ),
         "synthetic": SyntheticProvider(reference_date=date.today(), tickers=tuple(tickers)),
     }

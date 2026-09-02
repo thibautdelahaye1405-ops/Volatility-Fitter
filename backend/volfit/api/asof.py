@@ -9,10 +9,17 @@ business **day**, then a **moment** within it —
   * ``before_close``  the snapshot nearest to N minutes before the 16:00 ET close.
 
 Intraday moments (``latest`` / ``before_close``) come from snapshots the app
-captured while running (VolStore history) for Yahoo/Bloomberg; a provider that
-``intraday_capable`` (Massive/Polygon) instead fetches the chain at the resolved
-instant, so those moments work even on days the app never captured. ``close`` is
-always available from the provider for any listed trading day.
+captured while running (VolStore history) for the live-only sources; a provider
+that is ``intraday_capable`` (Massive/Polygon) instead fetches the chain at the
+resolved instant, so those moments work even on days the app never captured.
+``close`` is available from the provider for any listed trading day.
+
+Captured snapshots BELONG TO THE SOURCE THAT MADE THEM (store schema v10 tags
+every capture): the picker lists only the active source's captures, so a Cboe
+or Yahoo auto-capture — or a synthetic run's — never surfaces as a replayable
+moment under another feed. Each day's payload carries its captured instants
+(``captures``) so the picker can offer them explicitly as replays, distinct
+from a fetch at an arbitrary instant.
 """
 
 from __future__ import annotations
@@ -73,8 +80,15 @@ def _prev_business_day(d: date) -> date:
     return prev_trading_day(d)
 
 
+#: Captured instants listed per day in the payload (newest first).
+MAX_CAPTURES_PER_DAY = 8
+
+
 def _captures_by_date(state: AppState) -> dict[date, list[datetime]]:
-    """Captured snapshot instants grouped by date (each list newest-first)."""
+    """Captured snapshot instants grouped by date (each list newest-first) —
+    the ACTIVE source's own captures only (legacy untagged rows are not
+    offered: the picker must never present another feed's capture as a
+    moment this source can serve)."""
     out: dict[date, list[datetime]] = {}
     if state.store_path is None:
         return out
@@ -83,7 +97,7 @@ def _captures_by_date(state: AppState) -> dict[date, list[datetime]]:
         return out
     try:
         with VolStore(state.store_path) as store:
-            rows = store.list_snapshots(tickers)  # newest first
+            rows = store.list_snapshots(tickers, source=state._active_source)  # newest first
     except Exception:  # noqa: BLE001 — history is best-effort
         return out
     seen: set[datetime] = set()
@@ -165,6 +179,9 @@ def asof_payload(state: AppState) -> dict:
                 "intraday": intra,
                 "spread": "quotes" if has_caps and not (has_close or intra) else spread,
                 "reason": reason,
+                # The day's captured instants (this source's), newest first —
+                # explicit replays, as opposed to a fetch at any instant.
+                "captures": [t.isoformat() for t in captures.get(d, [])[:MAX_CAPTURES_PER_DAY]],
             }
         )
         if len(days) >= MAX_DAYS:

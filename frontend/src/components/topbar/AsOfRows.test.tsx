@@ -4,7 +4,7 @@
 // whose history is bid = ask closes is tagged "marks".
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AsOfRows } from "./AsOfRows";
+import { AsOfRows, fmtCaptureTime } from "./AsOfRows";
 import type { AsOfState, UseAsOfResult } from "../../state/useAsOf";
 
 const state = (over: Partial<AsOfState> = {}): AsOfState => ({
@@ -31,6 +31,7 @@ function renderRows(asof: AsOfState) {
     setLive: vi.fn(async () => {}),
     setPrevClose: vi.fn(async () => {}),
     setMoment: vi.fn(async () => {}),
+    setCaptured: vi.fn(async () => {}),
   } as unknown as UseAsOfResult;
   const utils = render(<AsOfRows asof={hook} />);
   return { ...utils, hook };
@@ -76,5 +77,47 @@ describe("AsOfRows", () => {
     expect(latest.disabled).toBe(true);
     expect(latest.title).toMatch(/cannot fetch an intraday moment/);
     expect(screen.queryByText("marks")).toBeNull();
+  });
+
+  it("offers a captured-only day as REPLAYS of its own captures, never as a fetch at any instant", () => {
+    const captures = ["2026-08-28T19:32:00", "2026-08-28T14:05:00"];
+    const { hook } = renderRows(state({
+      intradayCapable: false,
+      supportedModes: ["live"],
+      days: [{ date: "2026-08-28", isToday: false, hasClose: false, hasCaptures: true, intraday: false, spread: "quotes", reason: null, captures }],
+    }));
+    // The newest capture IS the day's latest: enabled, labelled with its time.
+    const latest = screen.getByText(`Latest capture · ${fmtCaptureTime(captures[0])}`).closest("button") as HTMLButtonElement;
+    expect(latest.disabled).toBe(false);
+    fireEvent.click(latest);
+    expect(hook.setMoment).toHaveBeenCalledWith("2026-08-28", "latest");
+    // A fetch at an arbitrary instant is NOT something this source can do.
+    for (const n of [15, 60]) {
+      const off = screen.getByText(`${n} min before close`).closest("button") as HTMLButtonElement;
+      expect(off.disabled).toBe(true);
+      expect(off.title).toMatch(/pick a captured snapshot/);
+      fireEvent.click(off);
+    }
+    expect(hook.setMoment).toHaveBeenCalledTimes(1);
+    // The other captured instant is its own explicit replay row.
+    const rows = screen.getAllByTestId("asof-capture-row");
+    expect(rows.length).toBe(1);
+    expect(rows[0].textContent).toContain(`Captured · ${fmtCaptureTime(captures[1])}`);
+    fireEvent.click(rows[0]);
+    expect(hook.setCaptured).toHaveBeenCalledWith("2026-08-28T14:05:00");
+    // Close is not served either (a live-only source), with the reason.
+    const closeRow = screen.getByText("Close (official)").closest("button") as HTMLButtonElement;
+    expect(closeRow.disabled).toBe(true);
+    expect(screen.getByTestId("asof-day-2026-08-28").getAttribute("data-empty")).toBe("false");
+  });
+
+  it("highlights an explicit captured replay on its day row", () => {
+    const captures = ["2026-08-28T19:32:00", "2026-08-28T14:05:00"];
+    renderRows(state({
+      mode: "captured", ts: "2026-08-28T14:05:00", day: null, moment: null,
+      days: [{ date: "2026-08-28", isToday: false, hasClose: false, hasCaptures: true, intraday: false, spread: "quotes", reason: null, captures }],
+    }));
+    const row = screen.getAllByTestId("asof-capture-row")[0];
+    expect(row.textContent).toContain("✓");
   });
 });

@@ -20,6 +20,10 @@ export interface AsOfDay {
   spread?: "quotes" | "marks";
   /** Why nothing can be picked on this day (today = Live), else null. */
   reason?: string | null;
+  /** The day's captured instants (ISO UTC, newest first, capped) — captures
+   *  the ACTIVE source made, offered as explicit replays (another feed's
+   *  captures never appear here). */
+  captures?: string[];
 }
 
 /** A within-day moment. */
@@ -48,6 +52,8 @@ export interface UseAsOfResult {
   setPrevClose: () => Promise<void>;
   /** Apply a (day, moment) pick; `offsetMinutes` only for "before_close". */
   setMoment: (on: string, moment: AsOfMoment, offsetMinutes?: number) => Promise<void>;
+  /** Replay one explicit captured instant (an `AsOfDay.captures` entry). */
+  setCaptured: (ts: string) => Promise<void>;
 }
 
 export function useAsOf(
@@ -96,5 +102,7 @@ export function useAsOf(
     [post],
   );
 
-  return { asof, busy, setLive, setPrevClose, setMoment };
+  const setCaptured = useCallback((ts: string) => post({ mode: "captured", ts }), [post]);
+
+  return { asof, busy, setLive, setPrevClose, setMoment, setCaptured };
 }

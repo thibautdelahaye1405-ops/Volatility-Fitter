@@ -17,6 +17,16 @@ export function fmtDay(ymd: string, isToday: boolean): string {
   return `${isToday ? "Today · " : ""}${wd} ${d} ${MONTHS[m - 1]}`;
 }
 
+/** "2026-08-28T19:32:00" -> "19:32" (the viewer's local time): a captured
+ *  instant's row label. The backend stamps captures as naive UTC, so a
+ *  zone-less ISO string is read as UTC. */
+export function fmtCaptureTime(iso: string): string {
+  const zoned = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(iso);
+  const t = new Date(zoned ? iso : `${iso}Z`);
+  if (Number.isNaN(t.getTime())) return iso;
+  return t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 /** Short label for the current as-of selection (the pill face / status bar). */
 export function asofLabel(a: AsOfState): string {
   if (a.mode === "live") return "Live";
@@ -26,6 +36,11 @@ export function asofLabel(a: AsOfState): string {
     const tag =
       a.moment === "close" ? "Close" : a.moment === "latest" ? "latest" : `−${a.offset}m`;
     return `${m}-${d} ${tag}`;
+  }
+  if (a.mode === "captured" && a.ts) {
+    // An explicit captured replay (no day/moment resolution): its day + time.
+    const [, m, d] = a.ts.slice(0, 10).split("-");
+    return `${m}-${d} ${fmtCaptureTime(a.ts)}`;
   }
   return "Historical";
 }
@@ -38,8 +53,9 @@ const asofRowClass = (active: boolean): string =>
   ].join(" ");
 
 /** One within-day moment row. */
-function AsofMomentRow({ label, active, onClick, disabled = false, reason }: {
+function AsofMomentRow({ label, active, onClick, disabled = false, reason, testId }: {
   label: string; active: boolean; onClick: () => void; disabled?: boolean; reason?: string;
+  testId?: string;
 }) {
   return (
     <button
@@ -47,6 +63,7 @@ function AsofMomentRow({ label, active, onClick, disabled = false, reason }: {
       disabled={disabled}
       aria-disabled={disabled}
       title={disabled ? reason : undefined}
+      data-testid={testId}
       className={[
         "flex w-full items-center gap-2 px-6 py-1.5 text-left text-xs transition-colors",
         disabled
@@ -72,7 +89,7 @@ export function AsOfRows({
   asof: UseAsOfResult;
   onDone?: () => void;
 }) {
-  const { asof, setLive, setPrevClose, setMoment } = hook;
+  const { asof, setLive, setPrevClose, setMoment, setCaptured } = hook;
   // Which day is expanded into its moments (null = derive: the selected day,
   // else the most recent day).
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
@@ -118,17 +135,28 @@ export function AsOfRows({
       )}
       {asof.days.map((d) => {
         const isOpen = d.date === openDay;
-        const isSelDay = asof.mode !== "live" && asof.day === d.date;
+        const isSelDay =
+          asof.mode !== "live" &&
+          (asof.day === d.date || (asof.mode === "captured" && (asof.ts ?? "").startsWith(d.date)));
         const hasIntra = d.hasCaptures || d.intraday;
         const nothing = !d.hasClose && !hasIntra;
         // Every moment is listed; one the active source cannot serve is DIMMED
         // and disabled with the reason, never offered as a live pick and never
-        // silently degraded to something else.
+        // silently degraded to something else. A FETCH at an arbitrary instant
+        // ("n min before close") needs an intraday-capable source; a REPLAY of
+        // a capture this source made is offered as exactly that (its time).
         const marks = d.spread === "marks";
+        const captures = d.captures ?? [];
         const closeWhy = d.hasClose ? undefined : d.isToday ? "today has no close yet" : "no close for this day on this source";
         const intraWhy = hasIntra ? undefined : d.isToday
           ? "today's latest is Live — pick Live"
           : "this source cannot fetch an intraday moment for this day";
+        const latestLabel = captures.length > 0 ? `Latest capture · ${fmtCaptureTime(captures[0])}` : "Latest snapshot";
+        const offsetWhy = d.intraday
+          ? undefined
+          : d.hasCaptures
+            ? "this source cannot fetch an arbitrary instant — pick a captured snapshot"
+            : intraWhy;
         return (
           <div key={`day-${d.date}`} data-testid={`asof-day-${d.date}`} data-empty={nothing}>
             <button
@@ -161,7 +189,7 @@ export function AsOfRows({
                   onClick={() => { close(); void setMoment(d.date, "close"); }}
                 />
                 <AsofMomentRow
-                  label="Latest snapshot"
+                  label={latestLabel}
                   active={isSelDay && asof.moment === "latest"}
                   disabled={!hasIntra}
                   reason={intraWhy}
@@ -172,9 +200,20 @@ export function AsOfRows({
                     key={`off-${d.date}-${n}`}
                     label={`${n} min before close`}
                     active={isSelDay && asof.moment === "before_close" && asof.offset === n}
-                    disabled={!hasIntra}
-                    reason={intraWhy}
+                    disabled={!d.intraday}
+                    reason={offsetWhy}
                     onClick={() => { close(); void setMoment(d.date, "before_close", n); }}
+                  />
+                ))}
+                {/* The day's other captured instants (the newest is "Latest
+                    capture" above): explicit replays of what THIS source captured. */}
+                {captures.slice(1, 8).map((iso) => (
+                  <AsofMomentRow
+                    key={`cap-${iso}`}
+                    label={`Captured · ${fmtCaptureTime(iso)}`}
+                    active={asof.mode === "captured" && asof.ts === iso}
+                    testId="asof-capture-row"
+                    onClick={() => { close(); void setCaptured(iso); }}
                   />
                 ))}
                 {nothing && (

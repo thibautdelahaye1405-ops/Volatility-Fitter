@@ -14,7 +14,10 @@ Endpoints used:
   ``implied_volatility``, ``details`` strike/expiry/type/exercise-style,
   ``underlying_asset.price``), paginated for ``fetch_chain`` and ``iv_surface``;
 - ``GET /v3/reference/tickers`` — symbol search;
-- ``GET /v2/snapshot/.../stocks/tickers/{T}`` — underlying spot fallback.
+- ``GET /v2/snapshot/.../stocks/tickers/{T}`` — underlying spot fallback;
+- ``GET /v3/quotes/{O:…}`` — one contract's last NBBO at-or-before an instant:
+  the HISTORICAL two-sided chain, per contract and concurrent
+  (volfit.data.massive_history) — a past day's close / "n min before close".
 
 Entitlement note: NBBO quotes (``last_quote``) and the stock snapshot require a
 paid options tier. On a plan without them the snapshot still returns greeks/IV
@@ -22,6 +25,8 @@ paid options tier. On a plan without them the snapshot still returns greeks/IV
 and stock endpoints answer ``NOT_AUTHORIZED`` — which ``fetch_chain`` surfaces
 as a clear, actionable ``RuntimeError`` (the provider is otherwise built to the
 full bid/ask + spot spec and lights up automatically once the plan is upgraded).
+Historical quotes gate the same way: the history path probes one contract and,
+gated, falls back to aggregate MARKS (bid = ask closes) for the session.
 
 Robustness / conventions:
 - ``httpx`` is imported lazily; tests inject ``http_get`` and stay offline.
@@ -38,7 +43,8 @@ from typing import Callable, Iterator, Sequence
 from volfit.core.black import black_call
 from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.roots import is_index_root, normalize_root
-from volfit.data.expiry_time import is_trading_day
+from volfit.data.expiry_time import is_trading_day, session_close_utc
+from volfit.data.massive_history import MassiveHistoryMixin
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
 from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
@@ -54,11 +60,6 @@ _SNAPSHOT_LIMIT = 250
 #: concurrency — measured on live SPY, 2 workers cut a 6-expiry fetch ~1.7x (5.6s->3.3s),
 #: but 3-4 ran SLOWER than sequential and 8 hit read-timeouts. 2 is the safe sweet spot.
 _SNAPSHOT_WORKERS = 2
-
-#: Max contracts the per-contract historical-quote path (``_fetch_intraday``) will
-#: reconstruct before fast-failing — beyond a handful it's impractical (one
-#: sequential REST per contract); a full past-day chain must use the flat files.
-_INTRADAY_REST_MAX = 40
 
 #: Tier 3 aggregate reconstruction (``_fetch_agg_chain``): concurrent per-contract
 #: minute-aggregate fetches for TODAY's intraday (no flat file published yet), and
@@ -114,7 +115,7 @@ def _iso_date(value) -> date | None:
         return None
 
 
-class MassiveProvider(OptionChainProvider):
+class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
     """Live option chains for a watchlist via the Massive REST API.
 
     Parameters
@@ -138,6 +139,7 @@ class MassiveProvider(OptionChainProvider):
         iv_fallback: bool = True,
         ws_url: str | None = None,
         flat_store=None,
+        hist_nbbo: bool = True,
     ) -> None:
         self._tickers = [t.strip().upper() for t in tickers]
         self.api_key = api_key
@@ -171,6 +173,12 @@ class MassiveProvider(OptionChainProvider):
         #: a past INTRADAY instant (minute aggregates) — so the as-of past-day
         #: moments work without the per-contract REST historical-quote path.
         self.flat_store = flat_store
+        #: Historical TWO-SIDED chains off the per-contract ``/v3/quotes`` history
+        #: (volfit.data.massive_history; env VOLFIT_MASSIVE_HIST_NBBO=0 turns it
+        #: off). ``_hist_nbbo_gate`` remembers why the path stopped working this
+        #: session (NOT_AUTHORIZED / a rate limit) — past chains are then MARKS.
+        self.hist_nbbo = hist_nbbo
+        self._hist_nbbo_gate: str | None = None
         #: The active universe to co-cache from each daily flat file. AppState sets
         #: this (via ``set_flat_universe``) to the live active-ticker set, which can
         #: include names added in the Universe tab beyond the static watchlist —
@@ -402,20 +410,20 @@ class MassiveProvider(OptionChainProvider):
         return f"I:{normalize_root(t)}" if is_index_root(t) else t
 
     def historical_modes(self) -> set[str]:
-        """Live + Previous Close (the snapshot's day close). With a flat-file
-        history store, also per-day **EOD** (the official daily-aggregate close for
-        any recent trading day)."""
+        """Live + Previous Close (the snapshot's day close), and per-day **EOD**
+        whenever a key exists (the NBBO at that session's close — real bid/ask;
+        the aggregate close as the marks fallback) or a flat-file store does."""
         modes = {"live", "prev_close"}
-        if self._flat_ready():
+        if self.api_key or self._flat_ready():
             modes.add("eod")
         return modes
 
     def available_history(self, ticker: str) -> list[date]:
-        """Recent TRADING days the flat-file store can serve an EOD close for
-        (newest last): the last ~20 NYSE sessions up to yesterday — today's file
-        isn't published until after the close, and a holiday has no file at
-        all (it used to be listed and dead-ended the pick). Empty without a store."""
-        if not self._flat_ready():
+        """Recent TRADING days an EOD close can be served for (newest last): the
+        last ~20 NYSE sessions up to yesterday — today's is Live until its close,
+        and a holiday has no session (it used to be listed and dead-ended the
+        pick). Empty without a key or a flat-file store."""
+        if not (self.api_key or self._flat_ready()):
             return []
         out: list[date] = []
         day = date.today() - timedelta(days=1)
@@ -426,23 +434,22 @@ class MassiveProvider(OptionChainProvider):
         return list(reversed(out))
 
     def historical_quote_kind(self) -> str:
-        """Every Massive historical chain (EOD / intraday off the flat files,
-        Previous Close) is built from aggregate CLOSES: one mark per contract,
-        bid = ask. Real historical NBBO (Massive's ``quotes_v1`` flat files) is
-        a whole-market tick file per day — hours to scan, the backtest capture's
-        job — so the interactive as-of serves marks and says so."""
-        return "marks"
+        """"quotes" while the per-contract NBBO history serves past chains (real
+        bid/ask at the instant, volfit.data.massive_history); "marks" once that
+        path is off or gated — the aggregate CLOSES (flat files / minute bars,
+        Previous Close) are one mark per contract, bid = ask, and the chart
+        says so."""
+        return "quotes" if self.nbbo_history_available() else "marks"
 
     def _flat_ready(self) -> bool:
         return bool(self.flat_store is not None and self.flat_store.available())
 
     def intraday_capable(self) -> bool:
-        """Whether a PAST instant can be served: yes with the flat-file store
-        (minute aggregates — marks, ``historical_quote_kind``). Without it the
-        per-contract NBBO endpoint hard-fails past 40 contracts (no chain), so
-        the picker must not offer intraday moments it cannot honour. Today's
+        """Whether a PAST instant can be served: with a key — the concurrent
+        per-contract NBBO history (quotes), else the per-contract minute
+        aggregates (marks) — or with the flat-file store (minute marks). Today's
         "latest" is Live on every provider and is never an intraday pick."""
-        return bool(self.api_key) and self._flat_ready()
+        return bool(self.api_key) or self._flat_ready()
 
     # -- real-time streaming (WebSocket live book) ---------------------------
 
@@ -600,24 +607,29 @@ class MassiveProvider(OptionChainProvider):
         (options-only); the STOCKS-snapshot fallback (a separate plan) is the last
         resort and only it can raise ``RuntimeError`` for entitlement.
         """
-        # Flat-file history (Tier 2): the official daily Close for any recent
-        # trading day, and a past INTRADAY instant — both reconstructed from the
-        # aggregate flat files rather than the heavy per-contract REST quotes.
-        if as_of is not None and as_of.mode == "eod" and as_of.on is not None and self._flat_ready():
-            flat = self._fetch_flat(ticker, expiries, datetime.combine(as_of.on, time(23, 59, 59)), "day")
-            if flat is None:
-                raise RuntimeError(f"Massive: no flat-file data for {as_of.on.isoformat()}")
-            return flat
-        if as_of is not None and as_of.mode == "intraday" and as_of.ts is not None:
-            if as_of.ts.date() < date.today():  # a PAST day
-                if not self._flat_ready():
-                    # No flat-file history: legacy per-contract NBBO path (capped;
-                    # a full chain must use the flat files).
-                    return self._fetch_intraday(ticker, expiries, as_of.ts)
-                flat = self._fetch_flat(ticker, expiries, as_of.ts, "minute")
+        # A PAST day (Tier 2): the real two-sided NBBO at the instant first
+        # (volfit.data.massive_history), then the aggregate MARKS — the flat-file
+        # bars when a store is configured and has the day, else the per-contract
+        # REST minute bars — when the quote history is gated or switched off.
+        if as_of is not None and as_of.mode == "eod" and as_of.on is not None:
+            close = session_close_utc(as_of.on)
+            chain = self._fetch_nbbo_chain(ticker, expiries, close)
+            if chain is not None:
+                return chain
+            if self._flat_ready():
+                flat = self._fetch_flat(ticker, expiries, datetime.combine(as_of.on, time(23, 59, 59)), "day")
                 if flat is not None:
                     return flat
-                # Flat configured but no data that day: aggregate fallback (resilient).
+            return self._fetch_agg_chain(ticker, expiries, close)
+        if as_of is not None and as_of.mode == "intraday" and as_of.ts is not None:
+            if as_of.ts.date() < date.today():  # a PAST day
+                chain = self._fetch_nbbo_chain(ticker, expiries, as_of.ts)
+                if chain is not None:
+                    return chain
+                if self._flat_ready():
+                    flat = self._fetch_flat(ticker, expiries, as_of.ts, "minute")
+                    if flat is not None:
+                        return flat
                 return self._fetch_agg_chain(ticker, expiries, as_of.ts)
             # TODAY's intraday (pre-connect / a minute earlier today): the whole-chain
             # historical snapshot isn't bulk-available via REST, so serve the live
@@ -638,7 +650,7 @@ class MassiveProvider(OptionChainProvider):
             # so stamp it at that session's close instant — not at fetch time,
             # which made every prev-close node read "≠ as-of" in the nodes
             # pane (per-node effective as-of, 2026-08-27d).
-            from volfit.data.expiry_time import latest_completed_session, session_close_utc
+            from volfit.data.expiry_time import latest_completed_session
 
             timestamp = session_close_utc(latest_completed_session(timestamp))
         quotes: list[OptionQuote] = []
@@ -885,7 +897,10 @@ class MassiveProvider(OptionChainProvider):
                 )
                 if c["style"] in ("american", "european"):
                     styles.append(c["style"])
-        stock = self._agg_bar_le(ticker.upper(), day, target_ms)
+        try:  # the stock bar is a separate Massive product: an options-only plan gets parity
+            stock = self._agg_bar_le(self._underlying(ticker), day, target_ms)
+        except Exception:  # noqa: BLE001 — NOT_AUTHORIZED / unreachable: parity below
+            stock = None
         spot = price_or_none(stock.get("c")) if stock else None
         if spot is None:
             spot = self._spot_from_quotes(quotes)  # parity fallback
@@ -897,6 +912,7 @@ class MassiveProvider(OptionChainProvider):
             ticker=ticker.upper(), spot=spot, timestamp=ts, quotes=quotes,
             exercise_style=_resolve_style(styles), tick_size=_US_OPTION_TICK,
             settlement=_settlement_for(quotes, ticker),
+            quote_kind="marks",  # minute-aggregate closes: bid = ask
         )
 
     # -- intraday replay (historical NBBO at an instant) ---------------------
@@ -950,59 +966,12 @@ class MassiveProvider(OptionChainProvider):
             {"timestamp.lte": ns, "order": "desc", "sort": "timestamp", "limit": 1},
         )
         self._raise_if_unauthorized(body)
+        if body.get("status") == "ERROR":  # a rate limit ("exceeded the maximum requests…")
+            raise RuntimeError(
+                f"Massive: {body.get('error') or body.get('message') or 'quote request failed'}"
+            )
         results = body.get("results") or []
         return results[0] if results else {}
-
-    def _fetch_intraday(
-        self, ticker: str, expiries: list[date] | None, ts: datetime
-    ) -> ChainSnapshot:
-        """Reconstruct the chain at instant ``ts`` from per-contract historical
-        NBBO quotes (Polygon ``/v3/quotes``; ONE request per selected contract).
-
-        This is a single-/few-contract path only — it does not scale to a whole
-        chain (hundreds of sequential REST calls would stall for minutes). For a
-        full historical chain the **flat-file store** (Tier 2) is the mechanism,
-        which ``fetch_chain`` prefers when configured; here we fast-fail past the
-        cap with an actionable error rather than crawl, so the app degrades to
-        "no data" instead of hanging."""
-        ns = int(ts.replace(tzinfo=timezone.utc).timestamp() * 1_000_000_000)
-        contracts = self._intraday_contracts(ticker, expiries)
-        if len(contracts) > _INTRADAY_REST_MAX:
-            raise RuntimeError(
-                f"Massive: reconstructing {len(contracts)} contracts at a past "
-                f"instant via per-contract REST is impractical — enable the "
-                f"flat-file history store (set VOLFIT_FLATFILES_KEY / "
-                f"VOLFIT_FLATFILES_SECRET) for past-day intraday chains."
-            )
-        quotes: list[OptionQuote] = []
-        styles: list[str] = []
-        for c in contracts:
-            q = self._quote_le(c["ticker"], ns)
-            quotes.append(
-                OptionQuote(
-                    ticker=ticker.upper(),
-                    expiry=c["expiry"],
-                    strike=c["strike"],
-                    call_put=c["call_put"],
-                    bid=price_or_none(q.get("bid_price")),
-                    ask=price_or_none(q.get("ask_price")),
-                    last=None,
-                    volume=None,
-                    open_interest=None,
-                    timestamp=ts,
-                )
-            )
-            if c["style"] in ("american", "european"):
-                styles.append(c["style"])
-        return ChainSnapshot(
-            ticker=ticker.upper(),
-            spot=self._spot_at(ticker, ns),
-            timestamp=ts,
-            quotes=quotes,
-            exercise_style=_resolve_style(styles),
-            tick_size=_US_OPTION_TICK,
-            settlement=_settlement_for(quotes, ticker),
-        )
 
     def _spot_at(self, ticker: str, ns: int) -> float:
         """Underlying mid at-or-before ``ns`` from the stock NBBO quotes feed."""

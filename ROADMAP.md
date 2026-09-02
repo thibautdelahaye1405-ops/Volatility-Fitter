@@ -981,21 +981,118 @@ below) — every recorded rider is closed except the ones listed here:
    help corpus if the 1.30 MB bundle matters; try Ask's Claude tier against a
    real key once ($env:VOLFIT_ANTHROPIC_KEY on the server); fix the stale
    `mixed` dividend sentence in Docs/handoff/SETTINGS_REFERENCE.md §3.
-5. MARKET-DATA FETCH riders (wrap 2026-09-02c below; none are gates): a LIVE
-   Terminal check of the `CHAIN_TICKERS` + `CHAIN_POINTS_OVRD` chain request
-   (FakeBlp locks the wire only — the fallback to `OPT_CHAIN` covers a
-   Terminal without the field); `expiries.classify_expiry` (Fri-only weekly)
-   vs the picker's Mon/Wed/Fri "Dailies" bucket stays divergent by choice;
-   the per-node source policy in the Universe dialog is still inert; a
-   Bloomberg-session look at the yellow "no data" pill on a non-US name.
+5. MARKET-DATA FETCH riders (wraps 2026-09-02c + d below; none are gates):
+   a LIVE Terminal check of the `CHAIN_TICKERS` + `CHAIN_POINTS_OVRD` chain
+   request INCLUDING the yellow-key completion of its bare rows ("SX5E
+   09/18/26 C4650" → "… Index"; FakeBlp locks the wire only — the fallback to
+   `OPT_CHAIN` covers a Terminal without the field); a LIVE check of the
+   Massive per-contract NBBO history on the user's key (`/v3/quotes/{O:…}`:
+   the entitlement / rate-limit gate is remembered for the SESSION — restart
+   :8000 to retry after an upgrade; `VOLFIT_MASSIVE_HIST_NBBO=0` pins the
+   marks path); `expiries.classify_expiry` (Fri-only weekly) vs the picker's
+   Mon/Wed/Fri "Dailies" bucket stays divergent by choice; the per-node
+   source policy in the Universe dialog is still inert; a Bloomberg-session
+   look at the yellow "no data" pill on a non-US name; captures made before
+   store schema v10 are unattributed and no longer offered by the picker
+   (they still replay from a saved selection).
 USER-side: restart the long-running :8000 (new OptionsSettings fields,
 endpoints, the eSSVI compare family, the midnight roll, the /help router, and
-— wrap 2026-09-02c — the new payload fields `UniverseResponse.errors`,
-`SmileData.quoteKind`, `ActivityInfo.label/elapsedMs`, `AsOfDay.spread/reason`
-plus the long-lived probe pool); existing stores default the new gates. A
-saved universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX".
-First launch after this commit opens the Help Center's Welcome page once (Esc
+— wraps 2026-09-02c/d — the new payload fields `UniverseResponse.errors`,
+`SmileData.quoteKind`, `ActivityInfo.label/elapsedMs`,
+`AsOfDay.spread/reason/captures`, the long-lived probe pool and the Massive
+NBBO history path); the SQLite store migrates to schema v10 (`snapshots.
+source`) on first open; existing stores default the new gates. A saved
+universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
+launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-02d) — MARKET DATA, SECOND PASS: BLOOMBERG INDEX CHAINS, REAL PAST BID/ASK FROM MASSIVE, CAPTURES THAT BELONG TO THEIR SOURCE
+
+Three user reports on the 2026-09-02c build: (1) Bloomberg "could not add
+'SX5E INDEX': … All securities failed: SX5E 09/18/26 C4650, …"; (2) Massive
+past data shows no bid/ask ("they should be" — the user was right: the
+2026-09-02c claim that Massive history is marks by construction was a design
+shortcut, not a data fact); (3) under Cboe a past day still offered "latest"
+and "30 min before close". Two tracks in this session + one fork (captures).
+
+- **Root cause 1 — the yellow key.** `CHAIN_TICKERS` lists a contract
+  WITHOUT its asset class ("SX5E 09/18/26 C4650"); `parse_descriptor` kept
+  the row verbatim as the security and the bulk `bdp` refused every one.
+  `_parse_chain_frame(frame, asset_class)` now completes each row that lacks
+  a yellow key with the UNDERLYING's ("Index" / "Equity" — the last token of
+  `_security(ticker)`); OPT_CHAIN descriptors, which carry one, are left
+  alone (`_with_asset_class`). Lock: test_bloomberg
+  `test_chain_tickers_rows_without_a_yellow_key_get_the_underlyings` (an
+  SX5E Index chain's bdp securities end in " Index"; a bare SPY row gets
+  " Equity"; a keyed row is untouched).
+- **Root cause 2 — Massive history WAS two-sided all along.** The REST
+  `/v3/quotes/{O:…}` endpoint answers one contract's last NBBO at-or-before
+  any instant; the old `_fetch_intraday` crawled it SEQUENTIALLY and
+  fast-failed past 40 contracts, so 2026-09-02c routed every past chain to the
+  aggregate marks. New `volfit.data.massive_history.MassiveHistoryMixin`
+  (`_fetch_nbbo_chain`): the selected expiries' contracts (reference
+  listing), a synchronous PROBE quote on the mid-listing contract (proves
+  the entitlement before the pool is spent), a spot hint (the underlying's
+  NBBO mid → its minute bar → None), `budget_contracts` (all under
+  `NBBO_MAX_CONTRACTS` = 1500, else nearest-the-money first by
+  |ln K/S| / √T so every expiry keeps its belly; the nearest expiry's median
+  strike stands in for a missing spot), `NBBO_CONCURRENCY` = 12 requests in
+  flight on the pooled client, each contract narrated through
+  `volfit.data.progress` ("312 / 1500 contracts" in the status bar), a
+  contract with no quote by then skipped (never marked), spot = the hint
+  else put-call parity (`_spot_from_quotes` — an options-only plan works),
+  `quote_kind="quotes"`. `fetch_chain`: eod → NBBO at `session_close_utc
+  (day)` → flat-file day marks → per-contract minute-bar marks at the close;
+  past intraday → NBBO at ts → flat minute marks → minute-bar marks (the
+  aggregate path now also says `quote_kind="marks"` and survives an
+  unentitled stock bar via parity). **The gate**: `NOT_AUTHORIZED` on the
+  probe, or a rate-limit `ERROR` body at any point (`_quote_le` now raises
+  on it; the pool is cancelled), sets `_hist_nbbo_gate` for the SESSION —
+  `historical_quote_kind()` → "marks" (the picker's tag), `nbbo_history_gate
+  ()` → the reason, no further quote request. Capabilities with a key alone:
+  `historical_modes` ∋ "eod", `available_history` = the last 20 NYSE
+  sessions, `intraday_capable` True (NBBO or minute bars). Switch:
+  `MassiveProvider(hist_nbbo=…)` / env `VOLFIT_MASSIVE_HIST_NBBO=0` (serve.py).
+  Locks: tests/test_massive_nbbo_history.py (10: eod at the session close
+  with the `timestamp.lte` ns asserted, an instant with progress, skipped
+  empty quotes, the entitlement gate remembered + flat marks, a mid-chain
+  rate limit aborting to minute-bar marks, eod without a store behind a
+  closed gate, the budget's belly rule, a 3200-contract selection capped,
+  capabilities + the off switch, the off switch never touching the quote
+  history); test_massive / test_asof / test_market_data_fetch expectations
+  updated (`hist_nbbo=False` pins the flat-path tests).
+- **Root cause 3 — captures had no owner (fork).** Auto-captures (every live
+  fetch on Yahoo / Cboe / the venues / Synthetic, one per 60 s) and export
+  snapshots from ANY source shared one store with no source tag; the picker
+  listed a past day for any capture on it and its "n min before close" rows
+  served the nearest capture at-or-before (or the EARLIEST later one)
+  silently. Store schema **v10**: `snapshots.source` (NULL on legacy rows);
+  `save_snapshot(…, source)` tagged by `_persist_capture` and the export
+  publish; `list_snapshots(tickers, source)` STRICT (the picker: only the
+  active source's captures, never a legacy untagged one), `snapshot_at
+  (ticker, ts, source)` LENIENT (`source = ? OR NULL` — a saved selection
+  still replays). `asof_payload` per day: `captures` (ISO, newest first, ≤
+  `MAX_CAPTURES_PER_DAY` = 8). `AsOfRows`: "Latest snapshot" reads **Latest
+  capture · HH:MM** on a captured day (`fmtCaptureTime`: naive UTC → local);
+  "n min before close" enabled ONLY when `d.intraday` (a fetch at an
+  arbitrary instant), on a captured-only day disabled with "pick a captured
+  snapshot"; the other captured instants are explicit **Captured · HH:MM**
+  rows (`useAsOf.setCaptured` → `POST /asof {mode: captured, ts}`); the pill
+  label of an explicit replay is "MM-DD HH:MM". Locks:
+  tests/test_asof_captures.py (5: tagged + listed under its source only, the
+  API payload per source, the per-day cap, a legacy row replays but is never
+  offered, the v9 → v10 migration), AsOfRows.test (+2).
+- Help: What's new + the Data-sources guide (Massive history = real bid/ask
+  with the marks fallback; captures per source; before-close = a fetch).
+- Regression: the api / data / venue slice 540 passed / 7 skipped, frontend
+  415, tsc + production build clean.
+- Riders: recorded under NEXT item 5 (the two LIVE checks — Terminal chain
+  rows, Massive `/v3/quotes` on the user's key; the session-permanent gate;
+  legacy captures unattributed).
+- USER-side: restart :8000 (the store migrates to v10 on open; the Massive
+  history path lights up on the first past-day pick — watch the status bar's
+  contract counter; a `marks` tag afterwards means the key is gated, the
+  reason is in `nbbo_history_gate` / the source detail on the next probe).
 
 ### 🧭 SESSION WRAP (2026-09-02c) — MARKET-DATA FETCHING: THE GAUGE, AN HONEST AS-OF PICKER, SOURCES THAT NEVER LOCK, PORTABLE INDEX TICKERS
 

@@ -39,6 +39,7 @@ from __future__ import annotations
 import threading
 import time
 import warnings
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from typing import Callable, Sequence
 
@@ -95,20 +96,37 @@ CHAIN_POINTS = 50000
 CHAIN_CACHE_TTL = 600.0
 
 
-def _parse_chain_frame(frame) -> list:
+def _parse_chain_frame(frame, asset_class: str = "") -> list:
     """Parsed contracts out of a chain ``bds`` frame — CHAIN_TICKERS (one
     security per row, e.g. "SPY US 09/05/26 C450 Equity") or OPT_CHAIN
     ("Security Description" descriptors): every non-metadata column is tried
     and the first one that yields contracts wins, so the column's name (which
-    differs between the two fields and xbbg versions) never matters."""
+    differs between the two fields and xbbg versions) never matters.
+
+    CHAIN_TICKERS lists a contract WITHOUT its yellow key ("SX5E 09/18/26
+    C4650" for "SX5E Index") — a security the reference request refuses
+    ("All securities failed: SX5E 09/18/26 C4650, …"). ``asset_class`` (the
+    underlying's: "Index" / "Equity") is appended to every contract that lacks
+    one, so the chain's securities are always complete Bloomberg tickers."""
     cols = columns(frame)
     for name, values in cols.items():
         if name in ("ticker", "field"):
             continue
         parsed = [p for p in (parse_descriptor(str(v)) for v in values) if p]
         if parsed:
-            return parsed
+            return [_with_asset_class(p, asset_class) for p in parsed]
     return []
+
+
+def _with_asset_class(contract: ParsedOption, asset_class: str) -> ParsedOption:
+    """The contract with ``asset_class`` appended when its security carries no
+    yellow key (a CHAIN_TICKERS row); untouched when it already ends in one."""
+    if not asset_class:
+        return contract
+    last = contract.security.rsplit(" ", 1)[-1].upper()
+    if last in _ASSET_CLASS_BY_UPPER:
+        return contract
+    return replace(contract, security=f"{contract.security} {asset_class}")
 
 
 def _default_blp():
@@ -346,18 +364,21 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
             return hit[1]
         blp = self._blp_module()
         security = self._security(ticker)
+        asset_class = security.rsplit(" ", 1)[-1]  # "Index" / "Equity": completes a bare CHAIN_TICKERS row
         if self.chain_periodicity is None:  # legacy request, no override at all
-            parsed = _parse_chain_frame(blp.bds(security, "OPT_CHAIN"))
+            parsed = _parse_chain_frame(blp.bds(security, "OPT_CHAIN"), asset_class)
         else:
             overrides = {"CHAIN_POINTS_OVRD": str(CHAIN_POINTS)}
             if self.chain_periodicity:  # a pinned periodicity ("M", "W", ...)
                 overrides["CHAIN_PERIODICITY_OVRD"] = self.chain_periodicity
             try:
-                parsed = _parse_chain_frame(blp.bds(security, "CHAIN_TICKERS", overrides=overrides))
+                parsed = _parse_chain_frame(
+                    blp.bds(security, "CHAIN_TICKERS", overrides=overrides), asset_class
+                )
             except Exception:  # noqa: BLE001 — a Terminal / rig without the field
                 parsed = []
             if not parsed:  # no CHAIN_TICKERS entitlement / empty answer: the legacy field
-                parsed = _parse_chain_frame(blp.bds(security, "OPT_CHAIN"))
+                parsed = _parse_chain_frame(blp.bds(security, "OPT_CHAIN"), asset_class)
         self._chain_cache[key] = (now, parsed)
         return parsed
 

@@ -424,7 +424,7 @@ def _publish(state: AppState, export: SurfaceExport) -> SurfaceExport:
     try:
         with VolStore(state.store_path) as store:
             snapshot_ids = {
-                t.ticker: store.save_snapshot(state.snapshot(t.ticker))
+                t.ticker: store.save_snapshot(state.snapshot(t.ticker), source=state._active_source)
                 for t in export.tickers
             }
             doc = {

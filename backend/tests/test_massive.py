@@ -471,14 +471,16 @@ def test_flat_store_adds_eod_and_history(tmp_path):
     hist = p.available_history("SPY")
     assert len(hist) == 20 and all(d.weekday() < 5 for d in hist)  # weekdays, newest last
     assert hist == sorted(hist)
-    # Without a store, eod is not offered.
-    assert "eod" not in MassiveProvider(["SPY"], api_key="k").historical_modes()
+    # Without a store OR a key (the NBBO / aggregate history), eod is not offered.
+    assert "eod" not in MassiveProvider(["SPY"], api_key="").historical_modes()
 
 
 def test_fetch_chain_eod_uses_flat_day_aggs(tmp_path):
+    """The flat-file MARKS path, pinned by the off switch (with the switch on the
+    per-contract NBBO history is tried first — tests/test_massive_nbbo_history.py)."""
     from volfit.data.provider import AsOf
 
-    p = MassiveProvider(["SPY"], api_key="k", flat_store=_flat_store_fixture(tmp_path))
+    p = MassiveProvider(["SPY"], api_key="k", flat_store=_flat_store_fixture(tmp_path), hist_nbbo=False)
     chain = p.fetch_chain("SPY", [date(2026, 6, 16)], as_of=AsOf(mode="eod", on=date(2026, 6, 12)))
     assert chain.spot == pytest.approx(500.0, abs=1e-6)
     assert len(chain.quotes) == 6 and chain.exercise_style == "american"
@@ -491,16 +493,17 @@ def test_fetch_chain_past_intraday_uses_flat_minute_aggs(tmp_path):
 
     from volfit.data.provider import AsOf
 
-    p = MassiveProvider(["SPY"], api_key="k", flat_store=_flat_store_fixture(tmp_path))
+    p = MassiveProvider(["SPY"], api_key="k", flat_store=_flat_store_fixture(tmp_path), hist_nbbo=False)
     # A past instant routes to the flat store (no REST /v3/quotes needed).
     chain = p.fetch_chain("SPY", None, as_of=AsOf(mode="intraday", ts=datetime(2026, 6, 12, 19, 55)))
     assert chain.spot == pytest.approx(500.0, abs=1e-6) and len(chain.quotes) == 6
 
 
-def test_intraday_full_chain_fast_fails_without_flat_store():
-    """A past-instant reconstruction of a whole chain via per-contract REST must
-    NOT crawl hundreds of requests (the hang) — it fast-fails toward the flat-file
-    store. A small selection still uses the per-contract path (test_asof covers it)."""
+def test_intraday_full_chain_is_served_by_the_concurrent_nbbo_history():
+    """A past-instant chain of 100+ contracts used to fast-fail toward the
+    flat-file store (one sequential REST per contract hung the app); it is now
+    the concurrent per-contract NBBO history (volfit.data.massive_history —
+    the full contract is in tests/test_massive_nbbo_history.py)."""
     from datetime import datetime
 
     from volfit.data.provider import AsOf
@@ -510,22 +513,24 @@ def test_intraday_full_chain_fast_fails_without_flat_store():
     def http_get(url, params):
         if "/reference/options/contracts" in url:
             results = [
-                {"ticker": f"O:SPY260918C{i:08d}", "expiration_date": "2026-09-18",
+                {"ticker": f"O:SPY260918C{i * 1000:08d}", "expiration_date": "2026-09-18",
                  "strike_price": float(i), "contract_type": "call",
                  "exercise_style": "american"}
-                for i in range(100)  # 100 contracts > _INTRADAY_REST_MAX
+                for i in range(450, 550)  # 100 contracts, more than the old cap of 40
             ]
             return {"results": results, "status": "OK"}
-        if "/v3/quotes/" in url:
+        if "/v3/quotes/O:" in url:
             quote_calls["n"] += 1
             return {"results": [{"bid_price": 1.0, "ask_price": 1.2}], "status": "OK"}
+        if url.endswith("/v3/quotes/SPY"):
+            return {"results": [{"bid_price": 499.5, "ask_price": 500.5}], "status": "OK"}
         raise AssertionError(f"unexpected url {url}")
 
     p = MassiveProvider(["SPY"], api_key="k", http_get=http_get)  # no flat_store
-    with pytest.raises(RuntimeError, match="flat-file"):
-        p.fetch_chain("SPY", [date(2026, 9, 18)],
-                      as_of=AsOf(mode="intraday", ts=datetime(2026, 6, 12, 19, 45)))
-    assert quote_calls["n"] == 0  # fast-failed before crawling any per-contract quote
+    chain = p.fetch_chain("SPY", [date(2026, 9, 18)],
+                          as_of=AsOf(mode="intraday", ts=datetime(2026, 6, 12, 19, 45)))
+    assert quote_calls["n"] == 100 and len(chain.quotes) == 100
+    assert chain.quote_kind == "quotes" and chain.spot == 500.0
 
 
 # ------------------------------------------- Tier 3: aggregate reconstruction

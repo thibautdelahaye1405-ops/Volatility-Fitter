@@ -215,6 +215,31 @@ def test_chain_tickers_empty_answer_falls_back_to_opt_chain():
     assert [c[1] for c in blp.bds_calls] == ["CHAIN_TICKERS", "OPT_CHAIN"]
 
 
+def test_chain_tickers_rows_without_a_yellow_key_get_the_underlyings():
+    """CHAIN_TICKERS lists a contract WITHOUT its yellow key ("SX5E 09/18/26
+    C4650"); sent as-is the reference request refuses every one of them ("All
+    securities failed: SX5E 09/18/26 C4650, …" — the user's report). The
+    underlying's asset class completes each row ("… C4650 Index"); a row that
+    already carries one (OPT_CHAIN descriptors) is left alone."""
+    d = _future_weekday(4)
+    bare = f"SX5E {d.month:02d}/{d.day:02d}/{d.year % 100:02d} C4650"
+    frame = pd.DataFrame({"ticker": ["SX5E Index"], "field": ["CHAIN_TICKERS"], "Ticker": [bare]})
+    blp = FakeBlp(frame, {"SX5E Index": {"PX_LAST": 4700.0},
+                          f"{bare} Index": {"BID": "60.0", "ASK": "62.0", "OPT_EXER_TYP": "European"}})
+    provider = BloombergProvider(["SX5E INDEX"], blp_module=blp)
+    chain = provider.fetch_chain("SX5E INDEX", [d])
+    assert blp.bdp_securities == [f"{bare} Index"]  # the completed security, not the bare row
+    assert chain.quotes[0].bid == 60.0 and chain.exercise_style == "european"
+    # An equity chain listed bare gets " Equity"; a descriptor with a key is untouched.
+    from volfit.data.bloomberg import _parse_chain_frame
+
+    eq = pd.DataFrame({"ticker": ["SPY US Equity"] * 2, "field": ["CHAIN_TICKERS"] * 2,
+                       "Ticker": [f"SPY US {_future(30)} C500", f"SPY US {_future(30)} P500 Equity"]})
+    assert [p.security for p in _parse_chain_frame(eq, "Equity")] == [
+        f"SPY US {_future(30)} C500 Equity", f"SPY US {_future(30)} P500 Equity",
+    ]
+
+
 def test_available_expiries_includes_weeklies_and_dailies():
     """A Mon/Wed/Fri weekly ladder plus a Tuesday daily all survive: our code
     applies NO periodicity filter of its own (the descriptor regex parses

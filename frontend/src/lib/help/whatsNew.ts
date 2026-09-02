@@ -7,6 +7,15 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-02",
+    title: "Market data, second pass: Bloomberg index chains, real past bid/ask from Massive, captures that belong to their source",
+    items: [
+      "Bloomberg index and non-US chains fetch again. The CHAIN_TICKERS listing names a contract without its yellow key (\"SX5E 09/18/26 C4650\"), which the quote request refused for every contract (\"All securities failed\"); each contract now carries the underlying's asset class (\"… C4650 Index\").",
+      "Massive's past days are real two-sided bid/ask: a day's close or an instant is rebuilt from each contract's last NBBO at that moment — concurrent per-contract history requests, nearest-the-money first, up to 1,500 contracts per chain, counted in the status bar (*312 / 1500 contracts*). The aggregate closes (bid = ask marks) remain the fallback when the key has no historical-quote entitlement or hits its rate limit, and the picker's **marks** tag says so. VOLFIT_MASSIVE_HIST_NBBO=0 pins the marks path.",
+      "Captured snapshots belong to the source that made them. A past day under Cboe lists only Cboe's own captures, as explicit *Latest capture · HH:MM* and *Captured · HH:MM* replay rows; *n min before close* is enabled only for a source that can fetch an arbitrary past instant (it used to serve the nearest capture silently). Captures made before this build carry no source and no longer appear in the picker; a saved selection still replays.",
+    ],
+  },
+  {
+    date: "2026-09-02",
     title: "Market data fetching: a real gauge, an honest as-of picker, sources that never lock",
     items: [
       "The status bar shows fetch progress: which chain is downloading (*chain 2 of 4*) with its bytes against the venue's file size, the elapsed time of the step, and elapsed versus the 10-minute client timeout when nothing can be measured. Every venue download is capped at 120 s.",

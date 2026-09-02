@@ -47,7 +47,12 @@ from volfit.data.types import ChainSnapshot, ExpirySettlement, Instrument, Optio
 #: FILES (the File ▸ Save-to-server bundle: backend workspace doc + shell
 #: state) next to the named universes. New table only; CREATE IF NOT EXISTS
 #: is the whole migration.
-SCHEMA_VERSION = 9
+#: v10 (market-data fetch arc, 2026-09-02): snapshots carry the data SOURCE
+#: that produced the capture (``source``; NULL on rows captured before the tag
+#: existed), so the as-of picker offers a source's own captures only — a Cboe
+#: or Yahoo auto-capture never surfaces as a replayable "moment" under another
+#: feed, and a synthetic run's captures stay with Synthetic.
+SCHEMA_VERSION = 10
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS instruments (
@@ -63,7 +68,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     exercise_style  TEXT NOT NULL DEFAULT 'european',
     zero_carry      INTEGER NOT NULL DEFAULT 0,
     tick_size       REAL,
-    settlement_json TEXT
+    settlement_json TEXT,
+    source          TEXT
 );
 CREATE TABLE IF NOT EXISTS quotes (
     snapshot_id   INTEGER NOT NULL REFERENCES snapshots(id),
@@ -188,6 +194,9 @@ class VolStore:
         to 0 — real-quote chains; only the IV-synthesized fallback sets it).
         v5 -> v6: the `snapshots` table gains `tick_size` (NULL for old rows —
         no tick-noise screen on replays captured before the flag existed).
+        v9 -> v10: the `snapshots` table gains `source` — the data source that
+        produced the capture; NULL on rows captured before the tag existed
+        (those are never offered by a source-filtered listing).
 
         Fast path: a store is opened on *every* capture/persist/load, so once the
         file is already at `SCHEMA_VERSION` we return immediately — skipping the
@@ -217,6 +226,8 @@ class VolStore:
             self.conn.execute("ALTER TABLE snapshots ADD COLUMN tick_size REAL")
         if 1 <= version <= 6:  # pre-v7 file: add per-expiry settlement semantics
             self.conn.execute("ALTER TABLE snapshots ADD COLUMN settlement_json TEXT")
+        if 1 <= version <= 9:  # pre-v10 file: add the producing data source
+            self.conn.execute("ALTER TABLE snapshots ADD COLUMN source TEXT")
         self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self.conn.commit()
 
@@ -249,8 +260,10 @@ class VolStore:
 
     # -- snapshots ---------------------------------------------------------
 
-    def save_snapshot(self, snapshot: ChainSnapshot) -> int:
-        """Persist one chain snapshot; returns the new snapshot id."""
+    def save_snapshot(self, snapshot: ChainSnapshot, source: str | None = None) -> int:
+        """Persist one chain snapshot; returns the new snapshot id. ``source`` is
+        the data-source id that produced it (the as-of picker lists a source's
+        own captures only); None = unattributed (legacy)."""
         settlement_json = None
         if snapshot.settlement is not None:
             settlement_json = json.dumps(
@@ -265,7 +278,7 @@ class VolStore:
             )
         cur = self.conn.execute(
             "INSERT INTO snapshots (ticker, spot, ts, exercise_style, zero_carry, "
-            "tick_size, settlement_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "tick_size, settlement_json, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 snapshot.ticker,
                 snapshot.spot,
@@ -274,6 +287,7 @@ class VolStore:
                 int(snapshot.zero_carry),
                 snapshot.tick_size,
                 settlement_json,
+                source,
             ),
         )
         snapshot_id = int(cur.lastrowid)
@@ -359,32 +373,45 @@ class VolStore:
         return self.load_snapshot(int(row[0])) if row else None
 
     def list_snapshots(
-        self, tickers: list[str] | None = None
+        self, tickers: list[str] | None = None, source: str | None = None
     ) -> list[tuple[str, int, datetime]]:
         """(ticker, id, timestamp) for stored snapshots, newest first.
 
-        Restricted to ``tickers`` when given (the active universe). Backs the
-        as-of picker's 'captured intraday' list.
+        Restricted to ``tickers`` when given (the active universe) and, when
+        ``source`` is given, STRICTLY to captures that source produced — legacy
+        untagged rows are not listed, so the as-of picker never offers another
+        feed's (or an unattributable) capture as a replayable moment.
         """
         sql = "SELECT ticker, id, ts FROM snapshots"
+        where: list[str] = []
         args: list = []
         if tickers:
             placeholders = ", ".join("?" * len(tickers))
-            sql += f" WHERE ticker IN ({placeholders})"
-            args = list(tickers)
+            where.append(f"ticker IN ({placeholders})")
+            args += list(tickers)
+        if source is not None:
+            where.append("source = ?")
+            args.append(source)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY ts DESC, id DESC"
         return [
             (ticker, int(sid), datetime.fromisoformat(ts))
             for ticker, sid, ts in self.conn.execute(sql, args)
         ]
 
-    def snapshot_at(self, ticker: str, ts: datetime) -> ChainSnapshot | None:
-        """The ticker's snapshot nearest at-or-before ``ts`` (None if none)."""
-        row = self.conn.execute(
-            "SELECT id FROM snapshots WHERE ticker = ? AND ts <= ? "
-            "ORDER BY ts DESC, id DESC LIMIT 1",
-            (ticker, ts.isoformat()),
-        ).fetchone()
+    def snapshot_at(
+        self, ticker: str, ts: datetime, source: str | None = None
+    ) -> ChainSnapshot | None:
+        """The ticker's snapshot nearest at-or-before ``ts`` (None if none).
+        With ``source``, LENIENTLY that source's captures or legacy untagged
+        ones — a saved workspace / an old captured selection still replays."""
+        sql = "SELECT id FROM snapshots WHERE ticker = ? AND ts <= ?"
+        args: list = [ticker, ts.isoformat()]
+        if source is not None:
+            sql += " AND (source = ? OR source IS NULL)"
+            args.append(source)
+        row = self.conn.execute(sql + " ORDER BY ts DESC, id DESC LIMIT 1", args).fetchone()
         return self.load_snapshot(int(row[0])) if row else None
 
     def last_snapshot_ts(self, ticker: str) -> datetime | None:

@@ -774,13 +774,15 @@ class AppState(UniverseMixin):
         if self.store_path is None or ts is None:
             return None
         with VolStore(self.store_path) as store:
-            return store.snapshot_at(ticker, ts)
+            # This source's capture (or a legacy untagged one), never another feed's.
+            return store.snapshot_at(ticker, ts, source=self._active_source)
 
     def _persist_capture(self, snap: ChainSnapshot) -> None:
         """Best-effort: save a live chain to the store for later replay, deduped
-        to one capture per ~60 s per ticker. Never fails a fetch. Skipped for
-        sources with their own history channel (Massive flat files / Bloomberg
-        Terminal) — see ``NO_AUTO_CAPTURE_SOURCES``."""
+        to one capture per ~60 s per ticker and TAGGED with the active source
+        (the as-of picker offers a source's own captures only). Never fails a
+        fetch. Skipped for sources with their own history channel (Massive flat
+        files / Bloomberg Terminal) — see ``NO_AUTO_CAPTURE_SOURCES``."""
         if self.store_path is None or self._active_source in NO_AUTO_CAPTURE_SOURCES:
             return
         try:
@@ -788,7 +790,7 @@ class AppState(UniverseMixin):
                 last = store.last_snapshot_ts(snap.ticker)
                 if last is not None and abs((snap.timestamp - last).total_seconds()) < 60:
                     return
-                store.save_snapshot(snap)
+                store.save_snapshot(snap, source=self._active_source)
         except Exception:
             pass
 

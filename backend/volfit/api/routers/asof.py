@@ -29,6 +29,10 @@ class AsOfDay(BaseModel):
     spread: str = "quotes"
     #: Why nothing can be picked on this day (today = Live), else None.
     reason: str | None = None
+    #: The day's captured instants (ISO, newest first, capped) — captures the
+    #: ACTIVE source made, offered as explicit replays (store schema v10 tags
+    #: every capture with its source; another feed's never appear here).
+    captures: list[str] = []
 
 
 class AsOfResponse(BaseModel):

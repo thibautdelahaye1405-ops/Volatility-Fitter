@@ -48,7 +48,7 @@ def test_massive_prev_close_prices_from_day_close():
         return snapshot
 
     provider = MassiveProvider(["SPY"], api_key="k", http_get=http_get)
-    assert provider.historical_modes() == {"live", "prev_close"}
+    assert provider.historical_modes() >= {"live", "prev_close"}  # + eod: the NBBO / aggregate history
     chain = provider.fetch_chain(
         "SPY", [date.fromisoformat(exp)], as_of=AsOf(mode="prev_close")
     )
@@ -75,10 +75,9 @@ def test_massive_intraday_reconstructs_chain_at_instant():
         raise AssertionError(f"unexpected url {url}")
 
     provider = MassiveProvider(["SPY"], api_key="k", http_get=http_get)
-    # The per-contract NBBO path serves ≤ 40 contracts — never a real chain —
-    # so the picker is NOT told this provider can serve an instant without the
-    # flat-file store (it would offer moments that hard-fail on a real ladder).
-    assert provider.intraday_capable() is False
+    # The per-contract NBBO history (volfit.data.massive_history) serves a whole
+    # chain concurrently, so a key alone makes past instants pickable.
+    assert provider.intraday_capable() is True and provider.historical_quote_kind() == "quotes"
     ts = datetime(2026, 6, 12, 19, 45)
     chain = provider.fetch_chain("SPY", [exp], as_of=AsOf(mode="intraday", ts=ts))
     assert chain.timestamp == ts
@@ -257,7 +256,9 @@ def _save_capture(db, ticker: str, ts: datetime) -> None:
                             open_interest=1, timestamp=ts)],
     )
     with VolStore(db) as store:
-        store.save_snapshot(snap)
+        # Tagged as the test state's active source: the picker lists a
+        # source's OWN captures only (store schema v10, test_asof_captures).
+        store.save_snapshot(snap, source="synthetic")
 
 
 def test_before_close_picks_nearest_capture_at_or_before(tmp_path):
