@@ -1027,6 +1027,20 @@ def _reconstruct_smile(
     return pts
 
 
+def _tail_total_variance(surface, x_nodes: np.ndarray, expiries: np.ndarray) -> float:
+    """Upper bound on any slice's total variance in the RIGHT wing: the largest
+    nodal local variance at or above the forward (the wing beyond the last
+    strike vertex is flat-clamped, so this bounds the tail's local variance)
+    times the longest maturity. Sizes the display lattice's boundary buffer
+    (affine_views_ext.display_lattice) — an over-estimate only costs nodes on
+    one value march, never accuracy."""
+    theta = np.asarray(surface.theta, dtype=float)
+    xn = np.asarray(x_nodes, dtype=float)
+    cols = xn >= 1.0
+    nu = theta[:, cols] if np.any(cols) else theta
+    return float(np.max(nu) * float(np.max(expiries))) if nu.size else 0.0
+
+
 def _model_vol_at(solution, i_exp: int, t: float, k: np.ndarray) -> np.ndarray:
     """Reconstructed implied vol of the calibrated surface at log-moneyness k."""
     price = solution.price_at(i_exp, np.exp(k))
@@ -1390,6 +1404,30 @@ def _fit(
         payoff="put",
         time_scheme=time_scheme,
     )
+    # Display-side RIGHT-wing march (2026-09-02, the lattice right-edge layer):
+    # the calibration lattice closes with Dirichlet C(x_max) = 0, whose
+    # boundary layer collapses the inverted vol over the last ~1/c of the
+    # lattice — sharply on short-dated slices (the scheme's steep tail) and
+    # exactly where the display used to end. The same surface is marched
+    # value-only on the calibration lattice carried past the display cap by
+    # the image-estimate buffer (affine_views_ext.display_lattice); modelExt
+    # reads its wing beyond the core from it, and the boundary-layer guard
+    # then applies to whichever lattice serves the wing. Same dx, same nodes,
+    # same scheme: the seam at the core edge is round-off; calibration and
+    # `model` stay byte-identical. None when the lattice already reaches.
+    x_disp = affine_views_ext.display_lattice(
+        x_grid, k_hi + _K_PAD, _tail_total_variance(cal.surface, x_nodes, expiries)
+    )
+    ext_sol = None
+    if x_disp is not None:
+        ext_sol = reprice_affine_dupire(
+            cal.surface.with_left_extrap_a(cal.left_extrap_a),
+            x_disp,
+            t_grid,
+            expiries=expiries,
+            payoff="call",
+            time_scheme=time_scheme,
+        )
 
     exp_index = {float(t): i for i, t in enumerate(cal.solution.expiries)}
     smiles: list[AffineSmile] = []
@@ -1426,7 +1464,7 @@ def _fit(
                 # same inversion, wider truncation — `model` stays byte-equal.
                 modelExt=affine_views_ext.extended_model(
                     cal.solution, i_exp, t, klo, khi, x_grid, _K_PAD, _N_SMILE,
-                    put_solution=put_sol,
+                    put_solution=put_sol, ext_call_solution=ext_sol,
                 ),
                 quotes=_quote_bands(state, ticker, iso, prepared, request.fitMode),
                 varSwap=_affine_varswap_info(

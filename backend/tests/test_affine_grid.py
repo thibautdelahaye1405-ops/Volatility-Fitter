@@ -121,11 +121,12 @@ def _lv_fit(client, ticker: str) -> dict:
     return resp.json()
 
 
-def test_lv_x_max_min_widens_model_ext_right_edge_on_the_wire(client):
-    """PUT lvXMaxMin=4.0 -> modelExt's right edge reaches min(K_DISPLAY_HI,
-    ln 4) (the synthetic quoted range is capped at ln 2.5 ≈ 0.92 by default),
-    the vertex grid is untouched and ``model`` keeps its grid exactly with the
-    same values (the wider lattice only moves the far boundary)."""
+def test_lv_x_max_min_moves_only_the_calibration_lattice_on_the_wire(client):
+    """PUT lvXMaxMin=4.0 -> the calibration lattice widens (its far Dirichlet
+    boundary moves), the vertex grid is untouched, ``model`` keeps its grid
+    exactly with the same values, and modelExt's right edge is the SAME
+    K_DISPLAY_HI either way (2026-09-02: the display wing rides its own
+    buffered lattice — the floor no longer truncates or widens it)."""
     ticker = client.get("/universe").json()["tickers"][0]
     base = _lv_fit(client, ticker)
     opts = client.get("/settings/options").json()
@@ -136,16 +137,14 @@ def test_lv_x_max_min_widens_model_ext_right_edge_on_the_wire(client):
     finally:
         assert client.put("/settings/options", json=opts).status_code == 200
 
-    target = min(K_DISPLAY_HI, float(np.log(4.0))) - 0.02
     assert wide["xNodes"] == base["xNodes"] and wide["tNodes"] == base["tNodes"]
     assert len(wide["smiles"]) == len(base["smiles"]) >= 2
     for b, w in zip(base["smiles"], wide["smiles"]):
         assert w["expiry"] == b["expiry"]
         b_right = b["modelExt"][-1]["k"]
         w_right = w["modelExt"][-1]["k"]
-        assert b_right <= float(np.log(2.5)) + 1e-9  # the default cap binds
-        assert w_right >= target
-        assert w_right > b_right + 0.05  # visibly wider than the default
+        assert b_right >= K_DISPLAY_HI - 1e-6  # full-width with the default floor
+        assert w_right == pytest.approx(b_right, abs=1e-9)
         # `model` (quoted range ± pad): identical grid, identical values.
         assert [p["k"] for p in w["model"]] == [p["k"] for p in b["model"]]
         for pb, pw in zip(b["model"], w["model"]):

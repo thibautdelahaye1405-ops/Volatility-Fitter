@@ -3,9 +3,9 @@ on the shared display grid — and the calendar worst-crossing LOCATION.
 
 modelExt locks (item 3):
   * spans the display grid: left edge <= K_DISPLAY_LO, right edge reaches
-    min(K_DISPLAY_HI, ln(x_max) - eps) and NEVER exceeds the PDE lattice
-    (price_at np.interp-clamps beyond it — inverting clamped prices is the
-    exact failure this feature guards against);
+    K_DISPLAY_HI (2026-09-02: the wing beyond the core rides a DISPLAY
+    lattice carried past the cap, so the calibration lattice's right edge
+    no longer truncates it — test_lv_right_edge.py locks the layer guard);
   * every point finite with 0.01 < vol < 2.0 (the test_api_affine discipline);
   * modelExt ≡ model on the quoted-range grid points (one inversion, two
     truncations — the shared core linspace is bit-identical);
@@ -44,16 +44,7 @@ def fitted(client):
     return resp.json()
 
 
-def _x_max_upper_bound(data) -> float:
-    """Upper bound on the PDE lattice's x_max, reconstructed from the wire
-    (mirrors _pde_grids: max(exp(k_hi_global) * 1.4, 2.5); the wire quotes are
-    a superset of the fit rows, so this never underestimates)."""
-    k_hi_global = max(q["k"] for s in data["smiles"] for q in s["quotes"])
-    return max(float(np.exp(k_hi_global)) * 1.4, 2.5)
-
-
 def test_model_ext_spans_shared_display_grid(fitted):
-    ln_x_max = float(np.log(_x_max_upper_bound(fitted)))
     for smile in fitted["smiles"]:
         ext = smile["modelExt"]
         assert len(ext) > 20, "modelExt missing/degenerate"
@@ -61,11 +52,11 @@ def test_model_ext_spans_shared_display_grid(fitted):
         assert ks == sorted(ks)
         # Left edge: at (or beyond) the display lower bound — no more stubs.
         assert ks[0] <= K_DISPLAY_LO + 1e-9
-        # Right edge: reaches the display bound OR the lattice cap, whichever
-        # binds (x_max >= 2.5 always, so at least ln(2.5) - eps)...
-        assert ks[-1] >= min(K_DISPLAY_HI, float(np.log(2.5))) - 1e-3
-        # ...and NEVER beyond the PDE lattice (clamped prices are never inverted).
-        assert ks[-1] <= ln_x_max + 1e-9
+        # Right edge: the display bound (or the quoted range + pad when that
+        # reaches further) — the display march's lattice always carries past
+        # it, so the calibration lattice's floor no longer binds here.
+        k_hi_obs = max(q["k"] for q in smile["quotes"] if not q["excluded"])
+        assert ks[-1] == pytest.approx(max(K_DISPLAY_HI, k_hi_obs + _K_PAD), abs=1e-6)
 
 
 def test_model_ext_points_finite_and_sane(fitted):

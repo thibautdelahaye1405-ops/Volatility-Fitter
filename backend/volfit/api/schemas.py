@@ -659,14 +659,18 @@ class OptionsSettings(BaseModel):
     #: slope becomes a FREE calibration variable (this is its init). The cap does
     #: not apply in the extrapolation region. (volfit.models.localvol.affine)
     leftWingSlopeMult: float = Field(1.5, ge=0.0, le=20.0)
-    #: LV PDE lattice right edge FLOOR in moneyness x = K/F (V3.3 rider): the
-    #: lattice runs to x_max = max(1.4 × the highest quoted x, lvXMaxMin), and
-    #: the right wing of every LV view is capped at k = ln(x_max) because
-    #: prices beyond the lattice would be clamped garbage. 2.5 (the default,
-    #: k ≈ +0.92) is byte-identical to the historical constant; raising it
-    #: (e.g. 2.72 → k = +1.0, 4.0 → k ≈ +1.39) extends the untruncated right
-    #: wing of the stacked-variance / display grids at O(n_x) march cost.
-    #: LV-only: folded into affine_key, does not bump the options version.
+    #: LV PDE CALIBRATION lattice right-edge FLOOR in moneyness x = K/F (V3.3
+    #: rider): the lattice runs to x_max = max(1.4 × the highest quoted x,
+    #: lvXMaxMin), closed by the Dirichlet condition C(x_max) = 0. 2.5 (the
+    #: default, k ≈ +0.92) is byte-identical to the historical constant.
+    #: Since 2026-09-02 the display wing no longer depends on it: modelExt
+    #: marches its own buffered lattice past K_DISPLAY_HI and never inverts
+    #: inside a Dirichlet boundary layer (affine_views_ext). Raising the floor
+    #: moves the CALIBRATION's far boundary out — it matters only for slices
+    #: whose true call at 1.4 × the last quote is not negligible (high-vol,
+    #: long-dated names), where the boundary otherwise bends the fitted
+    #: wing; O(n_x) cost on every march. LV-only: folded into affine_key,
+    #: does not bump the options version.
     lvXMaxMin: float = Field(2.5, ge=2.5, le=10.0)
     # editable penalty strength (changes calibration output)
     calendarWeight: float = Field(1e6, ge=0.0)

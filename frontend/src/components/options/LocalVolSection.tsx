@@ -153,7 +153,7 @@ export default function LocalVolSection({
             <div className="flex items-center justify-between">
               <span
                 className={rowLabel}
-                title="Floor of the LV PDE lattice's right edge in moneyness x = K/F (the lattice runs to max(1.4 × the highest quoted x, this)). Every LV view's right wing is capped at k = ln(x), so raising it extends the untruncated right wing of the stacked-variance / display grids, at O(n_x) march cost. 2.5 (k ≈ +0.92) is the historical default; 2.72 reaches k = +1.0. LV-only: no parametric refit."
+                title="Floor of the LV calibration lattice's right edge in moneyness x = K/F (the lattice runs to max(1.4 × the highest quoted x, this), closed by C(x_max) = 0). The displayed right wing no longer depends on it: it marches its own buffered lattice to k = +1.0 and never inverts inside a boundary layer. Raising the floor moves the calibration's far boundary out — worth it only for high-vol, long-dated names whose true call at 1.4 × the last quote is not negligible — at O(n_x) march cost. 2.5 (k ≈ +0.92) is the historical default. LV-only: no parametric refit."
               >
                 Lattice right edge floor (x)
               </span>

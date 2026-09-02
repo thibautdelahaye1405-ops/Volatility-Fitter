@@ -252,18 +252,23 @@ export const LV_WINGS_SOLVER_DOCS: SettingDoc[] = [
     section: "opt-localvol",
     label: "Lattice right edge floor (x)",
     unit: "moneyness x = K/F",
-    summary: "Floor on the right edge of the LV PDE lattice; every LV view's right wing is capped at k = ln(x_max).",
+    summary: "Floor on the right edge of the LV calibration lattice (its far Dirichlet boundary); the displayed wing no longer depends on it.",
     details:
-      "The lattice runs to x_max = max(1.4 × the highest quoted x, this floor). Prices beyond " +
-      "the lattice would be clamped garbage, so every LV view's right wing stops at " +
-      "k = ln(x_max). 2.5 (k ≈ +0.92) is the historical constant and byte-identical; 2.72 " +
-      "reaches k = +1.0 and 4.0 reaches k ≈ +1.39. Raising it extends the untruncated right " +
-      "wing of the stacked-variance and display grids at O(n_x) march cost.\n\n" +
-      "The dialog row shows the resulting k = ln(x) readout.",
+      "The calibration lattice runs to x_max = max(1.4 × the highest quoted x, this floor) and " +
+      "is closed by the Dirichlet condition C(x_max) = 0. Near that edge the marched price is " +
+      "pulled linearly to zero (a boundary layer ~1/c wide, c the tail's decay rate), so the " +
+      "smile chart used to collapse toward k = ln(x_max) ≈ +0.92 — sharply on short-dated " +
+      "slices. Since 2026-09-02 the displayed right wing rides its own buffered display " +
+      "lattice out to k = +1.0 and never inverts inside a boundary layer, so this floor only " +
+      "moves the CALIBRATION's far boundary. That matters when the true call at 1.4 × the last " +
+      "quote is not negligible — high-vol, long-dated names — where the zero boundary otherwise " +
+      "bends the fitted wing; it costs O(n_x) on every march. 2.5 (k ≈ +0.92) is the historical " +
+      "constant and byte-identical.\n\n" +
+      "The dialog row shows the resulting k = ln(x) readout of the calibration lattice.",
     example:
-      "Raise it to 4.0: the LV smile chart's right wing extends from k ≈ +0.92 to k ≈ +1.39, " +
-      "the stacked-variance grid stops truncating there, and each eval marches ~1.6× more " +
-      "strike nodes.",
+      "A 1-year 60%-vol name quoted out to k ≈ +0.8: the default lattice ends at 1.4 × e^0.8 ≈ 3.1 " +
+      "where the true call is still a few basis points of forward. Raise the floor to 6.0 and " +
+      "the far boundary stops bending the fitted right wing, at ~2× the strike nodes per eval.",
     cacheEffect: "lv-affine-key",
     surfaced: true,
     related: ["gridXNodes", "help:guides:localvol"],

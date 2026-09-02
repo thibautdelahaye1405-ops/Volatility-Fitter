@@ -172,9 +172,11 @@ export interface OptionsSettings {
   lvSolver: 'trf' | 'gn';
   /** Left-wing (x<x_min) linear-extrap slope × first-cell slope (free if var-swap set). */
   leftWingSlopeMult: number;
-  /** LV PDE lattice right-edge FLOOR in x = K/F: the right wing of every LV view
-   *  is capped at k = ln(x_max). 2.5 (k ≈ +0.92) = the historical constant,
-   *  byte-identical; 2.72 reaches k = +1.0. LV-only (no parametric refit). */
+  /** LV CALIBRATION lattice right-edge FLOOR in x = K/F (its far Dirichlet
+   *  boundary). The displayed wing rides its own buffered lattice since
+   *  2026-09-02, so this only moves the calibration's boundary (high-vol,
+   *  long-dated names). 2.5 = the historical constant, byte-identical.
+   *  LV-only (no parametric refit). */
   lvXMaxMin: number;
   calendarWeight: number;
   /** Multi-Core SIV put-wing no-butterfly regularizer strength (% of base; 0 = off). */

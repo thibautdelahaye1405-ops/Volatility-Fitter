@@ -1000,6 +1000,11 @@ below) — every recorded rider is closed except the ones listed here:
    captures made before
    store schema v10 are unattributed and no longer offered by the picker
    (they still replay from a saved selection).
+6. LV RIGHT-EDGE rider (wrap 2026-09-02i below; not a gate): the calibration
+   lattice's 1.4 × pad + Dirichlet zero still mispriced high-vol long-dated
+   wings at the last quote — sizing it by the image estimate (or a
+   log-linear far-field condition) changes those fits: benchmark-pack
+   adjudication.
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
 wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
 replace the five scheduler fields, migrated on load; the `/scheduler` payload
@@ -1013,6 +1018,65 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-02i) — THE LV LATTICE RIGHT-EDGE LAYER: THE DISPLAY WING NO LONGER DRAWS THE DIRICHLET BOUNDARY
+
+User report: on short-dated expiries the Local-Vol smile "collapses sharply
+instead of increasing" past k ≈ 0.9 — and what is the lattice right-edge
+floor for? Reproduced on `tests/fixtures/lv_weekly_massive.json` restricted
+to its four short rungs (haircut / gridXNodes 20 / convexWing): the
+calibration lattice floors at `lvXMaxMin` = 2.5 (k = ln 2.5 = 0.916), and
+the display cap sat at ln(x_max) − 1e-6 — ON the Dirichlet node.
+
+- **Mechanism (affine_views_ext module docstring)**: the forward Dupire march
+  closes with C(x_max) = 0; by the method of images the marched price near
+  the edge is C_free · (1 − e^{−2c(x_max − x)}), a linear-to-zero profile
+  over the last ~1/c of the lattice (node ratios 0.500 / 0.666 / 0.750 /
+  0.800 / 0.833 … measured on every rung, maturity-independent). Inverting
+  it drops the vol ~2 points over the last dozen nodes and the last display
+  point, np.interp'ed toward the zero node, cliffed by ~9 points (the
+  08-21 rung: 42.6 → 33.9 %). Short-dated rungs show it hardest because
+  their wing prices are the SCHEME's exponential tail (c ≈ 1/(x√(ν dt)) ≈ 23
+  per unit x: a narrow, violent layer); the 6-day rung sat under the 1e-14
+  time-value floor and flat-extended instead.
+- **Fix (display-only; calibration and `model` byte-identical — the
+  put-twin precedent)**: `affine_views_ext.display_lattice` carries the
+  calibration lattice (same dx, same nodes) past max(K_DISPLAY_HI, k_hi +
+  pad) by the image-estimate buffer δk = ln(1/tol)·w/(2 k_cap) clamped to
+  [0.25, 1.0] and ≤ 2× the lattice (w = the right-wing nodal-variance
+  ceiling × the longest maturity, `affine_fit._tail_total_variance`); one
+  value-only CALL march on it (`reprice_affine_dupire`) serves modelExt's
+  wing beyond the core (the core stays the calibrated march: modelExt ≡
+  model lock intact). `clean_right_edge` then guards whichever lattice
+  serves the wing: per node the image term is estimated from the local
+  decay rate (exact for exponential tails, an upper bound for log-concave
+  ones) and from the node's own implied variance via the Black mirror
+  B(2k_max − k, w)/C (exact for Gaussian tails); the smaller is kept, nodes
+  above 1e-3 are never inverted (flat extension takes over — the
+  no-information doctrine). Result on the fixture: every rung rises
+  monotonically to k = 1.0 (07-06: 75.0 → 81.0 %; 08-21: 41.3 → 45.9 %);
+  extra cost one value march (fit 7.97 → 8.06 s, noise).
+- **`lvXMaxMin` re-documented** (schemas.py, LocalVolSection tooltip,
+  settingsDocs, useOptions.ts, SETTINGS_REFERENCE): it floors the
+  CALIBRATION lattice only; the display wing no longer depends on it.
+  Raising it moves the calibration's far boundary — worth it for high-vol,
+  long-dated names whose true call at 1.4 × the last quote is not
+  negligible (a 1y 50 % name quoted to k = 0.8 has ~5 % relative price
+  pollution at its last quote from the zero boundary; the fit bends θ to
+  absorb it).
+- **Locks**: `tests/test_lv_right_edge.py` (5: the raw-march collapse and
+  the guard against a wide-lattice reference of the SAME operator; no
+  collapse with or without the display march; lattice reuse; the wing
+  reaches K_DISPLAY_HI with a bit-identical core; the guard is not
+  over-conservative near the money of a 2y 40 % slice on an honest lattice);
+  `test_affine_model_ext` right edge = max(K_DISPLAY_HI, k_hi + pad);
+  `test_affine_grid` — the floor moves only the calibration lattice on the
+  wire.
+- **Rider (calibration-side, deliberate)**: the 1.4 × pad + Dirichlet zero
+  is a real far-field mispricing for high-vol long-dated slices; sizing the
+  calibration lattice by the same image estimate (or a log-linear far-field
+  condition) would change those fits — benchmark-pack adjudication, not a
+  display fix.
 
 ### 🧭 SESSION WRAP (2026-09-02h) — PER-TICKER SOURCES: THE MULTI-SOURCE ENGINE, BUILT AND WIRED
 
