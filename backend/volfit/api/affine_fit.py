@@ -63,32 +63,6 @@ from volfit.models.localvol.reprice import refined_grids, reprice_affine_dupire
 _VARSWAP_K_LO = 0.01
 
 
-class _InterpSlice:
-    """Minimal SmileModel over reconstructed (k, w) points: linear-interpolated
-    total variance, flat-extrapolated beyond the range — enough for the
-    left-extended stacked density's tail (Breeden-Litzenberger from w(k))."""
-
-    def __init__(self, k: np.ndarray, w: np.ndarray) -> None:
-        order = np.argsort(k)
-        self._k = np.asarray(k, dtype=float)[order]
-        self._w = np.asarray(w, dtype=float)[order]
-
-    def implied_w(self, k):  # noqa: ANN001 - SmileModel duck-type
-        return np.interp(np.asarray(k, dtype=float), self._k, self._w)
-
-
-def _extended_density(model: list[SmilePoint], tau: float) -> DistributionArrays | None:
-    """Risk-neutral density of a reconstructed smile, left-extended to the
-    display lower bound (k_min = -1.4) for the stacked "Densities" overlay."""
-    if len(model) < 2 or tau <= 0.0:
-        return None
-    from volfit.api.analytics import stacked_density_arrays
-
-    k = np.array([p.k for p in model], dtype=float)
-    w = np.array([p.vol * p.vol * tau for p in model], dtype=float)
-    x, density = stacked_density_arrays(_InterpSlice(k, w))
-    return DistributionArrays(x=x.tolist(), density=density.tolist())
-
 #: PDE strike step and OTM span (x = K/F); the note uses dx = 0.01 to x = 2.2.
 _X_DX = 0.01
 _X_MAX_MIN = 2.5
@@ -969,8 +943,13 @@ _DENSITY_U_TRIM = 1e-3
 _DENSITY_MAX_POINTS = 241
 
 
-def _price_density(solution, i_exp: int) -> DistributionArrays:
-    """Risk-neutral density of one expiry, straight from the Dupire call prices.
+#: Coarse sample count for the deep-left tail of ``densityExt`` (the density
+#: there is ~0; the curve is drawn out to K_DISPLAY_LO for range only).
+_DENSITY_TAIL_POINTS = 48
+
+
+def _lattice_density(solution, i_exp: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """``(k, f_X, cdf)`` of one expiry straight from the Dupire call prices.
 
     Breeden-Litzenberger: the density of y = S_T/F is f_y(x) = d2C/dx2 of the
     undiscounted normalized call C(x), x = K/F (the affine PDE solves for C on a
@@ -978,7 +957,7 @@ def _price_density(solution, i_exp: int) -> DistributionArrays:
     surface is convex in strike), so it avoids the implied-vol Breeden-
     Litzenberger formula's small-w blow-up that clamps the short-dated density to
     zero. Mapped to the log-return X = log(S_T/F) the chart uses:
-    f_X(k) = f_y(e^k) e^k, on k = log(x). Trimmed to the central mass + strided.
+    f_X(k) = f_y(e^k) e^k, on k = log(x); normalized, with its CDF.
     """
     x = np.asarray(solution.x_grid, dtype=float)
     c = np.asarray(solution.prices[i_exp], dtype=float)
@@ -994,7 +973,52 @@ def _price_density(solution, i_exp: int) -> DistributionArrays:
     if area > 0.0:
         f_x = f_x / area
     cdf = np.concatenate([[0.0], np.cumsum(0.5 * (f_x[1:] + f_x[:-1]) * np.diff(k))])
-    cdf = np.clip(cdf, 0.0, 1.0)
+    return k, f_x, np.clip(cdf, 0.0, 1.0)
+
+
+def _extended_density(solution, i_exp: int) -> DistributionArrays | None:
+    """The stacked "Densities" overlay curve: the SAME lattice density as
+    ``density`` (Breeden-Litzenberger on the Dupire call prices — the caller
+    passes the converged-operator reprice), left-extended to the display lower
+    bound K_DISPLAY_LO and trimmed on the right to the central mass.
+
+    Every lattice node inside the central mass is kept up to the point budget
+    (a short-dated density's vertex-scale structure must survive the stride);
+    the deep-left tail is sampled coarsely (it is ~0 — drawn for range).
+
+    2026-09-03: replaces the Breeden-Litzenberger-via-implied-vol rebuild of
+    the 81-point reconstructed smile, whose piecewise-linear w(k) differentiated
+    twice drew a sawtooth on long maturities (92 extrema where the lattice
+    density has 3) and a smoothed, misplaced curve on short ones — the LV
+    density roughness diagnosis. The displayed density is now the model's own.
+    """
+    from volfit.api.service import K_DISPLAY_LO  # heavy module: lazy
+
+    k, f_x, cdf = _lattice_density(solution, i_exp)
+    if k.size < 3:
+        return None
+    # Start one node BELOW the display bound so the curve reaches it.
+    i0 = max(int(np.searchsorted(k, K_DISPLAY_LO)) - 1, 0)
+    idx_all = np.arange(k.size)
+    mass = (idx_all >= i0) & (cdf >= _DENSITY_U_TRIM) & (cdf <= 1.0 - _DENSITY_U_TRIM)
+    core = np.flatnonzero(mass)
+    if core.size == 0:
+        return None
+    stride = max(1, -(-core.size // _DENSITY_MAX_POINTS))
+    idx_core = core[::stride]
+    tail = np.flatnonzero((idx_all >= i0) & (idx_all < core[0]))
+    if tail.size:
+        t_stride = max(1, -(-tail.size // _DENSITY_TAIL_POINTS))
+        idx = np.concatenate([tail[::t_stride], idx_core])
+    else:
+        idx = idx_core
+    return DistributionArrays(x=k[idx].tolist(), density=f_x[idx].tolist())
+
+
+def _price_density(solution, i_exp: int) -> DistributionArrays:
+    """The per-expiry ``density`` payload: ``_lattice_density`` trimmed to the
+    central mass (both tails) and strided to the point budget."""
+    k, f_x, cdf = _lattice_density(solution, i_exp)
 
     keep = np.flatnonzero((cdf >= _DENSITY_U_TRIM) & (cdf <= 1.0 - _DENSITY_U_TRIM))
     if keep.size == 0:
@@ -1481,7 +1505,9 @@ def _fit(
                     float(np.sqrt(np.mean(errs_conv**2))) if errs_conv.size else 0.0
                 ),
                 density=_price_density(cal.solution, i_exp),
-                densityExt=_extended_density(model, t),  # left-extended to k_min=-1.4
+                # The model's own density on the converged operator, left-
+                # extended to k_min = -1.4 (2026-09-03: no IV-route rebuild).
+                densityExt=_extended_density(conv_sol, conv_index[t]),
             )
         )
 

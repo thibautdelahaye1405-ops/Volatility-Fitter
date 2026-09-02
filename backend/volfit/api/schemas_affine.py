@@ -101,9 +101,13 @@ class AffineSmile(BaseModel):
     #: Breeden-Litzenberger-via-implied-vol density (which clamps to 0 at short
     #: maturities). Powers the per-expiry Local-Vol density.
     density: DistributionArrays | None = None
-    #: Density left-extended to the display lower bound (k_min = -1.4) for the
-    #: stacked "Densities" overlay (Breeden-Litzenberger on the reconstructed
-    #: smile; allowed to taper to ~0 in the deep tail, unlike ``density``).
+    #: The stacked "Densities" overlay curve: the SAME lattice density as
+    #: ``density`` but evaluated on the converged-operator reprice (dx/2, dt/4),
+    #: left-extended to the display lower bound (k_min = -1.4; ~0 out there,
+    #: drawn for range) and trimmed on the right to the central mass. Since
+    #: 2026-09-03 this is the model's own density — the former Breeden-
+    #: Litzenberger rebuild from the reconstructed IV curve drew a sawtooth on
+    #: long maturities and a smoothed, misplaced curve on short ones.
     densityExt: DistributionArrays | None = None
 
 

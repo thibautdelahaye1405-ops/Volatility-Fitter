@@ -180,6 +180,8 @@ export default function LocalVolViewer() {
     const n = data.smiles.length;
     // Prefer the left-extended density (reaches k_min = -1.4) over the
     // central-mass PDE density, so the overlay spans the full smile range.
+    // Since 2026-09-03 both are the model's own lattice density (densityExt on
+    // the converged operator) — no implied-vol Breeden-Litzenberger rebuild.
     const series = data.smiles
       .map((s, i) => ({ d: s.densityExt ?? s.density, s, i }))
       .filter(({ d }) => d && d.x.length > 0)
