@@ -340,9 +340,10 @@ def fetch_options(
 def stream_refit(
     state: AppState, fit_mode: str = "mid", tickers: list[str] | None = None
 ) -> bool:
-    """The streaming throttled refit: refetch each STREAMING ticker's chain
-    (served from its live book; ``tickers`` = the scheduler's partition, default
-    ``state.streaming_tickers()``) and recalibrate ALL lit nodes in the background.
+    """The streaming throttled refit: refetch each ticker's chain (served from
+    its live book while streaming; ``tickers`` = the scheduler's streaming
+    partition, default every active ticker) and recalibrate ALL lit nodes in
+    the background.
 
     Gated by ``autoCalibrate`` — it is the master switch for unattended refits, so
     with it OFF this is a no-op (the surface still tracks spot via the transport
@@ -353,7 +354,7 @@ def stream_refit(
     if not state.options().autoCalibrate:
         return False
     fetched = False
-    for ticker in tickers if tickers is not None else state.streaming_tickers():
+    for ticker in tickers if tickers is not None else state.active_tickers():
         try:
             with state.activity.activity(
                 "fetch", f"Streaming {ticker} quotes from {_source_label(state, ticker)}"
