@@ -3,6 +3,8 @@
 A single daemon thread wakes every ``TICK`` seconds and, reading the live Options
 config each time:
 
+  * while a book STREAMS in static spot mode — every ``spotPollSeconds``, move
+    the market-following tickers' shift to the book spot (a free read);
   * when ``spotMode == "realtime"``  — every ``spotPollSeconds``, probe the
     provider spot and transport the surface (``workflow.fetch_spots``, no refit);
   * when ``optionsFetchMode == "auto"`` — every ``optionsFetchMinutes``, refetch
@@ -120,9 +122,16 @@ class Scheduler:
             self._last_spot = now
             workflow_fetch.fetch_snapshot(self._state, fit_mode=self._state.last_fit_mode)
             options_due = False
-        if opts.spotMode == "realtime" and now - self._last_spot >= opts.spotPollSeconds:
+        spot_due = now - self._last_spot >= opts.spotPollSeconds
+        if opts.spotMode == "realtime" and spot_due:
             self._last_spot = now
             workflow.fetch_spots(self._state)
+        elif spot_due and self._state.is_streaming():
+            # Static spot mode with a live book: the tickers FOLLOWING THE MARKET
+            # (Spot panel selector) take the book spot — a free read, no request
+            # — at the same poll cadence; scenario tickers keep their dial.
+            self._last_spot = now
+            workflow.sync_market_shifts(self._state)
         # Throttled full refit while a live WS book is streaming (book-driven,
         # seconds cadence) — distinct from the minutes-cadence REST auto-fetch.
         # Gated by autoCalibrate: it is the master switch for unattended refits, so

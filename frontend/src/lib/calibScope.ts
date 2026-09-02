@@ -27,6 +27,9 @@ export const SCOPE_LABEL: Record<CalibScope, string> = {
 
 export const SCOPE_STORAGE_KEY = "volfit.calibScope";
 export const DEFAULT_SCOPE: CalibScope = "both";
+/** Window event dispatched after a write, so mirrors (state/useCalibScope —
+ *  the Spot move card's per-ticker Recalibrate) follow the top bar live. */
+export const CALIB_SCOPE_EVENT = "volfit:calibScope";
 
 export function isCalibScope(v: unknown): v is CalibScope {
   return v === "both" || v === "parametric" || v === "lv";
@@ -51,6 +54,7 @@ export function writeCalibScope(
   } catch {
     /* storage unavailable (privacy mode): the choice just does not persist */
   }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(CALIB_SCOPE_EVENT));
 }
 
 /** The stale badge the face shows for a scope: parametric stale nodes for the

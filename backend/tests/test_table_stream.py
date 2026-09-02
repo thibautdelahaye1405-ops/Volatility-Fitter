@@ -125,19 +125,19 @@ def test_live_slice_inverts_at_the_live_forward(rig):
             assert by_key[r.key].strike == pytest.approx(r.strike, abs=1e-6)
 
 
-def test_manual_dial_frames_the_live_slice_and_the_poll_shift_does_not(rig):
-    """A MANUAL dial move (the Spot panel) is the frame the stream lives in —
+def test_scenario_dial_frames_the_live_slice_and_market_follow_does_not(rig):
+    """In the SCENARIO follow mode the dial is the frame the stream lives in —
     forward, spot, row moneyness and the rolled shift — while the book's own
     spot rides along as ``live_spot``; the live IVs stay inverted at the live
-    forward (the prices are the market's). A shift set by the real-time spot
-    POLL is ignored: the book is fresher than the poll."""
+    forward (the prices are the market's). Following the MARKET, the frame is
+    the book itself whatever shift the spot poll synced (the book is fresher)."""
     from volfit.api.schemas import SpotShiftRequest
     from volfit.api.spot import set_shift
 
     state, prov, expiry, _table = rig
     prov.streaming = True
     base = live_slice(state, "ALPHA", expiry)
-    set_shift(state, "ALPHA", SpotShiftRequest(spotReturn=0.02))  # the dial
+    set_shift(state, "ALPHA", SpotShiftRequest(spotReturn=0.02))  # the dial => scenario
     dial = live_slice(state, "ALPHA", expiry)
     assert dial.shift == pytest.approx(0.02)
     assert dial.forward == pytest.approx(base.forward * 1.02, rel=1e-12)
@@ -148,9 +148,16 @@ def test_manual_dial_frames_the_live_slice_and_the_poll_shift_does_not(rig):
         assert by_key[r.key].k == pytest.approx(r.k - math.log(1.02), abs=1e-6)
         assert by_key[r.key].midIv == pytest.approx(r.midIv, abs=1e-8)
         assert by_key[r.key].strike == pytest.approx(r.strike, abs=1e-6)
-    # The poll's shift: the frame is the live book again (its own spot move).
-    set_shift(state, "ALPHA", SpotShiftRequest(spotReturn=0.05), source="live")
+    # A scenario at 0 is the ANCHOR frame, not the book.
+    set_shift(state, "ALPHA", SpotShiftRequest(spotReturn=0.0))
     prov.spot_scale = 1.01
+    zero = live_slice(state, "ALPHA", expiry)
+    assert zero.forward == pytest.approx(base.forward, rel=1e-12) and zero.shift == 0.0
+    assert zero.live_spot == pytest.approx(base.spot * 1.01, rel=1e-12)
+    # Following the market (the poll synced a stale 5 %): the frame is the live
+    # book again (its own spot move).
+    state.set_spot_follow("ALPHA", "market")
+    state.set_spot_shift("ALPHA", 0.05)
     poll = live_slice(state, "ALPHA", expiry)
     assert poll.forward == pytest.approx(base.forward * 1.01, rel=1e-12)
     assert poll.shift == pytest.approx(0.01, abs=1e-12)

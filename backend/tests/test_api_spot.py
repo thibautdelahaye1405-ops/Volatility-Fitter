@@ -1,11 +1,11 @@
 """API tests for the fast spot-move endpoints (/spot/{ticker}).
 
 A spot shift transports the smile/term/LV-grid (GET /smiles reflects it) with no
-recalibration; Re-anchor clears it, refetches the chain and calibrates the
-ticker's lit nodes as the background job — the previous fit staying on screen
-meanwhile (never a blank chart); the state carries the market-spot readout and
-who set the shift (the dial vs the real-time poll); the live probe reports the
-implied return.
+recalibration; Recalibrate = the top-bar Calibrate for ONE ticker (same scope,
+same snapshot rule: the streaming book, else the last fetched chain with no
+request) as the background job — the previous fit staying on screen meanwhile
+(never a blank chart); the state carries the prevailing market spot and what
+the spot FOLLOWS (market vs scenario); the live probe reports the implied return.
 """
 
 import time
@@ -70,10 +70,13 @@ def test_calibrate_reanchors(client):
     iso = _iso(client)
     f0 = client.get(f"/smiles/{TICKER}/{iso}").json()["forward"]
     client.put(f"/spot/{TICKER}", json={"spotReturn": 0.05})
+    v0 = client.app.state.volfit.data_version(TICKER)
     st = client.post(f"/spot/{TICKER}/calibrate").json()
-    assert st["spotReturn"] == 0.0 and st["shiftSource"] is None
-    # The chain was refetched and the ticker's lit nodes went to the background job.
-    assert st["refetched"] is True and st["calibrationStarted"] is True and st["busy"] is False
+    assert st["spotReturn"] == 0.0
+    # No stream: the LAST FETCHED chain is used (no refetch), and the ticker's
+    # lit nodes went to the background job with the top bar's default scope.
+    assert st["snapshotted"] is False and client.app.state.volfit.data_version(TICKER) == v0
+    assert st["calibrationStarted"] is True and st["busy"] is False and st["scope"] == "both"
     assert st["litNodes"] >= 1
     _drain(client)
     smile = client.get(f"/smiles/{TICKER}/{iso}").json()
@@ -81,11 +84,11 @@ def test_calibrate_reanchors(client):
     assert smile["hasFit"] is True and smile["stale"] is False
 
 
-def test_reanchor_keeps_the_previous_fit_on_screen_in_the_gated_workflow():
-    """The gated live server (nothing calibrates on a read): Re-anchor must
+def test_recalibrate_keeps_the_previous_fit_on_screen_in_the_gated_workflow():
+    """The gated live server (nothing calibrates on a read): Recalibrate must
     never blank the chart — the historical cache drop left the ticker with no
     fit at all. The previous fit stays displayed while the background job
-    recalibrates every lit node of the ticker at the refetched chain's spot."""
+    recalibrates every lit node of the ticker at the snapshot's spot."""
     with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
         iso = _iso(client)
         client.post("/calibrate")  # the explicit first calibration
@@ -107,15 +110,72 @@ def test_reanchor_keeps_the_previous_fit_on_screen_in_the_gated_workflow():
         assert client.get(f"/spot/{TICKER}").json()["spotReturn"] == 0.0
 
 
-def test_reanchor_reports_busy_when_the_job_is_taken(client, monkeypatch):
-    """One background job at a time: with it taken, Re-anchor still clears the
-    dial and refetches, but reports ``busy`` (nothing started) for the panel."""
+def test_recalibrate_reports_busy_when_the_job_is_taken(client, monkeypatch):
+    """One background job at a time: with it taken, Recalibrate still clears
+    the dial but reports ``busy`` (nothing started) for the panel."""
     state = client.app.state.volfit
     monkeypatch.setattr(state.calibration_jobs, "start_stages", lambda *a, **k: False)
     client.put(f"/spot/{TICKER}", json={"spotReturn": 0.02})
     st = client.post(f"/spot/{TICKER}/calibrate").json()
     assert st["busy"] is True and st["calibrationStarted"] is False
-    assert st["spotReturn"] == 0.0 and st["refetched"] is True
+    assert st["spotReturn"] == 0.0
+
+
+def test_recalibrate_scopes_mirror_the_top_bar(client, monkeypatch):
+    """The scope names are the top bar's: "parametric" runs the parametric
+    groups only, "lv" the LV item only (regardless of the Options toggle),
+    "both" parametric then LV when Local-Vol is enabled — the SAME stage
+    builders as the global verbs, on one ticker."""
+    state = client.app.state.volfit
+    seen: list[list[str]] = []
+
+    def capture(stages, workers=1):
+        seen.append([phase for groups in stages for _t, items in groups for _l, phase, _f in items])
+        return True
+
+    monkeypatch.setattr(state.calibration_jobs, "start_stages", capture)
+    client.post(f"/spot/{TICKER}/calibrate", params={"scope": "parametric"})
+    client.post(f"/spot/{TICKER}/calibrate", params={"scope": "lv"})
+    client.post(f"/spot/{TICKER}/calibrate", params={"scope": "both"})
+    assert set(seen[0]) == {"Parametric"}
+    assert seen[1] == ["LV"]
+    assert set(seen[2]) == {"Parametric", "LV"} and seen[2][-1] == "LV"
+    assert client.post(f"/spot/{TICKER}/calibrate", params={"scope": "nope"}).status_code == 422
+
+
+def test_recalibrate_snapshots_the_book_while_streaming():
+    """The calibration snapshot rule, per ticker AND global: while the source
+    streams, a fresh synchronous quotes + spot snapshot is taken off the book
+    (the data version bumps — every node re-anchors on it); with no stream the
+    last fetched chain is used, no refetch."""
+    from volfit.api import workflow
+    from volfit.data.provider import SyntheticProvider
+
+    class Streaming(SyntheticProvider):
+        streaming = False
+
+        def is_streaming(self):
+            return self.streaming
+
+    prov = Streaming(reference_date=REF_DATE, tickers=(TICKER,))
+    with TestClient(create_app(reference_date=REF_DATE, providers={"fake": prov}, active_source="fake")) as client:
+        state = client.app.state.volfit
+        iso = _iso(client)
+        client.get(f"/smiles/{TICKER}/{iso}")
+        v0 = state.data_version(TICKER)
+        assert client.post(f"/spot/{TICKER}/calibrate").json()["snapshotted"] is False
+        _drain(client)
+        assert state.data_version(TICKER) == v0  # no stream: the last fetched chain
+        prov.streaming = True
+        assert client.post(f"/spot/{TICKER}/calibrate").json()["snapshotted"] is True
+        _drain(client)
+        assert state.data_version(TICKER) == v0 + 1  # a fresh book snapshot
+        # The global verb takes the same snapshot.
+        assert workflow.calibration_chains(state, [TICKER]) is True
+        assert state.data_version(TICKER) == v0 + 2
+        prov.streaming = False
+        assert workflow.calibration_chains(state, [TICKER]) is False
+        assert state.data_version(TICKER) == v0 + 2
 
 
 def test_spot_state_market_readout(client):
@@ -126,29 +186,47 @@ def test_spot_state_market_readout(client):
     assert st["liveSource"] == "chain" and st["liveSpot"] == pytest.approx(st["anchorSpot"])
     assert st["liveReturn"] == pytest.approx(0.0, abs=1e-12)
     assert st["streaming"] is False and st["sourceLabel"]
-    assert st["litNodes"] >= 1 and st["shiftSource"] is None
+    assert st["litNodes"] >= 1 and st["follow"] == "market" and st["followForced"] is False
     client.get(f"/spot/{TICKER}/live")  # a probe is remembered
     st = client.get(f"/spot/{TICKER}").json()
     assert st["liveSource"] == "probe" and st["liveAt"]
     assert st["liveSpot"] == pytest.approx(st["anchorSpot"])
 
 
-def test_shift_source_dial_versus_live_poll(client, monkeypatch):
-    """The dial's shift is "manual" (the tick stream lives at it); the real-time
-    poll's is "live" (the stream keeps its own fresher book spot); 0 has none."""
+def test_follow_market_versus_scenario(client, monkeypatch):
+    """The selector: following the MARKET syncs the shift to the prevailing spot
+    (now, and on every spot poll / fetch); the SCENARIO is the dial — a manual
+    shift switches to it and the market poll leaves it alone."""
     from volfit.api import workflow
 
     state = client.app.state.volfit
-    assert client.put(f"/spot/{TICKER}", json={"spotReturn": 0.02}).json()["shiftSource"] == "manual"
-    assert state.manual_spot_shift(TICKER) == pytest.approx(0.02)
-    # The scheduler's poll (a moved provider spot) marks the shift "live".
-    monkeypatch.setattr(state, "live_spot", lambda t: state.anchor_spot(t) * 1.01)
+    # The dial => scenario.
+    st = client.put(f"/spot/{TICKER}", json={"spotReturn": 0.02}).json()
+    assert st["follow"] == "scenario" and st["spotReturn"] == pytest.approx(0.02)
+    # The market moved 1 % (a probe); a scenario ticker keeps its dial...
+    moved = state.anchor_spot(TICKER) * 1.01
+    monkeypatch.setattr(state.provider, "spot", lambda t, e=None: moved)
     workflow.fetch_spots(state, [TICKER])
     st = client.get(f"/spot/{TICKER}").json()
-    assert st["shiftSource"] == "live" and st["spotReturn"] == pytest.approx(0.01)
-    assert state.manual_spot_shift(TICKER) == 0.0
-    client.put(f"/spot/{TICKER}", json={"spotReturn": 0.0})
-    assert client.get(f"/spot/{TICKER}").json()["shiftSource"] is None
+    assert st["spotReturn"] == pytest.approx(0.02) and st["liveReturn"] == pytest.approx(0.01)
+    # ...until it follows the market: the shift syncs to the prevailing spot.
+    st = client.put(f"/spot/{TICKER}/follow", json={"follow": "market"}).json()
+    assert st["follow"] == "market" and st["spotReturn"] == pytest.approx(0.01)
+    assert workflow.sync_market_shifts(state, [TICKER]) == []  # already in sync
+    # Back to the scenario: the current spot is the scenario's starting point.
+    st = client.put(f"/spot/{TICKER}/follow", json={"follow": "scenario"}).json()
+    assert st["follow"] == "scenario" and st["spotReturn"] == pytest.approx(0.01)
+    assert client.put(f"/spot/{TICKER}/follow", json={"follow": "nope"}).status_code == 422
+
+
+def test_realtime_spot_mode_forces_market_follow(client):
+    state = client.app.state.volfit
+    client.put(f"/spot/{TICKER}", json={"spotReturn": 0.02})  # scenario
+    state.set_options(state.options().model_copy(update={"spotMode": "realtime"}))
+    st = client.get(f"/spot/{TICKER}").json()
+    assert st["follow"] == "market" and st["followForced"] is True
+    state.set_options(state.options().model_copy(update={"spotMode": "static"}))
+    assert client.get(f"/spot/{TICKER}").json()["follow"] == "scenario"
 
 
 def test_live_spot_probe(client):

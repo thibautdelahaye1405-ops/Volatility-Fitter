@@ -7,12 +7,12 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-02",
-    title: "Spot move card: market spot, fine-tune, a working Re-anchor",
+    title: "Spot move card: market spot or scenario, fine-tune, Recalibrate per ticker",
     items: [
-      "The card now shows three spots — **Calibrated** (the anchor), **Market** (streamed off the Bloomberg / Massive book at ~1 Hz when a stream is up, else the last probe or the fetched chain's spot, with a ↻ probe button) and **Scenario** (anchor × the dial).",
-      "The dial moves in 0.1 % steps with ± fine-tune buttons (Shift: 1 %), a Reset and **Sync to market**.",
-      "A dial move now also moves the Smile chart while the live tick stream is on — previously the streamed market frame ignored the dial and only the strike brush shifted.",
-      "**Re-anchor** works: it clears the dial, refetches the ticker's quotes and recalibrates all its lit nodes (+ LV) as the background job at the market spot; the previous fit stays on screen (stale) until the new one lands — it used to blank the chart on the gated server.",
+      "The card now shows three spots — **Calibrated** (the anchor), **Market** (streamed off the Bloomberg / Massive book at ~1 Hz when a stream is up, else the last probe or the fetched chain's spot, with a ↻ probe button) and **Scenario** (anchor × the dial) — and a **Market spot / Scenario** selector: the followed level is lit, the other dimmed; following the market keeps every lens at the prevailing spot.",
+      "The dial moves in 0.1 % steps with ± fine-tune buttons (Shift: 1 %), **Reset to 0.0%** and **Sync to market**.",
+      "A scenario now also moves the Smile chart while the live tick stream is on — previously the streamed market frame ignored the dial and only the strike brush shifted.",
+      "**Recalibrate _ticker_ (_scope_)** replaces Re-anchor: it is the top-bar Calibrate for that ticker alone — same scope (Param + LV / Param only / LV only) and the same snapshot rule — and every Calibrate now fits a synchronous quotes + spot snapshot off the streaming book when one is up, else the last fetched chain. The previous fit stays on screen (stale) until the new one lands — it used to blank the chart on the gated server.",
     ],
   },
   {

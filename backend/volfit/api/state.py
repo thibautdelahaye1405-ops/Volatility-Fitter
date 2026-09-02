@@ -178,7 +178,7 @@ class AppState(UniverseMixin):
     _forward_policies = ScopedField("forward_policies")
     _forwards_version = ScopedField("forwards_version")
     _spot_shift = ScopedField("spot_shift")
-    _spot_shift_source = ScopedField("spot_shift_source")
+    _spot_follow = ScopedField("spot_follow")
     _spot_version = ScopedField("spot_version")
     _spot_version_by_ticker = ScopedField("spot_version_by_ticker")
     _sessions = ScopedField("sessions")
@@ -392,11 +392,13 @@ class AppState(UniverseMixin):
         #: (localvol extraction) so a SPOT move on one name does not bust every
         #: other name's transported grid.
         self._spot_shift: dict[str, float] = {}
-        #: WHO set the active shift: "manual" (the Spot panel dial — a
-        #: hypothetical move the whole app, live tick stream included, lives at)
-        #: or "live" (the real-time spot poll — the tick stream then keeps its
-        #: own fresher book spot). Absent when the shift is 0.
-        self._spot_shift_source: dict[str, str] = {}
+        #: What each ticker's spot FOLLOWS (the Spot panel selector): "market"
+        #: (default) = the prevailing market spot — the shift is synced to the
+        #: streaming book / last probe / fetched chain and the live tick stream
+        #: frames at the book; "scenario" = the dial — a hypothetical spot the
+        #: whole app, tick stream included, lives at. Realtime spotMode forces
+        #: "market". Workspace-scoped (user intent).
+        self._spot_follow: dict[str, str] = {}
         self._spot_version = 0
         self._spot_version_by_ticker: dict[str, int] = {}
         #: Latest KNOWN provider spot per ticker: (spot, UTC stamp, "stream" |
@@ -1175,11 +1177,9 @@ class AppState(UniverseMixin):
         with self._lock:
             return self._spot_shift.get(ticker, 0.0)
 
-    def set_spot_shift(self, ticker: str, shift: float, source: str = "manual") -> float:
+    def set_spot_shift(self, ticker: str, shift: float) -> float:
         """Set the ticker's hypothetical/live spot shift; bump the spot version
-        only on a real change so a redundant set never busts derived caches.
-        ``source`` records who set it — "manual" (the Spot panel dial) or "live"
-        (the real-time spot poll) — see ``manual_spot_shift``."""
+        only on a real change so a redundant set never busts derived caches."""
         with self._lock:
             if float(shift) != self._spot_shift.get(ticker, 0.0):
                 self._spot_shift[ticker] = float(shift)
@@ -1187,28 +1187,49 @@ class AppState(UniverseMixin):
                 self._spot_version_by_ticker[ticker] = (
                     self._spot_version_by_ticker.get(ticker, 0) + 1  # per-ticker cache key
                 )
-            if float(shift) == 0.0:
-                self._spot_shift_source.pop(ticker, None)
-            else:
-                self._spot_shift_source[ticker] = source
             return self._spot_shift.get(ticker, 0.0)
 
-    def spot_shift_source(self, ticker: str) -> str | None:
-        """"manual" | "live" — who set the ticker's active shift; None when 0."""
+    def spot_follow(self, ticker: str) -> str:
+        """"market" | "scenario" — what the ticker's spot follows (the Spot panel
+        selector): the prevailing market spot (default; FORCED while Options
+        ``spotMode`` is realtime — the scheduler owns the shift then) or the
+        dial (a hypothetical spot the whole app, tick stream included, lives at)."""
         with self._lock:
-            if self._spot_shift.get(ticker, 0.0) == 0.0:
-                return None
-            return self._spot_shift_source.get(ticker, "manual")
+            if self._options.spotMode == "realtime":
+                return "market"
+            return self._spot_follow.get(ticker, "market")
 
-    def manual_spot_shift(self, ticker: str) -> float:
-        """The ticker's shift when it is a MANUAL dial move (a hypothetical spot
-        the whole app — the live tick stream included — must live at); 0 when
-        the shift is 0 or was set by the real-time spot poll (the tick stream
-        then follows its own, fresher book spot)."""
+    def set_spot_follow(self, ticker: str, mode: str) -> None:
+        """Select what the ticker's spot follows ("market" | "scenario")."""
         with self._lock:
-            if self._spot_shift_source.get(ticker, "manual") != "manual":
-                return 0.0
-            return self._spot_shift.get(ticker, 0.0)
+            self._spot_follow[ticker] = mode
+
+    def market_spot(self, ticker: str) -> tuple[float, datetime | None, str] | None:
+        """The PREVAILING market spot — ``(spot, stamp, source)``: the streaming
+        book while live ("stream"), else the newer of the last probe ("probe")
+        and the fetched chain's own spot ("chain"); None when nothing is known."""
+        reading = self.live_spot_reading(ticker)
+        if reading is not None and reading[2] == "stream":
+            return reading
+        snap = self.snapshot(ticker)
+        chain = (float(snap.spot), snap.timestamp, "chain") if float(snap.spot) > 0.0 else None
+        if reading is None:
+            return chain
+        if chain is None or chain[1] is None or chain[1] <= reading[1]:
+            return reading
+        return chain
+
+    def sync_market_shift(self, ticker: str) -> float:
+        """Market follow mode: move the ticker's shift to the prevailing market
+        spot's return vs the calibration anchor (a no-op in scenario mode or
+        with no reading). Returns the active shift."""
+        if self.spot_follow(ticker) != "market":
+            return self.spot_shift(ticker)
+        reading = self.market_spot(ticker)
+        anchor = float(self.anchor_spot(ticker))
+        if reading is None or anchor <= 0.0:
+            return self.spot_shift(ticker)
+        return self.set_spot_shift(ticker, reading[0] / anchor - 1.0)
 
     # --------------------------------------------------- data / calibration state
     def data_version(self, ticker: str) -> int:
@@ -1303,10 +1324,10 @@ class AppState(UniverseMixin):
         derived caches + calibrated pointers, so the next fit refetches the
         snapshot and recalibrates at the current spot (ungated app only — in the
         gated live server a dropped pointer is a BLANK chart, which is why the
-        Spot panel's Re-anchor goes through ``workflow.reanchor_ticker`` instead:
-        refetch, then a background calibration, the frozen fit shown meanwhile)."""
+        Spot panel's Recalibrate goes through ``workflow_ticker.recalibrate_ticker``
+        instead: the calibration snapshot, then a background job, the frozen fit
+        shown meanwhile)."""
         with self._lock:
-            self._spot_shift_source.pop(ticker, None)
             if self._spot_shift.pop(ticker, 0.0) != 0.0:
                 self._spot_version += 1  # global client signal
                 self._spot_version_by_ticker[ticker] = (

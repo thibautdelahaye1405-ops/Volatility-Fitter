@@ -62,6 +62,29 @@ def test_tick_stream_refits_only_while_streaming(monkeypatch):
     assert calls["refit"] == 1
 
 
+def test_tick_syncs_market_followers_to_the_book_in_static_mode(monkeypatch):
+    """Static spot mode + a live book: at the spot-poll cadence the scheduler
+    moves the MARKET-following tickers to the book spot (a free read, no
+    probe); never without a stream, never the realtime probe path."""
+    from volfit.api import workflow
+
+    state = _state(spotMode="static", spotPollSeconds=5.0, optionsFetchMode="on_demand")
+    calls = {"sync": 0, "probe": 0}
+    monkeypatch.setattr(workflow, "sync_market_shifts", lambda s, *a, **k: calls.__setitem__("sync", calls["sync"] + 1))
+    monkeypatch.setattr(workflow, "fetch_spots", lambda s, *a, **k: calls.__setitem__("probe", calls["probe"] + 1))
+    sched = Scheduler(state)
+    state.is_streaming = lambda: False
+    sched.tick(now=100.0)  # no book: nothing to sync
+    assert calls == {"sync": 0, "probe": 0}
+    state.is_streaming = lambda: True
+    sched.tick(now=200.0)
+    assert calls == {"sync": 1, "probe": 0}
+    sched.tick(now=202.0)  # inside the cadence: quiet
+    assert calls["sync"] == 1
+    sched.tick(now=206.0)
+    assert calls["sync"] == 2
+
+
 def test_tick_no_stream_refit_when_autocalibrate_off(monkeypatch):
     """autoCalibrate OFF suppresses the unattended streaming refit even while a live
     book streams (the surface still tracks spot via the transport poll)."""

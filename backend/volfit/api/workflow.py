@@ -3,7 +3,9 @@
 Implements the explicit, mode-gated triggers (ROADMAP workflow):
 
   * ``fetch_spots``   — probe the live provider spot for each ticker and apply it
-    as a spot SHIFT, transporting the surface (no recalibration);
+    as a spot SHIFT to the market-following tickers, transporting the surface
+    (no recalibration) — with ``sync_market_shifts`` in volfit.api.workflow_spot,
+    re-exported here;
   * ``fetch_options`` — refetch the option chains (``state.refresh_chain``); when
     ``autoCalibrate`` is on, kick off a background calibration of the lit nodes;
   * ``calibrate``     — (re)calibrate a scope of lit nodes at the chain's own
@@ -20,8 +22,13 @@ Implements the explicit, mode-gated triggers (ROADMAP workflow):
 The unified snapshot verb (``POST /fetch/snapshot``: chains -> spot transport ->
 optional cheap prior roll -> optional auto-calibrate, V3.7 item 15) lives in
 volfit.api.workflow_fetch and composes the blocks above; the Spot panel's
-per-ticker **Re-anchor** (clear the shift, refetch, background-calibrate the
-ticker's lit nodes) lives in volfit.api.workflow_reanchor, likewise composed.
+per-ticker **Recalibrate** (the same verb for ONE ticker) lives in
+volfit.api.workflow_ticker, likewise composed.
+
+Calibration snapshot rule (``calibration_chains``, shared by every Calibrate
+verb, global or per ticker): while the active source STREAMS, a fresh
+SYNCHRONOUS snapshot of the book — quotes AND spot read together, never a
+metered request; otherwise the LAST FETCHED chain (fetched once if absent).
 
 A "lit" node (volfit AppState lit/dark designation) is one the user marks as an
 observed source; those are the calibration targets. Dark nodes are graph
@@ -37,12 +44,13 @@ from volfit.api.schemas import (
     ActivityInfo,
     CalibrationStatus,
     FetchResult,
-    LiveSpot,
     SchedulerStatus,
-    SpotShiftRequest,
 )
-from volfit.api.spot import set_shift as _set_spot_shift
 from volfit.api.state import AppState
+from volfit.api.workflow_spot import (  # noqa: F401  (re-exports: the scheduler + test seams)
+    fetch_spots,
+    sync_market_shifts,
+)
 from volfit.api.workflow_stages import (  # noqa: F401  (re-exports: test seams + callers)
     Group,
     _parametric_items,
@@ -136,19 +144,34 @@ def scheduler_status(state: AppState) -> SchedulerStatus:
 
 
 # -------------------------------------------------------------- calibrate
-def _ensure_chains(state: AppState, tickers: list[str]) -> None:
-    """Calibrate's auto-fetch: load each ticker's chain so its lit nodes resolve.
+def calibration_chains(state: AppState, tickers: list[str]) -> bool:
+    """Load the chain each Calibrate verb fits ON (the ONE rule, global and
+    per-ticker verbs alike). Returns whether a streaming snapshot was taken.
 
-    In the gated workflow a plain read never fetches, so before Calibrate the
-    expiry ladder (``state.forwards``) is empty and ``lit_nodes`` would find
-    nothing. Fetching here makes "press Calibrate before Fetch" do the sensible
-    thing (fetch then fit). Best-effort per ticker — an unreachable feed is
-    skipped, exactly as ``lit_nodes`` already tolerates."""
+    * The active source STREAMS: a fresh SYNCHRONOUS snapshot of the book —
+      ``refresh_chain`` serves quotes AND spot from the book, read together, so
+      the fit is anchored at the spot its quotes were quoted against. The
+      calibrated pointers are preserved (the previous fit stays, stale, until
+      the job lands).
+    * No stream: the LAST FETCHED chain — no request. Fetched once only if
+      absent (the gated workflow: "press Calibrate before Fetch" still works;
+      before it the ladder is empty and ``lit_nodes`` would find nothing).
+    Best-effort per ticker — an unreachable feed is skipped, as ``lit_nodes``
+    already tolerates."""
+    streaming = state.is_streaming()
+    source = _source_label(state)
     for ticker in tickers:
         try:
-            state.ensure_chain(ticker)
+            if streaming:
+                with state.activity.activity(
+                    "fetch", f"Snapshotting {ticker} quotes + spot from the {source} book"
+                ):
+                    state.refresh_chain(ticker)
+            else:
+                state.ensure_chain(ticker)
         except Exception:
             pass
+    return streaming
 
 
 def _start_stages(state: AppState, stages: list[list[Group]]) -> bool:
@@ -190,7 +213,7 @@ def calibrate_all(state: AppState, fit_mode: str = "mid") -> bool:
     stage builders of volfit.api.workflow_stages — same order, same gating as
     the historical single verb (semantics locked by test_api_workflow /
     test_calibration_workflow / test_gated_workflow)."""
-    _ensure_chains(state, state.active_tickers())  # auto-fetch so lit nodes resolve
+    calibration_chains(state, state.active_tickers())  # the calibration snapshot
     stages = [workflow_stages.parametric_stage(state, fit_mode)]
     if state.options().localVolEnabled:
         lv_groups = workflow_stages.lv_stage(state, fit_mode)
@@ -206,7 +229,7 @@ def calibrate_parametric_all(state: AppState, fit_mode: str = "mid") -> bool:
     warm-start / calendar chains) as ``calibrate_all``, with no LV stage — each
     ticker's LV (affine) pointer is left untouched, so the LV surface goes /
     stays STALE until an LV calibrate. False if a job is already running."""
-    _ensure_chains(state, state.active_tickers())  # auto-fetch so lit nodes resolve
+    calibration_chains(state, state.active_tickers())  # the calibration snapshot
     return _start_stages(state, [workflow_stages.parametric_stage(state, fit_mode)])
 
 
@@ -223,7 +246,7 @@ def calibrate_lv_all(state: AppState, fit_mode: str = "mid") -> bool:
     of ``localVolEnabled`` — the explicit verb needs no Options round-trip; the
     toggle keeps gating only the combined ``calibrate_all`` (wire compat) and
     the Local-Vol workspace tab. False if a job is already running."""
-    _ensure_chains(state, state.active_tickers())  # auto-fetch so lit nodes resolve
+    calibration_chains(state, state.active_tickers())  # the calibration snapshot
     return _start_stages(state, [workflow_stages.lv_stage(state, fit_mode)])
 
 
@@ -232,7 +255,7 @@ def calibrate_ticker(state: AppState, ticker: str, fit_mode: str = "mid") -> int
 
     Honours ``enforceCalendar`` (calendar-couples the expiries) by running the
     same work items as the background path, just inline."""
-    _ensure_chains(state, [ticker])  # auto-fetch so lit nodes resolve (gated workflow)
+    calibration_chains(state, [ticker])  # the calibration snapshot
     nodes = lit_nodes(state, [ticker])
     for _, _, thunk in _parametric_items(state, nodes, fit_mode):
         thunk()
@@ -247,31 +270,6 @@ def calibrate_one(state: AppState, ticker: str, expiry_iso: str, fit_mode: str =
 
 
 # ------------------------------------------------------------------ fetch
-def fetch_spots(state: AppState, tickers: list[str] | None = None) -> dict[str, LiveSpot]:
-    """Probe the live provider spot per ticker and apply it as a spot shift.
-
-    Pure transport (no recalibration): the implied return vs the calibration
-    anchor becomes the spot shift, moving the smile / term / LV grid. Returns the
-    per-ticker probe so the UI can show the live level.
-    """
-    chosen = tickers if tickers is not None else state.active_tickers()
-    source = _source_label(state)
-    out: dict[str, LiveSpot] = {}
-    for ticker in chosen:
-        try:
-            with state.activity.activity("fetch", f"Fetching {ticker} spot from {source}"):
-                anchor = float(state.anchor_spot(ticker))
-                live = float(state.live_spot(ticker))
-        except Exception:
-            continue
-        ret = (live / anchor - 1.0) if anchor > 0.0 else 0.0
-        # source="live": the tick stream keeps following its own (fresher) book
-        # spot rather than this poll — only a MANUAL dial move overrides it.
-        _set_spot_shift(state, ticker, SpotShiftRequest(spotReturn=ret), source="live")
-        out[ticker] = LiveSpot(ticker=ticker, anchorSpot=anchor, liveSpot=live, spotReturn=ret)
-    return out
-
-
 def _refresh_chains(state: AppState, chosen: list[str]) -> tuple[list[str], dict[str, float]]:
     """The chain-refresh block shared by ``fetch_options`` and the unified
     ``fetch_snapshot`` (volfit.api.workflow_fetch): concurrently refetch each
@@ -318,6 +316,7 @@ def fetch_options(
     """
     chosen = tickers if tickers is not None else state.active_tickers()
     fetched, spots = _refresh_chains(state, chosen)
+    sync_market_shifts(state, fetched)  # market-following tickers move to the new chain spot
     started = False
     if state.options().autoCalibrate and fetched:
         started = calibrate_all(state, fit_mode)

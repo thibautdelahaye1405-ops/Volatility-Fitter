@@ -987,71 +987,89 @@ existing stores default the new gates. First launch after this commit opens
 the Help Center's Welcome page once (Esc closes it; Help ▾ Welcome brings it
 back).
 
-### 🧭 SESSION WRAP (2026-09-02b) — SPOT MOVE CARD: MARKET SPOT · FINE-TUNE · WORKING RE-ANCHOR
+### 🧭 SESSION WRAP (2026-09-02b) — SPOT MOVE CARD: MARKET / SCENARIO, RECALIBRATE = CALIBRATE PER TICKER
 
-User report on the right-panel spot dial: it "did nothing" beyond moving the
-smile chart's strike brush, the card showed only the calibrated spot (no
-Bloomberg live spot), no fine-tune buttons, and Re-anchor erased the chart.
-Two root causes, both fixed and locked (backend + frontend):
+Two passes on the user's report about the right-panel spot dial ("does nothing
+beyond moving the strike brush", no live Bloomberg spot, no fine-tune, Re-anchor
+erases the chart) and their follow-up (a reset button; a market-vs-scenario
+selector with emphasis; Re-anchor and Calibrate made fully consistent). Commits
+5696cd0 (pass 1) + this one (pass 2 supersedes pass 1's "shift source" design).
 
-- **Dial vs the live tick stream (root cause 1).** With a Bloomberg / Massive
-  book streaming, the Smile Viewer's market frame comes from the SSE tick
-  stream (`table_stream.live_slice`), which rolled the fit to the BOOK spot
-  and ignored the app's active shift — a dial move only changed the payload's
-  transported `kMin/kMax` (the brush). AppState now records WHO set the shift:
-  `set_spot_shift(ticker, shift, source)` — "manual" (the dial) | "live" (the
-  real-time spot poll, `fetch_spots`) — with `manual_spot_shift()` /
-  `spot_shift_source()`; workspace-scoped `spot_shift_source` (doc key
-  `spotShiftSources`, older docs restore as "manual"). At a MANUAL shift the
-  stream frames its rows (moneyness vs the dial's forward — IVs still inverted
-  at the LIVE forward, the prices are the market's), its rolled fit, `spot` and
-  `forward`, and carries the book's own spot as `liveSpot`; a "live" poll shift
-  is ignored by the stream (the book is fresher) — the rule is
-  `smile_layers.stream_frame`. The tracker re-sends every row when the frame
-  moves (a delta, not `full`, so flashes stay meaningful).
-- **Re-anchor (root cause 2).** `POST /spot/{ticker}/calibrate` used
-  `AppState.recalibrate` (drop the ticker's fits + calibrated pointers); on the
-  gated live server nothing recalibrates on a read → blank chart, nothing else.
-  Now `workflow_reanchor.reanchor_ticker` (own module, composes the workflow
-  blocks): clear the shift, `refresh_chain` (new spot +
-  quotes; pointers PRESERVED → the previous fit stays on screen, stale), then
-  the ONE background job over the ticker's lit nodes (calendar-coupled groups)
-  + its LV surface. Response `ReanchorResult` = SpotState + `calibrationStarted`
-  / `busy` (job taken: shift still cleared, chain refetched) / `refetched`;
-  `fit_mode` query like the workflow verbs. Scope is the whole TICKER — a spot
-  move is per ticker and the calendar coupling needs the expiries together —
-  not the single node on screen (answer to the user's question).
-- **Market spot readout.** `SpotState` gains `liveSpot / liveReturn / liveAt /
-  liveSource` ("stream" = off the book via the new non-blocking
-  `provider.book_spot` [Bloomberg `_book_spot(wait=0)`, Massive nearest-expiry
-  book chain]; "probe" = the last `live_spot` request; "chain" = the fetched
-  chain's own spot), `streaming`, `sourceLabel`, `shiftSource`, `litNodes`,
-  `lvEnabled`; `anchorSpot` is now the CALIBRATION spot (`anchor_spot`), not
-  the chain's. The card polls GET /spot at ~1 Hz only while streaming (a free
-  book read); a ↻ button probes once otherwise.
-- **Card (SpotPanel.tsx rewrite, useSpot.ts).** Calibrated · Market · Scenario
-  · Regime rows; the dial in 0.1 % steps with ± buttons (Shift = 1 %), Reset,
-  **Sync to market** (= `/fetch/spots` for the ticker, a "live" shift);
-  Re-anchor narrates the job from `workflow.calib` plus an outcome line; the
-  real-time spot mode locks the dial. Help: glossary / lenses / universe guides
-  + What's new (the content lock now asserts the Help Center entry EXISTS,
-  not that it is first).
-- Locks: test_api_spot (+5: gated never-blank, busy, readouts, dial vs poll
-  source), test_table_stream (+2: manual frame vs poll, tracker re-frame),
-  test_workspace (source round trip), SpotPanel.test.tsx (8), useLiveTicks
-  `liveSpot`; regression 140 backend (workflow / gated / scheduler / stream /
-  workspace suites) + 406 frontend green; live headless
-  `frontend/scripts/spot_panel_check.mjs` (synthetic single-origin server on
-  :4189: dial → market-frame forward ×1.02 with shiftSource "manual",
-  Re-anchor → shift 0, fit kept, stale false; screenshots .smoke/spot-*.png).
-- Riders / not done: the STREAM path was driven only with the synthetic book —
-  a Bloomberg live-session look at a dial move while `//blp/mktdata` streams is
-  still due; during the headless check the fit process-pool workers logged
-  "paging file is too small" DLL-load errors under memory pressure on this box
-  (the fits completed via the fallback) — re-check on a quiet box; Re-anchor is
-  not a palette command yet.
+- **Root cause 1 — the dial vs the live tick stream.** With a Bloomberg /
+  Massive book streaming, the Smile Viewer's market frame comes from the SSE
+  tick stream (`table_stream.live_slice`), which rolled the fit to the BOOK
+  spot and ignored the app's shift — a dial move only changed the payload's
+  transported `kMin/kMax` (the brush).
+- **Root cause 2 — Re-anchor.** `POST /spot/{ticker}/calibrate` used
+  `AppState.recalibrate` (drop the ticker's fits + calibrated pointers); on
+  the gated live server nothing recalibrates on a read → blank chart.
+- **Model now: what a ticker's spot FOLLOWS** — `AppState.spot_follow(ticker)`
+  = "market" (default; FORCED while Options `spotMode` is realtime) |
+  "scenario"; workspace-scoped (`spotFollow` doc key). Market: the shift is
+  synced to the prevailing market spot (`market_spot`: the streaming book via
+  the new non-blocking `provider.book_spot` [Bloomberg `_book_spot(wait=0)`,
+  Massive nearest-expiry book chain], else the newer of the last probe and the
+  fetched chain) — on selection, after every chain fetch (`fetch_options`
+  → `sync_market_shifts`; `fetch_snapshot`/`fetch_spots` apply the probe to
+  market followers only) and by the scheduler at the spot-poll cadence while a
+  book streams in static spot mode (a free read; `workflow_spot.py`). Scenario:
+  the dial (`PUT /spot/{t}` selects it; `PUT /spot/{t}/follow` switches, the
+  current shift being the scenario's starting point). The tick stream frames
+  at the book in market mode and at the dial (0 = the anchor) in scenario mode
+  (`smile_layers.stream_frame`; the tracker re-sends every row when the frame
+  moves — a delta, not `full`); `prevailing_shift` (payload market layer)
+  follows the same rule.
+- **Recalibrate = the top-bar Calibrate for ONE ticker** (`workflow_ticker.
+  recalibrate_ticker`, `POST /spot/{t}/calibrate?scope=both|parametric|lv`
+  + `fit_mode`): the same stage builders (calendar-coupled parametric groups,
+  the LV item; "both" gates LV on `localVolEnabled`, "lv" runs regardless —
+  exactly the global verbs), the ONE background job, pointers preserved → the
+  previous fit stays (stale) until the job lands. **Calibration snapshot rule
+  shared by EVERY Calibrate verb** (`workflow.calibration_chains`, replaces
+  `_ensure_chains`): while the source streams, a fresh SYNCHRONOUS quotes +
+  spot snapshot off the book (`refresh_chain`, never a metered request); else
+  the LAST FETCHED chain, no request (fetched once only if absent). Response
+  `RecalibrateResult` = SpotState + `calibrationStarted` / `busy` /
+  `snapshotted` / `scope`. Scope is the whole ticker (per-ticker shift,
+  calendar coupling), not the node on screen.
+- **SpotState readouts**: `anchorSpot` = the CALIBRATION spot; `liveSpot /
+  liveReturn / liveAt / liveSource` ("stream" | "probe" | "chain"),
+  `streaming`, `sourceLabel`, `follow`, `followForced`, `litNodes`,
+  `lvEnabled`. The card polls GET /spot at ~1 Hz only while streaming.
+- **Card (SpotPanel.tsx, useSpot.ts, state/useCalibScope.ts)**: a **Market
+  spot / Scenario** segmented selector (the followed level lit, the other
+  dimmed; the dial locked in market mode); Calibrated · Market · Scenario ·
+  Regime rows; the dial in 0.1 % steps (± buttons, Shift = 1 %), **Reset to
+  0.0%**, Sync to market; **Recalibrate _ticker_ (_scope_)** naming the top
+  bar's scope live (`writeCalibScope` now dispatches `CALIB_SCOPE_EVENT`;
+  `useCalibScope` subscribes) with a caption of the snapshot rule; the job
+  narrated from `workflow.calib` + an outcome line. Help: glossary / lenses /
+  universe guides + What's new (the content lock asserts the Help Center entry
+  EXISTS, not that it is first).
+- Locks: test_api_spot (12: gated never-blank, busy, scopes mirror the top bar,
+  streaming snapshot vs last chain [data version], market readout, follow
+  market vs scenario, realtime pins market), test_table_stream (+2: scenario
+  frames the stream / market follows the book, tracker re-frame),
+  test_scheduler (+1: static mode + book → market sync at the poll cadence),
+  test_workspace (follow round trip), SpotPanel.test.tsx (10), useLiveTicks
+  `liveSpot`; regression 175 backend / 408 frontend green; live headless
+  `frontend/scripts/spot_panel_check.mjs` (synthetic server :4189: Market at
+  start with the dial locked → Scenario +2 % moves the market-frame forward
+  ×1.02 → Reset → Market re-syncs → Recalibrate ALPHA (Param + LV) narrates
+  the job, fit kept, stale false).
+- Assumptions taken (the user invited questions; none blocked the work): in
+  market mode the dial is dimmed + locked (not an offset on top of the
+  market); the top-bar Calibrate now ALSO takes a fresh book snapshot when
+  streaming (it used the cached chain before) — the requested consistency;
+  the default follow mode is "market"; realtime spot mode pins it.
+- Riders / not done: a Bloomberg live-session look at the STREAM path (only
+  the synthetic book was driven); the fit process-pool workers logged "paging
+  file is too small" DLL-load errors under memory pressure on this box during
+  the headless check (fits completed via the fallback) — re-check on a quiet
+  box; Recalibrate is not a palette command yet.
 - USER-side: restart the long-running :8000 (new SpotState fields, the
-  Re-anchor response model, `spotShiftSources` in workspace docs).
+  follow endpoint, the Recalibrate response model, `spotFollow` in workspace
+  docs; the legacy `spotShiftSources` key of commit 5696cd0 is ignored).
 
 ### 🧭 SESSION WRAP (2026-09-02) — CALIBRATION PERF ARC: BIT-IDENTICAL INNER-LOOP BATCHING (branch perf/param-inner-loop-lv-assembly)
 

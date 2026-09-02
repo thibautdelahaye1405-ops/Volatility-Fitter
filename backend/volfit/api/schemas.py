@@ -2051,14 +2051,16 @@ class SpotState(BaseModel):
     shiftedSpot: float  # anchorSpot * (1 + spotReturn)
     regime: str  # active vol-spot dynamics regime label
     regimeSsr: float  # its skew-stickiness ratio (transport strength R)
-    #: Who set the active shift: "manual" (the dial — the whole app, live tick
-    #: stream included, lives at that spot) | "live" (the real-time spot poll /
-    #: Sync to live — the tick stream keeps its own fresher book spot); None
-    #: when the shift is 0.
-    shiftSource: Literal["manual", "live"] | None = None
-    #: Latest known market spot, its return vs the anchor, its UTC stamp and how
-    #: it was read: "stream" = off the live book (refreshes ~1 Hz), "probe" = a
-    #: spot request (Fetch spots / the live endpoint), "chain" = the latest
+    #: What the spot follows (the panel selector): "market" = the prevailing
+    #: market spot (the shift is synced to it; the tick stream frames at the
+    #: book) | "scenario" = the dial (the whole app, tick stream included, lives
+    #: at that hypothetical spot). ``followForced``: realtime spotMode pins
+    #: "market" (the scheduler owns the shift).
+    follow: Literal["market", "scenario"] = "market"
+    followForced: bool = False
+    #: The prevailing market spot, its return vs the anchor, its UTC stamp and
+    #: how it was read: "stream" = off the live book (refreshes ~1 Hz), "probe"
+    #: = a spot request (Fetch spots / the live endpoint), "chain" = the latest
     #: fetched chain's spot. None until any of those exists.
     liveSpot: float | None = None
     liveReturn: float | None = None
@@ -2073,20 +2075,29 @@ class SpotState(BaseModel):
     lvEnabled: bool = False
 
 
-class ReanchorResult(SpotState):
-    """Outcome of POST /spot/{ticker}/calibrate (the Spot panel's Re-anchor):
-    the shift is cleared and the chain refetched synchronously; the calibration
-    of the ticker's lit nodes runs as the ONE background job (progress in
-    /calibration/status), the previous fit staying on screen until it lands."""
+class SpotFollowRequest(BaseModel):
+    """Select what a ticker's spot follows (PUT /spot/{ticker}/follow)."""
+
+    follow: Literal["market", "scenario"]
+
+
+class RecalibrateResult(SpotState):
+    """Outcome of POST /spot/{ticker}/calibrate (the Spot panel's Recalibrate —
+    the top-bar Calibrate for ONE ticker, same scope names, same snapshot rule:
+    a fresh synchronous book snapshot while streaming, else the last fetched
+    chain). The shift is cleared; the calibration runs as the ONE background
+    job (progress in /calibration/status), the previous fit staying on screen
+    until it lands."""
 
     #: A background calibration of the ticker's lit nodes was started.
     calibrationStarted: bool = False
-    #: A job was already running: nothing started (press again when idle); the
-    #: shift is still cleared and the chain refetched.
+    #: A job was already running: nothing started (press again when idle).
     busy: bool = False
-    #: The chain was refetched (False = feed miss; the calibration then runs
-    #: on the cached chain).
-    refetched: bool = False
+    #: A fresh synchronous quotes + spot snapshot was taken off the streaming
+    #: book (False = the last fetched chain was used, no request made).
+    snapshotted: bool = False
+    #: The scope run: "both" | "parametric" | "lv".
+    scope: str = "both"
 
 
 class LiveSpot(BaseModel):

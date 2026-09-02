@@ -52,7 +52,8 @@ def prevailing_shift(state: AppState, ticker: str) -> tuple[float, float | None]
         anchor = float(state.anchor_spot(ticker))
     except Exception:  # noqa: BLE001 — no chain yet
         return 0.0, None
-    if active != 0.0:
+    # Scenario follow mode: the dial IS the prevailing spot (0 = the anchor).
+    if active != 0.0 or state.spot_follow(ticker) == "scenario":
         return active, anchor * (1.0 + active)
     try:
         spot = float(state.snapshot(ticker).spot)
@@ -74,22 +75,22 @@ def stream_frame(
 ) -> tuple[float, float, float]:
     """``(shift, spot, forward)`` of the frame the live tick stream lives in.
 
-    A MANUAL dial move (the Spot panel) is a hypothetical spot the whole app
-    lives at — the stream follows it too (else the chart would ignore the dial
-    while a book streams): the frame is the anchor moved by the dial, its
-    forward the calibration forward under the app's transport rule. With no
-    manual move the frame is the live book itself (``live_*``); a shift set by
-    the real-time spot POLL is deliberately ignored — the book is fresher."""
+    Follow "market": the live book itself (``live_*``) — the shift the spot
+    poll synced is deliberately ignored here, the book is fresher. Follow
+    "scenario": the dial is a hypothetical spot the whole app lives at, so the
+    stream frames there too (else the chart would ignore the dial while a book
+    streams): the anchor moved by the dial (0 = the anchor itself), its
+    forward the calibration forward under the app's transport rule."""
     from volfit.api.service import spot_forward_shift
 
-    manual = state.manual_spot_shift(ticker)
-    if manual == 0.0:
+    if state.spot_follow(ticker) == "market":
         return live_shift, live_spot, live_forward
+    dial = state.spot_shift(ticker)
     resolved = state.resolved_forward(ticker, expiry)
     forward, _h = spot_forward_shift(
-        state, ticker, expiry, resolved.forward, resolved.discount, t, shift=manual
+        state, ticker, expiry, resolved.forward, resolved.discount, t, shift=dial
     )
-    return manual, float(state.anchor_spot(ticker)) * (1.0 + manual), float(forward)
+    return dial, float(state.anchor_spot(ticker)) * (1.0 + dial), float(forward)
 
 
 def rolled_record(state: AppState, ticker: str, iso: str, base: FitRecord, shift: float) -> FitRecord:

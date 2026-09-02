@@ -1,10 +1,12 @@
-// Spot move card contract: the three spot levels (calibrated / market /
-// scenario), the ± fine-tune buttons (0.1 %, Shift = 1 %, clamped to ±15 %),
-// Reset / Sync to market, the real-time lock, and the Re-anchor button that
-// narrates the background job instead of blanking anything.
+// Spot move card contract: the Market / Scenario follow selector lights the
+// followed level and dims the other (the dial is locked while following the
+// market), the ± fine-tune buttons (0.1 %, Shift = 1 %, clamped to ±15 %),
+// Reset to 0.0 % and Sync to market, the real-time lock, and the Recalibrate
+// button that names the top bar's scope and narrates the background job.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import SpotPanel, { DIAL_MAX_PCT, clockOf, snapDialPct } from "./SpotPanel";
+import { SCOPE_STORAGE_KEY } from "../lib/calibScope";
 import type { SpotState } from "../state/useSpot";
 
 const state = (over: Partial<SpotState> = {}): SpotState => ({
@@ -14,7 +16,8 @@ const state = (over: Partial<SpotState> = {}): SpotState => ({
   shiftedSpot: 6150,
   regime: "sticky_strike",
   regimeSsr: 1,
-  shiftSource: null,
+  follow: "scenario",
+  followForced: false,
   liveSpot: 6162.3,
   liveReturn: 6162.3 / 6150 - 1,
   liveAt: "2026-09-02T14:32:00",
@@ -28,8 +31,8 @@ const state = (over: Partial<SpotState> = {}): SpotState => ({
 
 function renderPanel(over: Partial<Parameters<typeof SpotPanel>[0]> = {}) {
   const onSpotReturn = vi.fn();
+  const onFollow = vi.fn();
   const onCalibrate = vi.fn();
-  const onSyncLive = vi.fn();
   const onProbeLive = vi.fn();
   const utils = render(
     <SpotPanel
@@ -37,8 +40,8 @@ function renderPanel(over: Partial<Parameters<typeof SpotPanel>[0]> = {}) {
       spotState={state()}
       spotMode="static"
       onSpotReturn={onSpotReturn}
+      onFollow={onFollow}
       onCalibrate={onCalibrate}
-      onSyncLive={onSyncLive}
       onProbeLive={onProbeLive}
       calib={{ running: false, current: "", phase: "", done: 0, total: 0 }}
       note={null}
@@ -46,10 +49,14 @@ function renderPanel(over: Partial<Parameters<typeof SpotPanel>[0]> = {}) {
       {...over}
     />,
   );
-  return { ...utils, onSpotReturn, onCalibrate, onSyncLive, onProbeLive };
+  return { ...utils, onSpotReturn, onFollow, onCalibrate, onProbeLive };
 }
 
-afterEach(cleanup);
+/** The emphasis of the spot-level ROW named `label` (the selector reuses the word "Scenario"). */
+const emphasisOf = (label: string) =>
+  screen.getAllByText(label).map((e) => e.closest("[data-emphasis]")).find(Boolean)?.getAttribute("data-emphasis");
+
+afterEach(() => { cleanup(); localStorage.removeItem(SCOPE_STORAGE_KEY); });
 
 describe("SpotPanel", () => {
   it("shows the calibrated, market (streamed) and scenario spots", () => {
@@ -62,11 +69,34 @@ describe("SpotPanel", () => {
     expect(screen.queryByLabelText("Probe market spot")).toBeNull(); // no probe while streaming
   });
 
+  it("lights the followed level: scenario lights the dial, market dims it", () => {
+    renderPanel({ spotReturn: 0.03 });
+    expect(emphasisOf("Scenario")).toBe("on");
+    expect(emphasisOf("Market")).toBe("off");
+    expect(screen.getByTestId("spot-dial").getAttribute("data-active")).toBe("true");
+    expect((screen.getByLabelText("Spot return") as HTMLInputElement).disabled).toBe(false);
+    cleanup();
+    renderPanel({ spotState: state({ follow: "market" }) });
+    expect(emphasisOf("Market")).toBe("on");
+    expect(emphasisOf("Scenario")).toBe("off");
+    expect(screen.getByTestId("spot-dial").getAttribute("data-active")).toBe("false");
+    expect((screen.getByLabelText("Spot return") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Spot up 0.1 percent") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("switches the follow mode from the selector", () => {
+    const { onFollow } = renderPanel();
+    fireEvent.click(screen.getByText("Market spot"));
+    expect(onFollow).toHaveBeenLastCalledWith("market");
+    fireEvent.click(screen.getByText("Scenario", { selector: "button" }));
+    expect(onFollow).toHaveBeenLastCalledWith("scenario");
+  });
+
   it("offers a probe button and the stamp when the market spot is not streamed", () => {
-    renderPanel({ spotState: state({ streaming: false, liveSource: "probe" }) });
-    const probe = screen.getByLabelText("Probe market spot");
+    const { onProbeLive } = renderPanel({ spotState: state({ streaming: false, liveSource: "probe" }) });
+    fireEvent.click(screen.getByLabelText("Probe market spot"));
+    expect(onProbeLive).toHaveBeenCalledTimes(1);
     expect(screen.getByText(new RegExp(`probe ${clockOf("2026-09-02T14:32:00")}`))).toBeTruthy();
-    fireEvent.click(probe);
   });
 
   it("fine-tunes the dial by 0.1 % (Shift: 1 %) and clamps at the range", () => {
@@ -84,41 +114,49 @@ describe("SpotPanel", () => {
     expect(top.onSpotReturn).toHaveBeenLastCalledWith(0.149);
   });
 
-  it("resets and syncs to the market spot", () => {
-    const { onSpotReturn, onSyncLive } = renderPanel({ spotReturn: 0.03 });
-    fireEvent.click(screen.getByText("Reset"));
+  it("resets to 0.0 % and syncs the dial to the market return", () => {
+    const { onSpotReturn } = renderPanel({ spotReturn: 0.03 });
+    fireEvent.click(screen.getByText(/Reset to 0\.0%/));
     expect(onSpotReturn).toHaveBeenLastCalledWith(0);
     fireEvent.click(screen.getByText("Sync to market"));
-    expect(onSyncLive).toHaveBeenCalledTimes(1);
+    expect(onSpotReturn).toHaveBeenLastCalledWith(0.002); // +0.20 % snapped to the 0.1 % grid
   });
 
-  it("hides Sync when the scenario already sits at the market spot", () => {
+  it("disables Reset at 0 and Sync when the scenario already sits at the market spot", () => {
     renderPanel({ spotReturn: 6162.3 / 6150 - 1 });
     expect((screen.getByText("Sync to market") as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+    renderPanel({ spotReturn: 0 });
+    expect((screen.getByText(/Reset to 0\.0%/).closest("button") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("locks the dial in real-time spot mode", () => {
-    renderPanel({ spotMode: "realtime" });
+  it("pins the market spot in real-time spot mode", () => {
+    renderPanel({ spotMode: "realtime", spotState: state({ follow: "market", followForced: true }) });
     expect((screen.getByLabelText("Spot return") as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByLabelText("Spot up 0.1 percent") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText("LIVE")).toBeTruthy();
-    expect(screen.queryByText("Sync to market")).toBeNull();
+    expect(emphasisOf("Market")).toBe("on");
   });
 
-  it("re-anchors the ticker and narrates the background job", () => {
+  it("recalibrates the ticker with the top bar's scope and narrates the job", () => {
+    localStorage.setItem(SCOPE_STORAGE_KEY, "parametric");
     const { onCalibrate } = renderPanel();
-    const button = screen.getByText("Re-anchor SPY");
-    expect(screen.getByText(/calibrate 4 nodes \+ LV at the market spot/)).toBeTruthy();
+    const button = screen.getByText("Recalibrate SPY (Param only)");
+    expect(screen.getByText(/Calibrate, this ticker only · streamed quotes \+ spot snapshot · 4 nodes/)).toBeTruthy();
     fireEvent.click(button);
-    expect(onCalibrate).toHaveBeenCalledTimes(1);
+    expect(onCalibrate).toHaveBeenCalledWith("parametric");
+    cleanup();
+    localStorage.setItem(SCOPE_STORAGE_KEY, "both");
+    renderPanel({ spotState: state({ streaming: false, liveSource: "chain" }) });
+    expect(screen.getByText("Recalibrate SPY (Param + LV)")).toBeTruthy();
+    expect(screen.getByText(/last fetched quotes \+ spot · 4 nodes \+ LV/)).toBeTruthy();
     cleanup();
     renderPanel({
       calib: { running: true, current: "SPY 2026-09-18", phase: "Parametric", done: 2, total: 5 },
-      note: { ok: true, text: "Quotes refetched · calibrating 4 nodes + LV at 6162.30…" },
+      note: { ok: true, text: "Book snapshot taken (quotes + spot) · calibrating SPY — Param + LV at 6162.30…" },
     });
     const busy = screen.getByText(/Calibrating · SPY 2026-09-18 · Parametric 2\/5/) as HTMLButtonElement;
     expect(busy.disabled).toBe(true);
-    expect(screen.getByRole("status").textContent).toMatch(/Quotes refetched/);
+    expect(screen.getByRole("status").textContent).toMatch(/Book snapshot taken/);
   });
 
   it("snaps dial values to the 0.1 % grid inside ±15 %", () => {

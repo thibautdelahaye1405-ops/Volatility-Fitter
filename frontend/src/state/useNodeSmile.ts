@@ -14,7 +14,8 @@ import type { SmileData, SmilePoint } from "../lib/mockData";
 import { useDistribution, useScenarioCurve } from "./useScenario";
 import type { DistributionData, Regime, ScenarioState } from "./useScenario";
 import { useSpot } from "./useSpot";
-import type { SpotNote, SpotState } from "./useSpot";
+import type { SpotFollow, SpotNote, SpotState } from "./useSpot";
+import type { CalibScope } from "../lib/calibScope";
 
 /** Quote-fitting objective, passed to the backend as `fit_mode`. */
 export type FitMode = "mid" | "bidask" | "haircut";
@@ -75,10 +76,11 @@ export interface NodeSmileResult {
   spotReturn: number;
   spotState: SpotState | null;
   setSpotReturn: (r: number) => void;
-  /** Re-anchor the ticker: clear the shift, refetch, calibrate its lit nodes (background). */
-  recalibrate: () => Promise<void>;
-  /** Move the dial to the market spot / probe it once (Spot move card). */
-  syncLive: () => Promise<void>;
+  /** Follow the market spot or the scenario dial (Spot move card selector). */
+  setFollow: (follow: SpotFollow) => Promise<void>;
+  /** Recalibrate the ticker with the top bar's scope (background job). */
+  recalibrate: (scope: CalibScope) => Promise<void>;
+  /** Probe the market spot once (Spot move card). */
   probeLive: () => Promise<void>;
   spotNote: SpotNote | null;
 }
@@ -198,7 +200,7 @@ export function useNodeSmile(o: NodeSmileOptions): NodeSmileResult {
     setReloadNonce((n) => n + 1);
   }, [live, ticker, expiry]);
 
-  const { spotReturn, spotState, setSpotReturn, recalibrate, syncLive, probeLive, spotNote } =
+  const { spotReturn, spotState, setSpotReturn, setFollow, recalibrate, probeLive, spotNote } =
     useSpot(live, ticker, fitMode, refreshViews, spotVersion);
   const { scenarioCurve, scenarioSsr } = useScenarioCurve(live, ticker, expiry, fitMode, scenario);
   const { distribution, distributionLoading, loadDistribution } = useDistribution(live, ticker, expiry, fitMode, smile);
@@ -208,6 +210,6 @@ export function useNodeSmile(o: NodeSmileOptions): NodeSmileResult {
     applyEdit, undo, redo, applyVarSwap, undoVarSwap, redoVarSwap, savePrior, reload,
     scenario, setScenario, scenarioCurve, scenarioSsr,
     distribution, distributionLoading, loadDistribution,
-    spotReturn, spotState, setSpotReturn, recalibrate, syncLive, probeLive, spotNote,
+    spotReturn, spotState, setSpotReturn, setFollow, recalibrate, probeLive, spotNote,
   };
 }

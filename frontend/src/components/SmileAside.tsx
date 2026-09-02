@@ -1,8 +1,8 @@
 // Right-hand column of the Parametric lens (UI SHELL v2 wave 2): three
 // stacked cards, top to bottom —
-//   Spot move        calibrated / market / scenario spot, the SSR dial
-//                    (transports every lens live), Sync to market, Re-anchor
-//                    (refetch + background recalibration of the ticker)
+//   Spot move        follow the market spot or the scenario dial (transports
+//                    every lens live); Recalibrate = the top-bar Calibrate for
+//                    this ticker (same scope, same snapshot rule)
 //   Variance swap    the var-swap quote editor (adds a calibration penalty;
 //                    Options-gated)
 //   Fit diagnostics  headline handles (ATM / skew / curvature / RMS) with the
@@ -46,8 +46,8 @@ const card = `${cardClass} p-4`;
 
 export default function SmileAside() {
   const {
-    smile, source, spotReturn, spotState, spotMode, setSpotReturn, recalibrate,
-    syncLive, probeLive, spotNote, applyVarSwap, undoVarSwap, redoVarSwap,
+    smile, source, spotReturn, spotState, spotMode, setSpotReturn, setFollow, recalibrate,
+    probeLive, spotNote, applyVarSwap, undoVarSwap, redoVarSwap,
   } = useSmileSession();
   const { workflow } = useWorkflowContext(); // the background job (Re-anchor progress)
   const live = source === "live";
@@ -81,17 +81,17 @@ export default function SmileAside() {
 
   return (
     <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
-      {/* 1. Spot move: transports the live surface (no recalibration);
-          Re-anchor refetches + recalibrates the ticker. Applies across every
-          lens, not just Smile. */}
+      {/* 1. Spot move: follow the market or the scenario (no recalibration);
+          Recalibrate = Calibrate for this ticker. Applies across every lens,
+          not just Smile. */}
       <section className={card}>
         <SpotPanel
           spotReturn={spotReturn}
           spotState={spotState}
           spotMode={spotMode}
           onSpotReturn={setSpotReturn}
-          onCalibrate={() => void recalibrate()}
-          onSyncLive={() => void syncLive()}
+          onFollow={(f) => void setFollow(f)}
+          onCalibrate={(scope) => void recalibrate(scope)}
           onProbeLive={() => void probeLive()}
           calib={workflow.calib}
           note={spotNote}

@@ -58,7 +58,7 @@ export default function LocalVolAside({
   // Spot move is session-wide (one shift per ticker, transported by the
   // backend across every lens) — same source as the Parametric aside.
   const {
-    spotReturn, spotState, spotMode, setSpotReturn, recalibrate, syncLive, probeLive, spotNote,
+    spotReturn, spotState, spotMode, setSpotReturn, setFollow, recalibrate, probeLive, spotNote,
   } = useSmileSession();
   const { workflow } = useWorkflowContext(); // the background job (Re-anchor progress)
   // Fit replay (V3.5 item 13): the ⏵ toggle + an epoch that advances whenever a
@@ -71,16 +71,17 @@ export default function LocalVolAside({
 
   return (
     <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
-      {/* (a) Spot move — SpotPanel renders its own "Spot move" title. The slider
-          transports the live surface (no recalibration); Calibrate re-anchors. */}
+      {/* (a) Spot move — SpotPanel renders its own "Spot move" title: follow the
+          market or the scenario dial (no recalibration); Recalibrate = the
+          top-bar Calibrate for this ticker. */}
       <Card>
         <SpotPanel
           spotReturn={spotReturn}
           spotState={spotState}
           spotMode={spotMode}
           onSpotReturn={setSpotReturn}
-          onCalibrate={() => void recalibrate()}
-          onSyncLive={() => void syncLive()}
+          onFollow={(f) => void setFollow(f)}
+          onCalibrate={(scope) => void recalibrate(scope)}
           onProbeLive={() => void probeLive()}
           calib={workflow.calib}
           note={spotNote}
