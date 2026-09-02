@@ -75,8 +75,10 @@ class FakeBlp:
 
     def bds(self, security, field, **kwargs):
         self.bds_calls.append((security, field, dict(kwargs)))
-        if field in ("OPT_CHAIN", "CHAIN_TICKERS"):
+        if field == "OPT_CHAIN":
             return self._chain
+        if field == "CHAIN_TICKERS":  # the series answer: nothing listed beyond OPT_CHAIN
+            return _opt_chain_frame([])
         if field == "DVD_HIST_ALL":
             if self._dvd is None:
                 raise RuntimeError("no dividend entitlement")
@@ -169,50 +171,80 @@ def _desc(d: date, tail: str = "C500 Equity") -> str:
     return f"SPY US {d.month:02d}/{d.day:02d}/{d.year % 100:02d} {tail}"
 
 
-def test_chain_request_is_chain_tickers_with_the_count_cap():
-    """The chain must be requested through CHAIN_TICKERS — the field the
-    CHAIN_*_OVRD overrides belong to — with CHAIN_POINTS_OVRD lifting the count
-    cap and NO periodicity override for ALL series (an empty one is a no-op on
-    the wire). OPT_CHAIN ignored the override and answered the Terminal's
-    monthly-biased default (11 SPY rungs vs 31 on Cboe: no weeklies/dailies).
-    FakeBlp records kwargs so a silently-dropped override cannot pass."""
+def test_chain_is_opt_chain_plus_every_listed_series():
+    """The ladder is OPT_CHAIN (monthlies + LEAPS, both sides, keyed — the
+    Terminal's monthly-biased default, deaf to every override) PLUS one
+    CHAIN_TICKERS request per series with CHAIN_EXP_DT_OVRD="ALL" (every
+    weekly / quarterly expiry in one answer — without it the field returns a
+    single expiry, the nearest: the "SPY has one expiry" report), the
+    periodicity and the count cap. FakeBlp records kwargs so a silently-dropped
+    override cannot pass. Live-verified 2026-09-02."""
     provider, blp = _make_provider()
     provider.available_expiries("SPY")
-    security, field, kwargs = blp.bds_calls[0]
-    assert (security, field) == ("SPY US Equity", "CHAIN_TICKERS")
-    assert kwargs == {"overrides": {"CHAIN_POINTS_OVRD": "50000"}}
-    assert not any(c[1] == "OPT_CHAIN" for c in blp.bds_calls)  # no fallback needed
+    assert blp.bds_calls[0] == ("SPY US Equity", "OPT_CHAIN", {})
+    series = blp.bds_calls[1:]
+    assert [c[1] for c in series] == ["CHAIN_TICKERS", "CHAIN_TICKERS"]
+    assert [c[2]["overrides"]["CHAIN_PERIODICITY_OVRD"] for c in series] == ["W", "Q"]
+    for _security, _field, kwargs in series:
+        assert kwargs["overrides"]["CHAIN_EXP_DT_OVRD"] == "ALL"
+        assert kwargs["overrides"]["CHAIN_POINTS_OVRD"] == "50000"
 
 
-def test_chain_periodicity_pinnable_and_legacy_field_omittable():
-    """"M" pins monthlies (sent alongside the count cap); None is the escape
-    hatch: the legacy bare OPT_CHAIN request with no override at all."""
-    provider, blp = _make_provider(chain_periodicity="M")
+def test_series_are_configurable_and_empty_means_the_legacy_monthly_ladder():
+    provider, blp = _make_provider(chain_series=("W",))
     provider.available_expiries("SPY")
-    assert blp.bds_calls[0][1] == "CHAIN_TICKERS"
-    assert blp.bds_calls[0][2] == {
-        "overrides": {"CHAIN_POINTS_OVRD": "50000", "CHAIN_PERIODICITY_OVRD": "M"}
-    }
-    provider, blp = _make_provider(chain_periodicity=None)
+    assert [c[1] for c in blp.bds_calls] == ["OPT_CHAIN", "CHAIN_TICKERS"]
+    provider, blp = _make_provider(chain_series=())
     provider.available_expiries("SPY")
-    assert blp.bds_calls[0][1:] == ("OPT_CHAIN", {})
+    assert [c[1:] for c in blp.bds_calls] == [("OPT_CHAIN", {})]
 
 
-def test_chain_tickers_empty_answer_falls_back_to_opt_chain():
-    """A Terminal that answers CHAIN_TICKERS with nothing parsable (no
-    entitlement / empty frame) still serves a ladder off the legacy field."""
+def test_a_series_the_terminal_cannot_answer_contributes_nothing():
+    """An empty or failing CHAIN_TICKERS series never loses the OPT_CHAIN
+    backbone (a Terminal without the field still serves the monthly ladder)."""
     ladder = [_future_weekday(4)]
     blp = FakeBlp(_opt_chain_frame([_desc(d) for d in ladder]), {"SPY US Equity": {"PX_LAST": 741.75}})
     empty = _opt_chain_frame([])
 
     def bds(security, field, **kwargs):
         blp.bds_calls.append((security, field, dict(kwargs)))
-        return empty if field == "CHAIN_TICKERS" else blp._chain
+        if field == "CHAIN_TICKERS":
+            if kwargs["overrides"]["CHAIN_PERIODICITY_OVRD"] == "Q":
+                raise RuntimeError("CHAIN_TICKERS not entitled")
+            return empty
+        return blp._chain
 
     blp.bds = bds
     provider = BloombergProvider(["SPY"], blp_module=blp)
     assert provider.available_expiries("SPY") == ladder
-    assert [c[1] for c in blp.bds_calls] == ["CHAIN_TICKERS", "OPT_CHAIN"]
+    assert [c[1] for c in blp.bds_calls] == ["OPT_CHAIN", "CHAIN_TICKERS", "CHAIN_TICKERS"]
+
+
+def test_series_rows_are_calls_only_and_get_their_puts_mirrored():
+    """CHAIN_TICKERS answers calls only, without the yellow key; every strike
+    lists a put too, so the chain carries both sides (parity needs them — a
+    call-only chain implied no forward: the SX5E "no usable option expiries"
+    report). OPT_CHAIN's keyed rows win the de-duplication."""
+    monthly, weekly = _future_weekday(4, 21), _future_weekday(4)
+    w = f"SPY US {weekly.month:02d}/{weekly.day:02d}/{weekly.year % 100:02d}"
+    weekly_rows = [f"{w} C740", _desc(monthly, "C500")]  # a bare monthly call repeats OPT_CHAIN's
+
+    def bds(security, field, **kwargs):
+        blp.bds_calls.append((security, field, dict(kwargs)))
+        if field == "OPT_CHAIN":
+            return _opt_chain_frame([_desc(monthly), _desc(monthly, "P500 Equity")])
+        if kwargs["overrides"]["CHAIN_PERIODICITY_OVRD"] == "W":
+            return pd.DataFrame({"ticker": ["SPY US Equity"] * 2, "field": ["CHAIN_TICKERS"] * 2,
+                                 "Ticker": weekly_rows})
+        return _opt_chain_frame([])
+
+    blp = FakeBlp(None, {"SPY US Equity": {"PX_LAST": 741.75}})
+    blp.bds = bds
+    provider = BloombergProvider(["SPY"], blp_module=blp)
+    assert provider.available_expiries("SPY") == sorted([weekly, monthly])
+    assert [c.security for c in provider._chain("SPY")] == [
+        _desc(monthly), _desc(monthly, "P500 Equity"), f"{w} C740 Equity", f"{w} P740 Equity",
+    ]
 
 
 def test_chain_tickers_rows_without_a_yellow_key_get_the_underlyings():
@@ -228,7 +260,7 @@ def test_chain_tickers_rows_without_a_yellow_key_get_the_underlyings():
                           f"{bare} Index": {"BID": "60.0", "ASK": "62.0", "OPT_EXER_TYP": "European"}})
     provider = BloombergProvider(["SX5E INDEX"], blp_module=blp)
     chain = provider.fetch_chain("SX5E INDEX", [d])
-    assert blp.bdp_securities == [f"{bare} Index"]  # the completed security, not the bare row
+    assert blp.bdp_securities == [f"{bare} Index"]  # the completed security, never the bare row
     assert chain.quotes[0].bid == 60.0 and chain.exercise_style == "european"
     # An equity chain listed bare gets " Equity"; a descriptor with a key is untouched.
     from volfit.data.bloomberg import _parse_chain_frame
@@ -266,8 +298,9 @@ class _FakeClock:
 
 
 def _chain_bds_count(blp) -> int:
-    """Chain requests sent (CHAIN_TICKERS, or the legacy OPT_CHAIN fallback)."""
-    return sum(1 for c in blp.bds_calls if c[1] in ("CHAIN_TICKERS", "OPT_CHAIN"))
+    """Chain RESOLUTIONS sent: one OPT_CHAIN per resolution (the CHAIN_TICKERS
+    series requests ride along with it)."""
+    return sum(1 for c in blp.bds_calls if c[1] == "OPT_CHAIN")
 
 
 def test_chain_cache_ttl_and_explicit_refresh():

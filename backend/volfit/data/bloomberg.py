@@ -9,8 +9,16 @@ American/European exercise flag, and a dividend schedule for the discrete-
 dividend forward model.
 
 xbbg surface relied on (confirmed live against an open Terminal):
-- ``blp.bds(security, "OPT_CHAIN")`` -> one row per listed contract, descriptor
-  in a "Security Description" column ("SPY US 06/18/26 C245 Equity");
+- ``blp.bds(security, "OPT_CHAIN")`` -> one row per listed MONTHLY / LEAPS
+  contract, BOTH sides, full security in a "Security Description" column
+  ("SPY US 06/18/26 C245 Equity") — the Terminal's monthly-biased default,
+  deaf to every CHAIN_*_OVRD override;
+- ``blp.bds(security, "CHAIN_TICKERS", overrides={CHAIN_PERIODICITY_OVRD: "W",
+  CHAIN_EXP_DT_OVRD: "ALL", CHAIN_POINTS_OVRD: "50000"})`` -> every expiry of
+  ONE series (weeklies + dailies; "Q" the quarterlies), CALLS only, WITHOUT
+  the yellow key ("SPY US 09/04/26 C740") in a "Ticker" column — without
+  "ALL" the field answers a single expiry, the nearest (live-verified
+  2026-09-02: 13 SPY weekly rungs in one call; "D" answers nothing);
 - ``blp.bdp(securities, fields)`` -> long/tidy frame (ticker/field/value), all
   values as strings — coerced via volfit.data.fieldmap;
 - ``blp.bds(security, "DVD_HIST_ALL")`` -> declared dividend rows (Ex-Date,
@@ -36,6 +44,7 @@ and issue NO ``bdp`` — the metered reference path is the fallback only.
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 import warnings
@@ -79,14 +88,17 @@ _ASSET_CLASS_BY_UPPER = {c.upper(): c for c in _ASSET_CLASSES}
 #: descriptor, so only quote fields + the exercise flag are requested here).
 _QUOTE_FIELDS = ("BID", "ASK", "LAST_PRICE", "VOLUME", "OPEN_INT", "OPT_EXER_TYP")
 
-#: Chain periodicity requesting ALL listed series (dailies + weeklies +
-#: monthlies + quarterlies): the empty string, per the vocabulary the installed
-#: xbbg ships (xbbg.ext.options.ChainPeriodicity, ALL = "") — sent as NO
-#: periodicity override (an empty override is a no-op on the wire).
-CHAIN_ALL_SERIES = ""
-#: CHAIN_POINTS_OVRD — the COUNT cap of a CHAIN_TICKERS request. Bloomberg
-#: truncates the chain to a modest default without it (the monthly-biased
-#: ladder the app used to get); large enough for an index root's full listing.
+#: The CHAIN_TICKERS series fetched ON TOP of OPT_CHAIN's monthlies / LEAPS:
+#: "W" = weeklies + dailies (Bloomberg files a Tue/Thu daily under W), "Q" =
+#: the end-of-quarter / end-of-month quarterlies. One bds each, with
+#: CHAIN_EXP_DT_OVRD="ALL" (every expiry of the series — the field otherwise
+#: answers a single expiry, the nearest). "M" would duplicate OPT_CHAIN and "D"
+#: answers nothing (live-verified 2026-09-02).
+CHAIN_SERIES = ("W", "Q")
+#: CHAIN_EXP_DT_OVRD value listing every expiry of a series.
+CHAIN_ALL_EXPIRIES = "ALL"
+#: CHAIN_POINTS_OVRD — the COUNT cap of a CHAIN_TICKERS request (a single
+#: strike comes back without it); large enough for an index root's full ladder.
 CHAIN_POINTS = 50000
 
 #: Seconds a parsed OPT_CHAIN is reused. Chains GROW intraday (new dailies
@@ -116,6 +128,37 @@ def _parse_chain_frame(frame, asset_class: str = "") -> list:
         if parsed:
             return [_with_asset_class(p, asset_class) for p in parsed]
     return []
+
+
+#: The " C<strike>" token of a descriptor (never the "C US" of a root like Citi).
+_CALL_TOKEN_RE = re.compile(r"\sC(?=[0-9])")
+
+
+def _with_mirrored_puts(contracts: list[ParsedOption]) -> list[ParsedOption]:
+    """CHAIN_TICKERS answers CALLS only; every listed strike carries a put too,
+    so each call is paired with its put security (" C740" -> " P740") — a
+    call-only chain has no parity and implies no forward ("no usable option
+    expiries")."""
+    out: list[ParsedOption] = []
+    for c in contracts:
+        out.append(c)
+        if c.call_put == "C":
+            out.append(
+                replace(c, security=_CALL_TOKEN_RE.sub(" P", c.security, count=1), call_put="P")
+            )
+    return out
+
+
+def _dedupe_contracts(contracts: list[ParsedOption]) -> list[ParsedOption]:
+    """First occurrence per security (OPT_CHAIN's keyed rows win over a series'
+    mirrored ones); order otherwise preserved."""
+    seen: set[str] = set()
+    out: list[ParsedOption] = []
+    for c in contracts:
+        if c.security not in seen:
+            seen.add(c.security)
+            out.append(c)
+    return out
 
 
 def _with_asset_class(contract: ParsedOption, asset_class: str) -> ParsedOption:
@@ -159,9 +202,9 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
     stream_port  : the ``//blp/mktdata`` streaming knobs (volfit.data.
                    bloomberg_live): conflation seconds, concurrent-subscription
                    budget, injectable session (tests), DAPI endpoint override.
-    chain_periodicity : CHAIN_PERIODICITY_OVRD value for the OPT_CHAIN ``bds``
-                   (see ``_chain``). Default "" = ALL series; pin to "M" if a
-                   terminal misbehaves on the override; None sends no override.
+    chain_series : the CHAIN_TICKERS series requested on top of OPT_CHAIN's
+                   monthlies (see ``_chain``; default CHAIN_SERIES = weeklies +
+                   quarterlies). () = OPT_CHAIN only, the legacy monthly ladder.
     chain_ttl    : seconds a parsed OPT_CHAIN is reused (CHAIN_CACHE_TTL).
     clock        : monotonic float clock for the chain TTL (tests inject a fake).
     """
@@ -178,7 +221,7 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         stream_session_factory=None,
         stream_host: str | None = None,
         stream_port: int | None = None,
-        chain_periodicity: str | None = CHAIN_ALL_SERIES,
+        chain_series: Sequence[str] = CHAIN_SERIES,
         chain_ttl: float = CHAIN_CACHE_TTL,
         clock: Callable[[], float] | None = None,
     ) -> None:
@@ -196,7 +239,7 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         #: windowing to the fittable band cuts the per-fetch security count (and
         #: the daily-quota burn) by a large factor. Widen/disable per deployment.
         self.strike_window = strike_window
-        self.chain_periodicity = chain_periodicity
+        self.chain_series = tuple(chain_series)
         self.chain_ttl = chain_ttl
         self._clock = clock if clock is not None else time.monotonic
         #: ticker -> (clock stamp, parsed contracts); entries older than
@@ -341,22 +384,25 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
     # -- chain enumeration (cheap, descriptor-only) --------------------------
 
     def _chain(self, ticker: str) -> list[ParsedOption]:
-        """Parsed OPT_CHAIN contracts for a ticker (one ``bds`` call, cached for
-        ``chain_ttl`` seconds — chains list new dailies intraday, so the cache
-        expires instead of living forever).
+        """Every listed contract of a ticker (cached ``chain_ttl`` seconds —
+        chains list new dailies intraday, so the cache expires instead of
+        living forever), assembled from the two fields a Terminal offers
+        (live-verified 2026-09-02, Docs/bloomberg_setup.md):
 
-        The request is the ``CHAIN_TICKERS`` bulk field with the ``CHAIN_*_OVRD``
-        overrides — the field those overrides belong to (xbbg.ext.options
-        ``option_chain`` issues them against CHAIN_TICKERS; ``OPT_CHAIN``
-        silently ignores them, which is why the app used to receive the
-        Terminal's monthly-biased default chain: 11 SPY rungs vs 31 on Cboe).
-        ``CHAIN_POINTS_OVRD`` lifts the count cap; ``CHAIN_PERIODICITY_OVRD``
-        goes only when a periodicity is pinned ("" = ALL = no override).
-        ``chain_periodicity=None`` is the escape hatch: the legacy bare
-        ``OPT_CHAIN`` request. A CHAIN_TICKERS answer with no parsable contract
-        falls back to OPT_CHAIN too, so a Terminal that lacks the field still
-        serves a ladder. Live verification is blocked by the account-side
-        workflow gate (Docs/bloomberg_workflow_review_account.md)."""
+        * ``OPT_CHAIN`` — the monthlies + LEAPS, BOTH sides, full securities
+          ("SPY US 09/18/26 C500 Equity"; 12 SPY rungs, 28 SX5E). It ignores
+          every CHAIN_*_OVRD override — the Terminal's monthly-biased default
+          the app used to stop at.
+        * ``CHAIN_TICKERS`` per series in ``chain_series`` ("W" weeklies +
+          dailies, "Q" quarterlies) with ``CHAIN_EXP_DT_OVRD="ALL"`` (every
+          expiry of the series; without it the field answers ONE expiry, the
+          nearest — the "SPY has one expiry" report), the periodicity and the
+          ``CHAIN_POINTS_OVRD`` count cap. Rows are CALLS only and lack the
+          yellow key ("SPY US 09/04/26 C740"): the put is mirrored and the
+          underlying's asset class appended.
+
+        A series the Terminal cannot answer contributes nothing (OPT_CHAIN is
+        always the backbone); the union is de-duplicated by security."""
         key = ticker.upper()
         now = self._clock()
         hit = self._chain_cache.get(key)
@@ -365,20 +411,20 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         blp = self._blp_module()
         security = self._security(ticker)
         asset_class = security.rsplit(" ", 1)[-1]  # "Index" / "Equity": completes a bare CHAIN_TICKERS row
-        if self.chain_periodicity is None:  # legacy request, no override at all
-            parsed = _parse_chain_frame(blp.bds(security, "OPT_CHAIN"), asset_class)
-        else:
-            overrides = {"CHAIN_POINTS_OVRD": str(CHAIN_POINTS)}
-            if self.chain_periodicity:  # a pinned periodicity ("M", "W", ...)
-                overrides["CHAIN_PERIODICITY_OVRD"] = self.chain_periodicity
+        parsed = _parse_chain_frame(blp.bds(security, "OPT_CHAIN"), asset_class)
+        for series in self.chain_series:
+            overrides = {
+                "CHAIN_POINTS_OVRD": str(CHAIN_POINTS),
+                "CHAIN_PERIODICITY_OVRD": series,
+                "CHAIN_EXP_DT_OVRD": CHAIN_ALL_EXPIRIES,
+            }
             try:
-                parsed = _parse_chain_frame(
-                    blp.bds(security, "CHAIN_TICKERS", overrides=overrides), asset_class
-                )
-            except Exception:  # noqa: BLE001 — a Terminal / rig without the field
-                parsed = []
-            if not parsed:  # no CHAIN_TICKERS entitlement / empty answer: the legacy field
-                parsed = _parse_chain_frame(blp.bds(security, "OPT_CHAIN"), asset_class)
+                frame = blp.bds(security, "CHAIN_TICKERS", overrides=overrides)
+                rows = _parse_chain_frame(frame, asset_class)
+            except Exception:  # noqa: BLE001 — a Terminal / rig without the field or the series
+                rows = []
+            parsed.extend(_with_mirrored_puts(rows))
+        parsed = _dedupe_contracts(parsed)
         self._chain_cache[key] = (now, parsed)
         return parsed
 

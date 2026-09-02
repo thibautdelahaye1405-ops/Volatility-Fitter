@@ -39,8 +39,12 @@ as its live book (`volfit/data/bloomberg_stream.py` book + blpapi transport,
   conflated with `interval=1.0`); Bloomberg then pushes updates. While it streams,
   **`fetch_chain(live)` and `spot()` issue no `bdp` at all** — every Fetch /
   Calibrate / real-time spot poll / 5 s stream refit reads the in-memory book.
-  Metered calls left: one `OPT_CHAIN` listing (`bds`) and one `PX_LAST` to
-  centre the strike window, per ticker, per process.
+  Metered calls left: the chain listing — one `OPT_CHAIN` (monthlies + LEAPS,
+  both sides) plus one `CHAIN_TICKERS` per series (`CHAIN_PERIODICITY_OVRD`
+  "W" weeklies + dailies, "Q" quarterlies, each with `CHAIN_EXP_DT_OVRD=ALL`
+  and the `CHAIN_POINTS_OVRD` count cap; calls only, puts mirrored, the
+  yellow key appended — live-verified 2026-09-02) — and one `PX_LAST` to
+  centre the strike window, per ticker, per 10-minute chain cache.
 - Subscription budget: the Desktop API caps concurrent real-time subscriptions
   per Terminal. Contracts are windowed to `strike_window` (default 0.5–1.5 ×
   spot) around a centre held with 5 % hysteresis (no restart when spot wobbles

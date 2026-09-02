@@ -981,11 +981,11 @@ below) — every recorded rider is closed except the ones listed here:
    help corpus if the 1.30 MB bundle matters; try Ask's Claude tier against a
    real key once ($env:VOLFIT_ANTHROPIC_KEY on the server); fix the stale
    `mixed` dividend sentence in Docs/handoff/SETTINGS_REFERENCE.md §3.
-5. MARKET-DATA FETCH riders (wraps 2026-09-02c + d below; none are gates):
-   a LIVE Terminal check of the `CHAIN_TICKERS` + `CHAIN_POINTS_OVRD` chain
-   request INCLUDING the yellow-key completion of its bare rows ("SX5E
-   09/18/26 C4650" → "… Index"; FakeBlp locks the wire only — the fallback to
-   `OPT_CHAIN` covers a Terminal without the field); a LIVE check of the
+5. MARKET-DATA FETCH riders (wraps 2026-09-02c/d/e below; none are gates):
+   the Bloomberg chain recipe is now LIVE-VERIFIED (wrap 2026-09-02e: OPT_CHAIN
+   + CHAIN_TICKERS per series with `CHAIN_EXP_DT_OVRD=ALL`; SPY 32 rungs, SX5E
+   31) — a Terminal-session look at a CALIBRATION on those weeklies is the
+   remaining rider; a LIVE check of the
    Massive per-contract NBBO history on the user's key (`/v3/quotes/{O:…}`:
    the entitlement / rate-limit gate is remembered for the SESSION — restart
    :8000 to retry after an upgrade; `VOLFIT_MASSIVE_HIST_NBBO=0` pins the
@@ -1005,6 +1005,63 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-02e) — BLOOMBERG CHAINS, LIVE-VERIFIED: OPT_CHAIN + CHAIN_TICKERS PER SERIES (`CHAIN_EXP_DT_OVRD=ALL`)
+
+User report on the 2026-09-02d build: SPY lists ONE expiry; "'SX5E INDEX' has
+no usable option expiries". Diagnosed against the user's OPEN TERMINAL (the
+first live look at this request — every earlier claim about CHAIN_TICKERS was
+FakeBlp-only) with ~20 metered `bds` probes:
+
+- **What the two fields really answer** (SPY US Equity / SX5E Index):
+  `OPT_CHAIN` = every MONTHLY / LEAPS contract, both sides, full securities
+  ("SPY US 09/18/26 C300 Equity"; 5518 rows / 12 SPY rungs, 5302 / 28 SX5E)
+  and it IGNORES every `CHAIN_*_OVRD` (periodicity W, "", an expiry date —
+  identical answers). `CHAIN_TICKERS` = ONE expiry per request (the nearest
+  of the periodicity, default monthly: 09/18; `CHAIN_EXP_DT_OVRD` picks
+  another; `CHAIN_EXP_MATCH_OVRD` "E"/"C" both fall back to the NEAREST, so
+  they cannot walk a ladder), CALLS only (`CHAIN_PUT_CALL_TYPE_OVRD=P` for
+  puts), WITHOUT the yellow key ("SPY US 09/18/26 C300" in a "Ticker"
+  column), a single strike without `CHAIN_POINTS_OVRD`; periodicity "W"
+  serves weeklies AND the Tue/Thu dailies, "Q" the end-of-month
+  quarterlies (09/30), "D" nothing, "" = the monthly default (xbbg's
+  `ChainPeriodicity.ALL = ""` is a no-op). **`CHAIN_EXP_DT_OVRD="ALL"`**
+  lists EVERY expiry of the series in one call (13 SPY weekly rungs, 1884
+  rows). A request may carry several underlyings (one call per date for a
+  whole universe — not used yet). No expiry-list bulk field exists under
+  the obvious names.
+- **Root cause of both symptoms**: 2026-09-02c/d replaced OPT_CHAIN by a
+  bare CHAIN_TICKERS request → one expiry (SPY) and calls only → no
+  put-call parity → `implied_forwards` empty → "no usable option expiries"
+  (SX5E; the yellow-key fix of 2026-09-02d was necessary but not
+  sufficient).
+- **The recipe now** (`BloombergProvider._chain`, `chain_series`
+  = `CHAIN_SERIES` = ("W", "Q")): `OPT_CHAIN` (the backbone) + one
+  `CHAIN_TICKERS` per series with `{CHAIN_POINTS_OVRD: 50000,
+  CHAIN_PERIODICITY_OVRD: series, CHAIN_EXP_DT_OVRD: "ALL"}`, each call row
+  mirrored into its put (`_with_mirrored_puts`, " C740" → " P740" — every
+  listed strike carries both; the mirrored put was bdp-verified live) and
+  completed with the underlying's asset class (`_with_asset_class`), the
+  union de-duplicated by security (OPT_CHAIN's keyed rows win). A series the
+  Terminal cannot answer contributes nothing. Three metered `bds` per ticker
+  per 10-minute chain cache (was one). `chain_series=()` = the legacy
+  monthly ladder; `chain_periodicity` / `CHAIN_ALL_SERIES` are gone.
+- **Live result** (the user's Terminal, 2026-09-02 ~16:30): SPY 32 expiries
+  in 3.3 s (09/02 … dailies, Mon/Wed/Fri weeklies, monthlies, 09/30
+  quarterly, LEAPS), 12 746 contracts C = P; a 3-expiry fetch 3.2 s, 1022
+  quotes / 734 two-sided, forwards implied. SX5E INDEX 31 expiries in 1.3 s
+  (Eurex weeklies list under their own root, "WSX5EA 11/06/26 P7475
+  Index"), 9676 contracts; fetch 7.2 s, 1390 quotes / 792 two-sided,
+  European, forwards implied.
+- Locks (FakeBlp): `test_chain_is_opt_chain_plus_every_listed_series`,
+  `test_series_are_configurable_and_empty_means_the_legacy_monthly_ladder`,
+  `test_a_series_the_terminal_cannot_answer_contributes_nothing`,
+  `test_series_rows_are_calls_only_and_get_their_puts_mirrored`, the SX5E
+  yellow-key test now expects the mirrored put; `_chain_bds_count` counts
+  OPT_CHAIN resolutions. Docs/bloomberg_setup.md metered-call note + What's
+  new corrected (the 2026-09-02c entry no longer claims CHAIN_TICKERS alone).
+- Riders: a Terminal-session calibration on the weeklies; the
+  multi-underlying batch form if the 3-calls-per-ticker cost ever matters.
 
 ### 🧭 SESSION WRAP (2026-09-02d) — MARKET DATA, SECOND PASS: BLOOMBERG INDEX CHAINS, REAL PAST BID/ASK FROM MASSIVE, CAPTURES THAT BELONG TO THEIR SOURCE
 
