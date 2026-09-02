@@ -1000,6 +1000,10 @@ below) — every recorded rider is closed except the ones listed here:
    captures made before
    store schema v10 are unattributed and no longer offered by the picker
    (they still replay from a saved selection).
+7. LV DENSITY-SMOOTHNESS PENALTY (wrap 2026-09-03a below; proposed, user
+   decision): build `densitySmoothWeight` as designed there (default 0 =
+   byte-identical; prototype μ = 1 improved the converged rms AND cut
+   nfev), then adjudicate the default on the benchmark pack.
 6. LV RIGHT-EDGE rider (wrap 2026-09-02i below; not a gate): the calibration
    lattice's 1.4 × pad + Dirichlet zero still mispriced high-vol long-dated
    wings at the last quote — sizing it by the image estimate (or a
@@ -1018,6 +1022,62 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-03a) — LV DENSITY ROUGHNESS: THE DISPLAY WAS AN ARTEFACT, THE MODEL'S IS REAL, AND A DENSITY-SMOOTHNESS PENALTY THROUGH THE JACOBIAN IS FREE
+
+User question: LV-fit densities look very rough — a true result of the
+coarse grid + affine local variance fitting prices closely, or a display
+artefact? Probes on `tests/fixtures/lv_weekly_massive.json` (SPY, haircut /
+gridXNodes 20 / convexWing): scratchpad density_probe.py, reg_sweep.py,
+lqd_compare.py, density_penalty_proto.py.
+
+- **Display artefact (FIXED, 0cc9c02)**: the LV "Densities" view drew
+  `densityExt`, rebuilt from the 81-point reconstructed IV curve through the
+  implied-vol Breeden–Litzenberger functional (np.gradient twice on a
+  piecewise-LINEAR w(k)): 92 extrema on the 1-year rung where the lattice
+  density has 3–5, and a smoothed curve 10–15 % of peak off the truth on
+  the short rungs. `densityExt` is now the lattice density (d²C/dx²) on the
+  converged-operator reprice (`conv_sol`, already computed for the honest
+  RMS), left-extended to K_DISPLAY_LO from the lattice itself; every node
+  in the central mass survives the stride; `density` byte-identical via the
+  shared `_lattice_density`. Locks: tests/test_lv_density_display.py (3).
+- **The model's density IS rough on short rungs — a true result**: the
+  calibration lattice, the converged (dx/2, dt/4) and a fine (dx/4, dt/16)
+  reprice agree (6-day rung: 7/7/7 extrema, deviations 5 % / 1.5 % of
+  peak). Cause = vertex-scale ringing of the local variance (dips to the 5 %
+  floor next to 13 % vertices 1.1 % apart; 9 slope flips) — over-fitting
+  quote noise; the L2 index-space roughness weight 1e-2 is negligible. LQD
+  on the same rung: 27.5 bp, 5 extrema (part of the multimodality is in the
+  quotes). Operator gap on the 6-day rung: in-operator 20.7 vs converged
+  33.6 bp.
+- **Global roughness weight is a blunt trade** (converged rms all rungs /
+  6-day extrema): λ 0.01 → 20.2 bp / 11; 1 → 20.1 / 5 (non-uniform); 30 →
+  24.0 / 7; 300 → 32.9 / 3; 3000 → 48 bp unimodal.
+- **Density-smoothness through the Jacobian — PROTOTYPED, works, costs
+  nothing**: third differences of the lattice call prices (= density slope)
+  at stride 2 inside each expiry's quoted window (±20 %), scaled
+  √(μ·stride)·s^{3/2}/dx^{5/2} (s = the rung's ATM std in x), injected as
+  BasketQuote rows (a linear functional of the prices; Jacobian = the same
+  stencil on the marched sensitivities — the var-swap / operator-prior row
+  precedent, no extra PDE work). 850 rows on the 7-rung SPY surface.
+  μ = 1: converged rms 20.2 → 18.5 bp (surface rms 8.3 unchanged), nfev
+  62 → 43, wall 20.4 → 17.9 s EVEN through the prototype's per-basket
+  `sens_at` loop; density extrema 11/3/5/7/7/11/5 → 6/3/2/3/1/1/1; local-vol
+  slope flips 6/3/8/7/7/15/7 → 6/1/4/7/3/3/1. μ = 0.01 already helps
+  (18.9 bp, nfev 49); μ = 10 starts to cost (21.5 bp). The 6-day rung stays
+  the roughest (data + operator gap), improved 11 → 6.
+- **Production design (proposed, not built)**: a `densitySmoothWeight` (μ)
+  OptionsSettings field, LV-only (affine key, no options-version bump),
+  default 0 = byte-identical, recommended 1 pending benchmark-pack
+  adjudication; a residual block in `calibrate_affine` applying the banded
+  stencil to `sol.prices[i]` / `sol.sens[i]` per expiry (~1 ms/eval; rows
+  join the dense data block for GN, cost +rows·m² per TRF SVD ≈ 5–10 ms,
+  repaid by the fewer iterations); rows EXCLUDED from the stall data block;
+  s from the prepared rows' ATM total variance; window from the quoted
+  range ± 2 s. Refinement rider: the log-density variant D³ log f (zero on
+  a Gaussian, so no width bias) as nonlinear rows with the same Jacobian
+  cost. Locks to write: byte-identity at μ = 0, stencil annihilates
+  quadratic prices, extrema drop on a rigged ringing surface.
 
 ### 🧭 SESSION WRAP (2026-09-02i) — THE LV LATTICE RIGHT-EDGE LAYER: THE DISPLAY WING NO LONGER DRAWS THE DIRICHLET BOUNDARY
 
