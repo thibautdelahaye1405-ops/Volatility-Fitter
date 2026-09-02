@@ -41,8 +41,11 @@ export interface LiveTableFrame {
   ready: boolean;
   full?: boolean;
   ts?: string | null;
+  /** The FRAME's spot (a manual dial move's when one is set) and forward. */
   spot?: number | null;
   forward?: number | null;
+  /** The book's actual underlying spot, independent of the dial. */
+  liveSpot?: number | null;
   rows?: LiveTickRow[];
   gone?: string[];
   nLive?: number;
@@ -63,6 +66,8 @@ export interface LiveTicksState {
   ts: string | null;
   spot: number | null;
   forward: number | null;
+  /** The book's own spot (the Spot move card's streamed readout). */
+  liveSpot: number | null;
   /** The fit rolled to the live spot (last received); null before the first. */
   model: { k: number; vol: number }[] | null;
   /** Keys whose band moved in the LAST frame (cell flash); cleared shortly after. */
@@ -80,6 +85,7 @@ export const EMPTY_LIVE: LiveTicksState = {
   ts: null,
   spot: null,
   forward: null,
+  liveSpot: null,
   model: null,
   flash: new Set(),
   seq: 0,
@@ -101,7 +107,7 @@ export function applyFrame(prev: LiveTicksState, frame: LiveTableFrame): LiveTic
     if (!frame.streaming) {
       return {
         ...prev, rows: new Map(), streaming: false, ready: false, flash: new Set(),
-        ts: null, spot: null, forward: null, model: null,
+        ts: null, spot: null, forward: null, liveSpot: null, model: null,
       };
     }
     return { ...prev, streaming: true, ready: frame.ready, rows: frame.ready ? prev.rows : new Map() };
@@ -128,6 +134,7 @@ export function applyFrame(prev: LiveTicksState, frame: LiveTableFrame): LiveTic
     ts: frame.ts ?? prev.ts,
     spot: frame.spot ?? prev.spot,
     forward: frame.forward ?? prev.forward,
+    liveSpot: frame.liveSpot ?? prev.liveSpot,
     model: frame.model ?? prev.model,
     flash,
     seq: prev.seq + 1,

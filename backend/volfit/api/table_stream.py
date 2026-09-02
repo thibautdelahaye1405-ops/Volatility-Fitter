@@ -43,7 +43,7 @@ from pydantic import BaseModel, Field
 from volfit.api.quotes import prepare_quotes
 from volfit.api.schemas import SmilePoint
 from volfit.api.service import displayed_base, node_clock, spot_forward_shift, variance_time
-from volfit.api.smile_layers import model_iv_at, rolled_record, strike_key
+from volfit.api.smile_layers import model_iv_at, rolled_record, stream_frame, strike_key
 from volfit.api.state import AppState
 from volfit.api.table import _price as band_price
 from volfit.calib.band import resolve_band
@@ -83,8 +83,11 @@ class LiveTableFrame(BaseModel):
     ready: bool  # the book served this node's chain (painted + covered)
     full: bool = False  # rows are the whole live slice (first frame / reset)
     ts: str | None = None  # newest provider stamp of the live chain (ISO, UTC)
-    spot: float | None = None
+    spot: float | None = None  # the FRAME's spot (the manual dial's when one is set)
     forward: float | None = None
+    #: The book's actual underlying spot (independent of the dial) — the Spot
+    #: panel's streamed readout.
+    liveSpot: float | None = None
     rows: list[LiveTickRow] = Field(default_factory=list)
     gone: list[str] = Field(default_factory=list)  # keys no longer two-sided
     nLive: int = 0  # live two-sided rows in the slice after this frame
@@ -126,7 +129,8 @@ class LiveSlice:
     spot: float
     forward: float
     fingerprint: str
-    shift: float = 0.0  # live spot return vs the calibration anchor (rolls the fit)
+    shift: float = 0.0  # the FRAME's return vs the calibration anchor (rolls the fit)
+    live_spot: float = 0.0  # the book's actual spot (the frame's unless a manual dial is set)
 
 
 def live_chain(state: AppState, ticker: str, expiry: date) -> ChainSnapshot | None:
@@ -188,12 +192,21 @@ def live_slice(
     except Exception:  # noqa: BLE001 — no forward yet: not ready
         return None
     fingerprint = chain_fingerprint(chain, expiry)
-    shift = live_shift(state, ticker, chain.spot)
+    # The FRAME the rows and the rolled fit live in (smile_layers.stream_frame):
+    # a MANUAL dial move overrides the live spot; a poll-set shift does not.
+    shift, frame_spot, frame_forward = stream_frame(
+        state, ticker, expiry, t_cal, chain.spot, forward.forward, live_shift(state, ticker, chain.spot)
+    )
     try:
         prepared = prepare_quotes(chain, expiry, forward, t_cal, cash, tau=tau)
     except ValueError:  # no two-sided OTM quotes right now: an empty live slice
-        return LiveSlice([], chain.timestamp, chain.spot, forward.forward, fingerprint, shift)
+        return LiveSlice(
+            [], chain.timestamp, frame_spot, frame_forward, fingerprint, shift, live_spot=chain.spot
+        )
     f, d, tv = prepared.forward, prepared.discount, prepared.tau
+    # Live IVs are inverted at the LIVE forward (the prices are the market's);
+    # only the moneyness is re-expressed against the frame forward (fixed strikes).
+    dk = math.log(f / frame_forward) if frame_forward > 0.0 else 0.0
     band = resolve_band(
         prepared.iv_bid, prepared.iv_mid, prepared.iv_ask, fit_mode, state.fit_settings().haircut
     )
@@ -211,7 +224,7 @@ def live_slice(
                 key=row_key(strike),
                 strike=round(strike, 6),
                 type=side,
-                k=round(k, 8),
+                k=round(k + dk, 8),
                 bidIv=round(float(bid), 8),
                 midIv=round(float(mid), 8),
                 askIv=round(float(ask), 8),
@@ -223,7 +236,9 @@ def live_slice(
                 index=(calib_index or {}).get(strike_key(strike), -1),
             )
         )
-    return LiveSlice(rows, chain.timestamp, chain.spot, f, fingerprint, shift)
+    return LiveSlice(
+        rows, chain.timestamp, frame_spot, frame_forward, fingerprint, shift, live_spot=chain.spot
+    )
 
 
 # ---------------------------------------------------------------- tracker
@@ -246,6 +261,7 @@ class LiveTableTracker:
         self._fingerprint: str | None = None
         self._announced: tuple[bool, bool] | None = None  # (streaming, ready)
         self._model_shift: float | None = None  # shift the last sent rolled model was at
+        self._frame_shift: float | None = None  # shift the last sent ROWS were framed at
         self._base_id: int | None = None  # identity of the calibration record last seen
         self._rolled = None  # the rolled FitRecord at (_base_id, _rolled_shift)
         self._rolled_shift: float | None = None
@@ -271,12 +287,19 @@ class LiveTableTracker:
             return self._status(True, False)
         self._announced = (True, True)  # a ticks frame announces ready itself
         base_changed = id(base) != self._base_id  # a refit: full repaint + new rolled fit
-        if sl.fingerprint == self._fingerprint and self._sent and not base_changed:
+        # The frame moved (a manual dial move, or the live spot ticked): every
+        # row's moneyness changed, so every row is re-sent (not a `full` reset —
+        # the UI flashes only material IV moves, and the map is unchanged).
+        frame_moved = self._frame_shift is not None and sl.shift != self._frame_shift
+        if sl.fingerprint == self._fingerprint and self._sent and not base_changed and not frame_moved:
             return None
         self._fingerprint = sl.fingerprint
+        self._frame_shift = sl.shift
         full = not self._sent or base_changed
         current = {r.key: r for r in sl.rows}
-        changed = [r for r in sl.rows if full or self._sent.get(r.key) != _signature(r)]
+        changed = [
+            r for r in sl.rows if full or frame_moved or self._sent.get(r.key) != _signature(r)
+        ]
         gone = [k for k in self._sent if k not in current]
         self._sent = {k: _signature(r) for k, r in current.items()}
         # The fit rolled to the live spot: recomputed only when the spot (hence the
@@ -309,6 +332,7 @@ class LiveTableTracker:
             ts=sl.ts.isoformat() if sl.ts is not None else None,
             spot=sl.spot,
             forward=sl.forward,
+            liveSpot=sl.live_spot,
             rows=changed,
             gone=gone,
             nLive=len(current),

@@ -6,11 +6,15 @@ full recalibration (per Docs/spot_move_vol_surface_note_updated.tex). This modul
 exposes the per-ticker spot SHIFT that AppState holds and that
 volfit.api.service.fit_or_get transports the cached anchor fit by:
 
-  * ``spot_state``  — current shift, anchor spot and the active dynamics regime;
-  * ``set_shift``   — apply a hypothetical/live shift (transports every view);
-  * ``recalibrate`` — the explicit "Calibrate" action: clear the shift and drop
-    the ticker's chain caches so the next fit refetches and recalibrates at the
-    live spot (re-anchoring);
+  * ``spot_state``  — current shift, the calibration anchor, the latest known
+    market spot (streamed / probed / chain) and the active dynamics regime —
+    the Spot panel's readouts;
+  * ``set_shift``   — apply a hypothetical (dial) or live shift (transports
+    every view — the live tick stream included for a dial move);
+  * ``recalibrate`` — the explicit **Re-anchor**: clear the shift, refetch the
+    ticker's chain and calibrate its lit nodes in the background at the live
+    spot (volfit.api.workflow_reanchor) — the frozen fit stays on screen
+    until the new one lands;
   * ``live_spot``   — re-probe the provider's spot for real-time polling
     (spotMode='realtime'); the frontend turns the implied return into a shift.
 
@@ -19,7 +23,7 @@ Everything is a thin pure function over AppState, like the rest of volfit.api.
 
 from __future__ import annotations
 
-from volfit.api.schemas import LiveSpot, SpotShiftRequest, SpotState
+from volfit.api.schemas import LiveSpot, ReanchorResult, SpotShiftRequest, SpotState
 from volfit.api.state import AppState
 from volfit.dynamics.ssr import ssr_of_regime
 
@@ -31,11 +35,38 @@ def _regime_label(regime: str | float) -> str:
     return f"custom {regime:g}"
 
 
+def _source_label(state: AppState) -> str:
+    from volfit.api.datasource import SOURCE_LABELS
+
+    sid = state.active_source
+    return SOURCE_LABELS.get(sid, sid.title())
+
+
 def spot_state(state: AppState, ticker: str) -> SpotState:
-    """Current spot-move state of a ticker (validates the ticker -> 404)."""
-    anchor = float(state.snapshot(ticker).spot)  # raises UnknownNodeError if bad
+    """Current spot-move state of a ticker (validates the ticker -> 404).
+
+    ``anchorSpot`` is the CALIBRATION spot (what the shift and the transport are
+    relative to), not the latest chain's — after a Fetch without a Calibrate the
+    two differ, and the panel shows both. The market readout is the streaming
+    book when live, else the last probe, else the fetched chain's own spot."""
+    from volfit.api.workflow_stages import lit_nodes
+
+    snap = state.snapshot(ticker)  # raises UnknownNodeError if bad
+    anchor = float(state.anchor_spot(ticker))
     shift = state.spot_shift(ticker)
     regime = state.dynamics_regime()
+    reading = state.live_spot_reading(ticker)
+    if reading is None and float(snap.spot) > 0.0:
+        reading = (float(snap.spot), snap.timestamp, "chain")
+    live = ret = at = src = None
+    if reading is not None:
+        live, stamp, src = reading
+        ret = (live / anchor - 1.0) if anchor > 0.0 else None
+        at = stamp.isoformat() if stamp is not None else None
+    try:
+        n_lit = len(lit_nodes(state, [ticker]))
+    except Exception:  # noqa: BLE001 — a ladder mid-refetch never breaks the readout
+        n_lit = 0
     return SpotState(
         ticker=ticker,
         anchorSpot=anchor,
@@ -43,26 +74,47 @@ def spot_state(state: AppState, ticker: str) -> SpotState:
         shiftedSpot=anchor * (1.0 + shift),
         regime=_regime_label(regime),
         regimeSsr=float(ssr_of_regime(regime)),
+        shiftSource=state.spot_shift_source(ticker),
+        liveSpot=live,
+        liveReturn=ret,
+        liveAt=at,
+        liveSource=src,
+        streaming=bool(state.is_streaming()),
+        sourceLabel=_source_label(state),
+        litNodes=n_lit,
+        lvEnabled=bool(state.options().localVolEnabled),
     )
 
 
-def set_shift(state: AppState, ticker: str, body: SpotShiftRequest) -> SpotState:
-    """Apply a hypothetical/live spot shift; the surface transports on next read."""
+def set_shift(
+    state: AppState, ticker: str, body: SpotShiftRequest, source: str = "manual"
+) -> SpotState:
+    """Apply a hypothetical (``source="manual"``, the dial) or live
+    (``"live"``, the spot poll) shift; the surface transports on next read."""
     state.snapshot(ticker)  # validate the ticker before mutating
-    state.set_spot_shift(ticker, body.spotReturn)
+    state.set_spot_shift(ticker, body.spotReturn, source=source)
     return spot_state(state, ticker)
 
 
-def recalibrate(state: AppState, ticker: str) -> SpotState:
-    """Re-anchor: clear the shift and recalibrate at the live spot (Calibrate)."""
+def recalibrate(state: AppState, ticker: str, fit_mode: str = "mid") -> ReanchorResult:
+    """Re-anchor: clear the shift, refetch the chain and calibrate the ticker's
+    lit nodes in the background at the live spot (the panel's Re-anchor)."""
+    from volfit.api import workflow_reanchor  # lazy: workflow imports this module
+
     state.snapshot(ticker)  # validate the ticker before mutating
-    state.recalibrate(ticker)
-    return spot_state(state, ticker)
+    outcome = workflow_reanchor.reanchor_ticker(state, ticker, fit_mode)
+    base = spot_state(state, ticker)
+    return ReanchorResult(
+        **base.model_dump(),
+        calibrationStarted=outcome.started,
+        busy=outcome.busy,
+        refetched=outcome.refetched,
+    )
 
 
 def live_spot(state: AppState, ticker: str) -> LiveSpot:
     """Re-probe the provider's spot and report the implied return vs the anchor."""
-    anchor = float(state.snapshot(ticker).spot)
+    anchor = float(state.anchor_spot(ticker))
     live = float(state.live_spot(ticker))
     ret = (live / anchor - 1.0) if anchor > 0.0 else 0.0
     return LiveSpot(ticker=ticker, anchorSpot=anchor, liveSpot=live, spotReturn=ret)

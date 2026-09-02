@@ -987,6 +987,72 @@ existing stores default the new gates. First launch after this commit opens
 the Help Center's Welcome page once (Esc closes it; Help ▾ Welcome brings it
 back).
 
+### 🧭 SESSION WRAP (2026-09-02b) — SPOT MOVE CARD: MARKET SPOT · FINE-TUNE · WORKING RE-ANCHOR
+
+User report on the right-panel spot dial: it "did nothing" beyond moving the
+smile chart's strike brush, the card showed only the calibrated spot (no
+Bloomberg live spot), no fine-tune buttons, and Re-anchor erased the chart.
+Two root causes, both fixed and locked (backend + frontend):
+
+- **Dial vs the live tick stream (root cause 1).** With a Bloomberg / Massive
+  book streaming, the Smile Viewer's market frame comes from the SSE tick
+  stream (`table_stream.live_slice`), which rolled the fit to the BOOK spot
+  and ignored the app's active shift — a dial move only changed the payload's
+  transported `kMin/kMax` (the brush). AppState now records WHO set the shift:
+  `set_spot_shift(ticker, shift, source)` — "manual" (the dial) | "live" (the
+  real-time spot poll, `fetch_spots`) — with `manual_spot_shift()` /
+  `spot_shift_source()`; workspace-scoped `spot_shift_source` (doc key
+  `spotShiftSources`, older docs restore as "manual"). At a MANUAL shift the
+  stream frames its rows (moneyness vs the dial's forward — IVs still inverted
+  at the LIVE forward, the prices are the market's), its rolled fit, `spot` and
+  `forward`, and carries the book's own spot as `liveSpot`; a "live" poll shift
+  is ignored by the stream (the book is fresher) — the rule is
+  `smile_layers.stream_frame`. The tracker re-sends every row when the frame
+  moves (a delta, not `full`, so flashes stay meaningful).
+- **Re-anchor (root cause 2).** `POST /spot/{ticker}/calibrate` used
+  `AppState.recalibrate` (drop the ticker's fits + calibrated pointers); on the
+  gated live server nothing recalibrates on a read → blank chart, nothing else.
+  Now `workflow_reanchor.reanchor_ticker` (own module, composes the workflow
+  blocks): clear the shift, `refresh_chain` (new spot +
+  quotes; pointers PRESERVED → the previous fit stays on screen, stale), then
+  the ONE background job over the ticker's lit nodes (calendar-coupled groups)
+  + its LV surface. Response `ReanchorResult` = SpotState + `calibrationStarted`
+  / `busy` (job taken: shift still cleared, chain refetched) / `refetched`;
+  `fit_mode` query like the workflow verbs. Scope is the whole TICKER — a spot
+  move is per ticker and the calendar coupling needs the expiries together —
+  not the single node on screen (answer to the user's question).
+- **Market spot readout.** `SpotState` gains `liveSpot / liveReturn / liveAt /
+  liveSource` ("stream" = off the book via the new non-blocking
+  `provider.book_spot` [Bloomberg `_book_spot(wait=0)`, Massive nearest-expiry
+  book chain]; "probe" = the last `live_spot` request; "chain" = the fetched
+  chain's own spot), `streaming`, `sourceLabel`, `shiftSource`, `litNodes`,
+  `lvEnabled`; `anchorSpot` is now the CALIBRATION spot (`anchor_spot`), not
+  the chain's. The card polls GET /spot at ~1 Hz only while streaming (a free
+  book read); a ↻ button probes once otherwise.
+- **Card (SpotPanel.tsx rewrite, useSpot.ts).** Calibrated · Market · Scenario
+  · Regime rows; the dial in 0.1 % steps with ± buttons (Shift = 1 %), Reset,
+  **Sync to market** (= `/fetch/spots` for the ticker, a "live" shift);
+  Re-anchor narrates the job from `workflow.calib` plus an outcome line; the
+  real-time spot mode locks the dial. Help: glossary / lenses / universe guides
+  + What's new (the content lock now asserts the Help Center entry EXISTS,
+  not that it is first).
+- Locks: test_api_spot (+5: gated never-blank, busy, readouts, dial vs poll
+  source), test_table_stream (+2: manual frame vs poll, tracker re-frame),
+  test_workspace (source round trip), SpotPanel.test.tsx (8), useLiveTicks
+  `liveSpot`; regression 140 backend (workflow / gated / scheduler / stream /
+  workspace suites) + 406 frontend green; live headless
+  `frontend/scripts/spot_panel_check.mjs` (synthetic single-origin server on
+  :4189: dial → market-frame forward ×1.02 with shiftSource "manual",
+  Re-anchor → shift 0, fit kept, stale false; screenshots .smoke/spot-*.png).
+- Riders / not done: the STREAM path was driven only with the synthetic book —
+  a Bloomberg live-session look at a dial move while `//blp/mktdata` streams is
+  still due; during the headless check the fit process-pool workers logged
+  "paging file is too small" DLL-load errors under memory pressure on this box
+  (the fits completed via the fallback) — re-check on a quiet box; Re-anchor is
+  not a palette command yet.
+- USER-side: restart the long-running :8000 (new SpotState fields, the
+  Re-anchor response model, `spotShiftSources` in workspace docs).
+
 ### 🧭 SESSION WRAP (2026-09-02) — CALIBRATION PERF ARC: BIT-IDENTICAL INNER-LOOP BATCHING (branch perf/param-inner-loop-lv-assembly)
 
 Profiled the three calibration families on real data (perf rails + the

@@ -21,6 +21,7 @@ import SpotPanel from "../SpotPanel";
 import VarSwapPanel from "../VarSwapPanel";
 import { useExpiryFormat } from "../../state/expiryFormat";
 import { useSmileSession } from "../../state/smileSession";
+import { useWorkflowContext } from "../../state/workflowContext";
 import { formatExpiry } from "../../lib/expiryFormat";
 import { formatPct } from "../../lib/chartScale";
 import { cardClass } from "../../lib/ui";
@@ -56,7 +57,10 @@ export default function LocalVolAside({
   const { format } = useExpiryFormat();
   // Spot move is session-wide (one shift per ticker, transported by the
   // backend across every lens) — same source as the Parametric aside.
-  const { spotReturn, spotState, spotMode, setSpotReturn, recalibrate } = useSmileSession();
+  const {
+    spotReturn, spotState, spotMode, setSpotReturn, recalibrate, syncLive, probeLive, spotNote,
+  } = useSmileSession();
+  const { workflow } = useWorkflowContext(); // the background job (Re-anchor progress)
   // Fit replay (V3.5 item 13): the ⏵ toggle + an epoch that advances whenever a
   // fresh affine payload lands, so useLvTrace refetches and auto-replays once.
   const [traceOpen, setTraceOpen] = useState(false);
@@ -76,6 +80,10 @@ export default function LocalVolAside({
           spotMode={spotMode}
           onSpotReturn={setSpotReturn}
           onCalibrate={() => void recalibrate()}
+          onSyncLive={() => void syncLive()}
+          onProbeLive={() => void probeLive()}
+          calib={workflow.calib}
+          note={spotNote}
           disabled={!live}
           disabledReason={!live ? "requires live backend" : undefined}
         />

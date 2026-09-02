@@ -389,6 +389,13 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         live = self._book_spot(ticker) if self.is_streaming() else None
         return live if live is not None else self._spot(ticker)
 
+    def book_spot(self, ticker: str, expiries: list[date] | None = None) -> float | None:
+        """Book-only spot (no bdp, no warm-up wait): the underlying's last tick
+        off the ``//blp/mktdata`` book, or None unless streaming and painted."""
+        if not self.is_streaming():
+            return None
+        return self._book_spot(ticker, wait=0.0)
+
     # -- chain ---------------------------------------------------------------
 
     def _select_contracts(

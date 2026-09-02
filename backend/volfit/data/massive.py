@@ -313,6 +313,16 @@ class MassiveProvider(OptionChainProvider):
             self._expiries_cache[key] = result
         return result
 
+    def book_spot(self, ticker: str, expiries: list[date] | None = None) -> float | None:
+        """Book-only spot: the nearest selected expiry's live-book chain spot
+        (its parity-implied forward), never a REST call; None when not
+        streaming or the book cannot imply a forward yet."""
+        if self._live_book is None:
+            return None
+        nearest = sorted(expiries)[:1] if expiries else None
+        chain = self._chain_from_book(ticker, nearest)
+        return float(chain.spot) if chain is not None and chain.spot else None
+
     def spot(self, ticker: str, expiries: list[date] | None = None) -> float:
         """Underlying spot WITHOUT pulling the whole chain.
 

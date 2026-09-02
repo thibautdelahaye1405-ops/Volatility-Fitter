@@ -2040,7 +2040,10 @@ class SpotShiftRequest(BaseModel):
 
 
 class SpotState(BaseModel):
-    """The active spot-move state of a ticker (the no-recal transport view)."""
+    """The active spot-move state of a ticker (the no-recal transport view) plus
+    the Spot panel's readouts: the calibration anchor, the latest KNOWN market
+    spot (off the streaming book, else the last probe / fetched chain) and who
+    set the active shift."""
 
     ticker: str
     anchorSpot: float  # spot the cached fits were calibrated at
@@ -2048,6 +2051,42 @@ class SpotState(BaseModel):
     shiftedSpot: float  # anchorSpot * (1 + spotReturn)
     regime: str  # active vol-spot dynamics regime label
     regimeSsr: float  # its skew-stickiness ratio (transport strength R)
+    #: Who set the active shift: "manual" (the dial — the whole app, live tick
+    #: stream included, lives at that spot) | "live" (the real-time spot poll /
+    #: Sync to live — the tick stream keeps its own fresher book spot); None
+    #: when the shift is 0.
+    shiftSource: Literal["manual", "live"] | None = None
+    #: Latest known market spot, its return vs the anchor, its UTC stamp and how
+    #: it was read: "stream" = off the live book (refreshes ~1 Hz), "probe" = a
+    #: spot request (Fetch spots / the live endpoint), "chain" = the latest
+    #: fetched chain's spot. None until any of those exists.
+    liveSpot: float | None = None
+    liveReturn: float | None = None
+    liveAt: str | None = None
+    liveSource: Literal["stream", "probe", "chain"] | None = None
+    #: The active provider has a live book right now.
+    streaming: bool = False
+    #: Human label of the active data source ("Bloomberg", "Yahoo Finance" …).
+    sourceLabel: str = ""
+    #: What a Re-anchor calibrates: the ticker's lit nodes (+ its LV surface).
+    litNodes: int = 0
+    lvEnabled: bool = False
+
+
+class ReanchorResult(SpotState):
+    """Outcome of POST /spot/{ticker}/calibrate (the Spot panel's Re-anchor):
+    the shift is cleared and the chain refetched synchronously; the calibration
+    of the ticker's lit nodes runs as the ONE background job (progress in
+    /calibration/status), the previous fit staying on screen until it lands."""
+
+    #: A background calibration of the ticker's lit nodes was started.
+    calibrationStarted: bool = False
+    #: A job was already running: nothing started (press again when idle); the
+    #: shift is still cleared and the chain refetched.
+    busy: bool = False
+    #: The chain was refetched (False = feed miss; the calibration then runs
+    #: on the cached chain).
+    refetched: bool = False
 
 
 class LiveSpot(BaseModel):

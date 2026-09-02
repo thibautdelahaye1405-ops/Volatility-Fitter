@@ -83,3 +83,23 @@ describe("live ticks reducer", () => {
     expect(off.ts).toBeNull();
   });
 });
+
+describe("live ticks reducer · spot frames", () => {
+  it("keeps the book's live spot apart from the frame spot (a dial move)", () => {
+    const first = applyFrame(EMPTY_LIVE, {
+      type: "ticks", streaming: true, ready: true, full: true,
+      spot: 6334.5, forward: 6340.1, liveSpot: 6162.3, rows: [], nLive: 0,
+    });
+    expect(first.spot).toBe(6334.5); // the frame: anchor × (1 + dial)
+    expect(first.forward).toBe(6340.1);
+    expect(first.liveSpot).toBe(6162.3); // the book's own spot, dial-independent
+    // a quote-only delta carries no spots: the last known ones stick
+    const delta = applyFrame(first, { type: "ticks", streaming: true, ready: true, rows: [], nLive: 0 });
+    expect(delta.spot).toBe(6334.5);
+    expect(delta.liveSpot).toBe(6162.3);
+    // the stream drops -> every spot forgotten
+    const off = applyFrame(delta, { type: "status", streaming: false, ready: false });
+    expect(off.liveSpot).toBeNull();
+    expect(off.spot).toBeNull();
+  });
+});

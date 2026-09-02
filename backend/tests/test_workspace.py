@@ -66,7 +66,7 @@ def _worked_state() -> tuple[AppState, list[str]]:
     )
     state.set_events(TICKER, [EventSpec(time=0.05, weight=1.5, label="earnings")])
     state.set_node_lit(TICKER, isos[1], False)
-    state.set_spot_shift(TICKER, 0.01)
+    state.set_spot_shift(TICKER, 0.01, source="live")
     snap = priors.capture_snapshot(state, TICKER, "mid", lv=False)
     assert snap is not None
     state.set_active_prior(TICKER, snap, "saved")
@@ -160,6 +160,7 @@ def test_restore_is_a_reset_versions_advance_and_caches_drop():
     assert state.loaded_snapshot(TICKER) is None
     # content survived the reset
     assert state.spot_shift(TICKER) == 0.01
+    assert state.spot_shift_source(TICKER) == "live"  # who set it rides along
     assert not state.node_lit(TICKER, isos[1])
     assert state.active_prior(TICKER) is not None
     assert state.session_if_exists((TICKER, isos[0])).edits

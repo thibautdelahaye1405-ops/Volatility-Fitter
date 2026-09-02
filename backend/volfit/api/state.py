@@ -18,7 +18,7 @@ import threading
 import warnings
 from collections import deque
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
 from volfit.api.fit_models import DisplayFit
@@ -140,6 +140,11 @@ class AsOfSelection:
     offset: int | None = None  # minutes-before-close for "before_close"
 
 
+
+def _utcnow() -> datetime:
+    """Naive UTC 'now' (the chain timestamps' convention)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+
 class AppState(UniverseMixin):
     """Provider handle plus all caches; one instance per FastAPI app.
 
@@ -173,6 +178,7 @@ class AppState(UniverseMixin):
     _forward_policies = ScopedField("forward_policies")
     _forwards_version = ScopedField("forwards_version")
     _spot_shift = ScopedField("spot_shift")
+    _spot_shift_source = ScopedField("spot_shift_source")
     _spot_version = ScopedField("spot_version")
     _spot_version_by_ticker = ScopedField("spot_version_by_ticker")
     _sessions = ScopedField("sessions")
@@ -386,8 +392,18 @@ class AppState(UniverseMixin):
         #: (localvol extraction) so a SPOT move on one name does not bust every
         #: other name's transported grid.
         self._spot_shift: dict[str, float] = {}
+        #: WHO set the active shift: "manual" (the Spot panel dial — a
+        #: hypothetical move the whole app, live tick stream included, lives at)
+        #: or "live" (the real-time spot poll — the tick stream then keeps its
+        #: own fresher book spot). Absent when the shift is 0.
+        self._spot_shift_source: dict[str, str] = {}
         self._spot_version = 0
         self._spot_version_by_ticker: dict[str, int] = {}
+        #: Latest KNOWN provider spot per ticker: (spot, UTC stamp, "stream" |
+        #: "probe") — refreshed by every live probe (fetch_spots / the live
+        #: endpoint) and read off the streaming book for free while it is live.
+        #: Process state (not workspace): a readout, never an input to a fit.
+        self._live_spot: dict[str, tuple[float, datetime, str]] = {}
         #: Per-ticker market-DATA version: bumped when a fresh options chain is
         #: fetched ("Fetch Options Quotes" / the scheduler). Folded into the fit
         #: key so a refetch marks every node stale (and auto-calibration refits).
@@ -1159,9 +1175,11 @@ class AppState(UniverseMixin):
         with self._lock:
             return self._spot_shift.get(ticker, 0.0)
 
-    def set_spot_shift(self, ticker: str, shift: float) -> float:
+    def set_spot_shift(self, ticker: str, shift: float, source: str = "manual") -> float:
         """Set the ticker's hypothetical/live spot shift; bump the spot version
-        only on a real change so a redundant set never busts derived caches."""
+        only on a real change so a redundant set never busts derived caches.
+        ``source`` records who set it — "manual" (the Spot panel dial) or "live"
+        (the real-time spot poll) — see ``manual_spot_shift``."""
         with self._lock:
             if float(shift) != self._spot_shift.get(ticker, 0.0):
                 self._spot_shift[ticker] = float(shift)
@@ -1169,6 +1187,27 @@ class AppState(UniverseMixin):
                 self._spot_version_by_ticker[ticker] = (
                     self._spot_version_by_ticker.get(ticker, 0) + 1  # per-ticker cache key
                 )
+            if float(shift) == 0.0:
+                self._spot_shift_source.pop(ticker, None)
+            else:
+                self._spot_shift_source[ticker] = source
+            return self._spot_shift.get(ticker, 0.0)
+
+    def spot_shift_source(self, ticker: str) -> str | None:
+        """"manual" | "live" — who set the ticker's active shift; None when 0."""
+        with self._lock:
+            if self._spot_shift.get(ticker, 0.0) == 0.0:
+                return None
+            return self._spot_shift_source.get(ticker, "manual")
+
+    def manual_spot_shift(self, ticker: str) -> float:
+        """The ticker's shift when it is a MANUAL dial move (a hypothetical spot
+        the whole app — the live tick stream included — must live at); 0 when
+        the shift is 0 or was set by the real-time spot poll (the tick stream
+        then follows its own, fresher book spot)."""
+        with self._lock:
+            if self._spot_shift_source.get(ticker, "manual") != "manual":
+                return 0.0
             return self._spot_shift.get(ticker, 0.0)
 
     # --------------------------------------------------- data / calibration state
@@ -1260,10 +1299,14 @@ class AppState(UniverseMixin):
             self._affine_calibrated[ticker] = key
 
     def recalibrate(self, ticker: str) -> None:
-        """Re-anchor a ticker: clear its hypothetical spot shift and drop its
-        chain-derived caches so the next fit refetches the live snapshot and
-        recalibrates at the current spot (the explicit "Calibrate" action)."""
+        """Hard re-anchor of a ticker: clear its spot shift and DROP its chain-
+        derived caches + calibrated pointers, so the next fit refetches the
+        snapshot and recalibrates at the current spot (ungated app only — in the
+        gated live server a dropped pointer is a BLANK chart, which is why the
+        Spot panel's Re-anchor goes through ``workflow.reanchor_ticker`` instead:
+        refetch, then a background calibration, the frozen fit shown meanwhile)."""
         with self._lock:
+            self._spot_shift_source.pop(ticker, None)
             if self._spot_shift.pop(ticker, 0.0) != 0.0:
                 self._spot_version += 1  # global client signal
                 self._spot_version_by_ticker[ticker] = (
@@ -1290,15 +1333,42 @@ class AppState(UniverseMixin):
     def live_spot(self, ticker: str) -> float:
         """Re-probe the active provider's current spot WITHOUT touching the
         cached snapshot (real-time spot polling). Falls back to the cached
-        snapshot spot when the provider has no cheap spot probe."""
+        snapshot spot when the provider has no cheap spot probe. A successful
+        probe is remembered for ``live_spot_reading`` (the Spot panel readout)."""
         self._require_active(ticker)
         self._ensure_selection(ticker)
         with self._lock:
             chosen = list(self._selected.get(ticker, []))
         try:
-            return float(self.provider.spot(ticker, chosen))
+            live = float(self.provider.spot(ticker, chosen))
         except Exception:
             return float(self.snapshot(ticker).spot)
+        if live > 0.0:
+            with self._lock:
+                self._live_spot[ticker] = (live, _utcnow(), "probe")
+        return live
+
+    def live_spot_reading(self, ticker: str) -> tuple[float, datetime, str] | None:
+        """The latest KNOWN provider spot — ``(spot, UTC stamp, source)`` — for
+        the Spot panel's live readout, WITHOUT a metered request: read off the
+        streaming book while it is live (``provider.book_spot``, non-blocking;
+        source "stream"), else the last probe (source "probe"); None when
+        nothing was ever probed."""
+        if self.is_streaming():
+            reader = getattr(self.provider, "book_spot", None)
+            with self._lock:
+                chosen = list(self._selected.get(ticker, []))
+            try:
+                spot = reader(ticker, chosen) if reader is not None else None
+            except Exception:  # noqa: BLE001 — a book hiccup is "unknown", not an error
+                spot = None
+            if spot is not None and float(spot) > 0.0:
+                reading = (float(spot), _utcnow(), "stream")
+                with self._lock:
+                    self._live_spot[ticker] = reading
+                return reading
+        with self._lock:
+            return self._live_spot.get(ticker)
 
     # ------------------------------------ market settings and forward policy
     def forwards_version(self, ticker: str) -> int:

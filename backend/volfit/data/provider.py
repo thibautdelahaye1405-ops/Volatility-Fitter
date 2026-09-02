@@ -103,6 +103,13 @@ class OptionChainProvider(abc.ABC):
         """
         return float(self.fetch_chain(ticker, expiries).spot)
 
+    def book_spot(self, ticker: str, expiries: list[date] | None = None) -> float | None:
+        """Underlying spot straight off a live streaming BOOK — non-blocking and
+        never a metered request — or None (not streaming / no book / the
+        underlying not painted yet). The Spot panel's live readout polls this
+        at ~1 Hz while a stream is up; providers with a book override it."""
+        return None
+
     def historical_modes(self) -> set[str]:
         """As-of modes this provider supports (default: live only)."""
         return {"live"}

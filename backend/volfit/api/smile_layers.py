@@ -63,6 +63,35 @@ def prevailing_shift(state: AppState, ticker: str) -> tuple[float, float | None]
     return spot / anchor - 1.0, spot
 
 
+def stream_frame(
+    state: AppState,
+    ticker: str,
+    expiry: date,
+    t: float,
+    live_spot: float,
+    live_forward: float,
+    live_shift: float,
+) -> tuple[float, float, float]:
+    """``(shift, spot, forward)`` of the frame the live tick stream lives in.
+
+    A MANUAL dial move (the Spot panel) is a hypothetical spot the whole app
+    lives at — the stream follows it too (else the chart would ignore the dial
+    while a book streams): the frame is the anchor moved by the dial, its
+    forward the calibration forward under the app's transport rule. With no
+    manual move the frame is the live book itself (``live_*``); a shift set by
+    the real-time spot POLL is deliberately ignored — the book is fresher."""
+    from volfit.api.service import spot_forward_shift
+
+    manual = state.manual_spot_shift(ticker)
+    if manual == 0.0:
+        return live_shift, live_spot, live_forward
+    resolved = state.resolved_forward(ticker, expiry)
+    forward, _h = spot_forward_shift(
+        state, ticker, expiry, resolved.forward, resolved.discount, t, shift=manual
+    )
+    return manual, float(state.anchor_spot(ticker)) * (1.0 + manual), float(forward)
+
+
 def rolled_record(state: AppState, ticker: str, iso: str, base: FitRecord, shift: float) -> FitRecord:
     """The calibrated fit ``base`` rolled by ``shift`` under the dynamics regime
     (the displayed slice lives in the ROLLED forward's moneyness)."""

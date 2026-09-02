@@ -1,7 +1,8 @@
 // Right-hand column of the Parametric lens (UI SHELL v2 wave 2): three
 // stacked cards, top to bottom —
-//   Spot move        the SSR spot-scenario slider (transports every lens; the
-//                    Calibrate button re-anchors)
+//   Spot move        calibrated / market / scenario spot, the SSR dial
+//                    (transports every lens live), Sync to market, Re-anchor
+//                    (refetch + background recalibration of the ticker)
 //   Variance swap    the var-swap quote editor (adds a calibration penalty;
 //                    Options-gated)
 //   Fit diagnostics  headline handles (ATM / skew / curvature / RMS) with the
@@ -14,6 +15,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import SpotPanel from "./SpotPanel";
 import VarSwapPanel from "./VarSwapPanel";
 import { useSmileSession } from "../state/smileSession";
+import { useWorkflowContext } from "../state/workflowContext";
 import { formatPct } from "../lib/chartScale";
 import { cardClass } from "../lib/ui";
 
@@ -45,8 +47,9 @@ const card = `${cardClass} p-4`;
 export default function SmileAside() {
   const {
     smile, source, spotReturn, spotState, spotMode, setSpotReturn, recalibrate,
-    applyVarSwap, undoVarSwap, redoVarSwap,
+    syncLive, probeLive, spotNote, applyVarSwap, undoVarSwap, redoVarSwap,
   } = useSmileSession();
+  const { workflow } = useWorkflowContext(); // the background job (Re-anchor progress)
   const live = source === "live";
   const [showMore, setShowMore] = useState(false);
 
@@ -79,7 +82,8 @@ export default function SmileAside() {
   return (
     <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
       {/* 1. Spot move: transports the live surface (no recalibration);
-          Calibrate re-anchors. Applies across every lens, not just Smile. */}
+          Re-anchor refetches + recalibrates the ticker. Applies across every
+          lens, not just Smile. */}
       <section className={card}>
         <SpotPanel
           spotReturn={spotReturn}
@@ -87,6 +91,10 @@ export default function SmileAside() {
           spotMode={spotMode}
           onSpotReturn={setSpotReturn}
           onCalibrate={() => void recalibrate()}
+          onSyncLive={() => void syncLive()}
+          onProbeLive={() => void probeLive()}
+          calib={workflow.calib}
+          note={spotNote}
           disabled={!live}
           disabledReason={!live ? "requires live backend" : undefined}
         />

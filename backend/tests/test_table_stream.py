@@ -125,7 +125,64 @@ def test_live_slice_inverts_at_the_live_forward(rig):
             assert by_key[r.key].strike == pytest.approx(r.strike, abs=1e-6)
 
 
+def test_manual_dial_frames_the_live_slice_and_the_poll_shift_does_not(rig):
+    """A MANUAL dial move (the Spot panel) is the frame the stream lives in —
+    forward, spot, row moneyness and the rolled shift — while the book's own
+    spot rides along as ``live_spot``; the live IVs stay inverted at the live
+    forward (the prices are the market's). A shift set by the real-time spot
+    POLL is ignored: the book is fresher than the poll."""
+    from volfit.api.schemas import SpotShiftRequest
+    from volfit.api.spot import set_shift
+
+    state, prov, expiry, _table = rig
+    prov.streaming = True
+    base = live_slice(state, "ALPHA", expiry)
+    set_shift(state, "ALPHA", SpotShiftRequest(spotReturn=0.02))  # the dial
+    dial = live_slice(state, "ALPHA", expiry)
+    assert dial.shift == pytest.approx(0.02)
+    assert dial.forward == pytest.approx(base.forward * 1.02, rel=1e-12)
+    assert dial.spot == pytest.approx(base.spot * 1.02, rel=1e-12)
+    assert dial.live_spot == pytest.approx(base.spot, rel=1e-12)  # the book did not move
+    by_key = {r.key: r for r in dial.rows}
+    for r in base.rows:  # fixed strikes re-expressed against the dial's forward; IVs untouched
+        assert by_key[r.key].k == pytest.approx(r.k - math.log(1.02), abs=1e-6)
+        assert by_key[r.key].midIv == pytest.approx(r.midIv, abs=1e-8)
+        assert by_key[r.key].strike == pytest.approx(r.strike, abs=1e-6)
+    # The poll's shift: the frame is the live book again (its own spot move).
+    set_shift(state, "ALPHA", SpotShiftRequest(spotReturn=0.05), source="live")
+    prov.spot_scale = 1.01
+    poll = live_slice(state, "ALPHA", expiry)
+    assert poll.forward == pytest.approx(base.forward * 1.01, rel=1e-12)
+    assert poll.shift == pytest.approx(0.01, abs=1e-12)
+    assert poll.spot == pytest.approx(base.spot * 1.01, rel=1e-12)
+    assert poll.live_spot == pytest.approx(poll.spot, rel=1e-12)
+
+
 # ---------------------------------------------------------------- tracker
+def test_tracker_resends_every_row_when_the_dial_moves(rig):
+    """A dial move with no tick re-frames every row (new moneyness, new forward
+    and spot, the fit rolled to the dial's spot) as a delta — NOT a full reset,
+    so the table's flash logic keeps flagging only material IV moves."""
+    from volfit.api.schemas import SpotShiftRequest
+    from volfit.api.spot import set_shift
+
+    state, prov, expiry, table = rig
+    prov.streaming = True
+    tracker = LiveTableTracker()
+    first = tracker.frame(state, "ALPHA", expiry)
+    assert first.full and first.liveSpot == pytest.approx(first.spot)
+    assert tracker.frame(state, "ALPHA", expiry) is None
+    set_shift(state, "ALPHA", SpotShiftRequest(spotReturn=0.02))  # no tick, just the dial
+    moved = tracker.frame(state, "ALPHA", expiry)
+    assert moved is not None and not moved.full
+    assert {r.key for r in moved.rows} == _keys(table) and moved.gone == []
+    assert moved.forward == pytest.approx(first.forward * 1.02, rel=1e-12)
+    assert moved.spot == pytest.approx(first.spot * 1.02, rel=1e-12)
+    assert moved.liveSpot == pytest.approx(first.liveSpot)  # the book's spot is unchanged
+    assert moved.model is not None  # the fit rolled to the dial's spot
+    assert tracker.frame(state, "ALPHA", expiry) is None  # steady again
+
+
 def test_tracker_full_then_deltas_then_gone_then_off(rig):
     state, prov, expiry, table = rig
     prov.streaming = True
@@ -204,7 +261,8 @@ def test_sse_without_a_stream_says_so_and_never_reads_the_book(rig):
     frame = json.loads(chunks[0][len("data:"):].strip())
     assert frame == {
         "type": "status", "streaming": False, "ready": False, "full": False, "ts": None,
-        "spot": None, "forward": None, "rows": [], "gone": [], "nLive": 0, "model": None,
+        "spot": None, "forward": None, "liveSpot": None, "rows": [], "gone": [], "nLive": 0,
+            "model": None,
     }
     assert prov.live_reads == 0
 

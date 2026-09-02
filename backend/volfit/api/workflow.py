@@ -19,7 +19,9 @@ Implements the explicit, mode-gated triggers (ROADMAP workflow):
 
 The unified snapshot verb (``POST /fetch/snapshot``: chains -> spot transport ->
 optional cheap prior roll -> optional auto-calibrate, V3.7 item 15) lives in
-volfit.api.workflow_fetch and composes the blocks above.
+volfit.api.workflow_fetch and composes the blocks above; the Spot panel's
+per-ticker **Re-anchor** (clear the shift, refetch, background-calibrate the
+ticker's lit nodes) lives in volfit.api.workflow_reanchor, likewise composed.
 
 A "lit" node (volfit AppState lit/dark designation) is one the user marks as an
 observed source; those are the calibration targets. Dark nodes are graph
@@ -263,7 +265,9 @@ def fetch_spots(state: AppState, tickers: list[str] | None = None) -> dict[str, 
         except Exception:
             continue
         ret = (live / anchor - 1.0) if anchor > 0.0 else 0.0
-        _set_spot_shift(state, ticker, SpotShiftRequest(spotReturn=ret))
+        # source="live": the tick stream keeps following its own (fresher) book
+        # spot rather than this poll — only a MANUAL dial move overrides it.
+        _set_spot_shift(state, ticker, SpotShiftRequest(spotReturn=ret), source="live")
         out[ticker] = LiveSpot(ticker=ticker, anchorSpot=anchor, liveSpot=live, spotReturn=ret)
     return out
 

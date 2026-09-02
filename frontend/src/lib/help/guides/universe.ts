@@ -189,7 +189,7 @@ export const WORKFLOW: GuidePage = {
     "",
     "## Spot moves between calibrations",
     "",
-    "The **Spot move** card in the Parametric and Local Vol asides transports the calibrated surface live under the active [SSR regime](help:glossary:ssr) — every lens follows, nothing refits. **Calibrate** on that card clears the shift and re-anchors at the live spot. In `realtime` spot mode the provider spot drives the slider.",
+    "The **Spot move** card in the Parametric and Local Vol asides shows three spots — *Calibrated* (the anchor the fits were made at), *Market* (the latest provider spot: streamed off the live book at ~1 Hz when one is up, else the last probe or the fetched chain's own) and *Scenario* (anchor × (1 + dial)) — and transports the calibrated surface live under the active [SSR regime](help:glossary:ssr): every lens follows, the node's live tick stream included, nothing refits. The dial moves in 0.1 % steps (± buttons; Shift for 1 %); **Sync to market** jumps it to the live return. **Re-anchor** clears the dial, refetches the ticker's chain and recalibrates ALL its lit nodes (+ its LV surface) at the market spot as the background job — the spot move is per ticker, so a single node cannot be re-anchored alone — and the previous fit stays on screen, marked stale, until the new one lands. In `realtime` spot mode the scheduler drives the dial.",
     "",
     "## Numbers you will read all day",
     "",
