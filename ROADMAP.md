@@ -1084,8 +1084,10 @@ feeds and was not asked for).
   404s / per-source search + add / `sourceLabel` / datasources tickers);
   the scheduler + spot tests' `is_streaming` seams take the ticker.
   Frontend: NodesPane.test (+2, the source pill), state/tickerSources.test
-  (2). Regression: backend slice 661 passed / 7 skipped, frontend 425 green,
-  tsc + production build + headless workbench smoke clean. `seed_priors`
+  (2). Regression: backend slice 661 passed / 7 skipped, then the FULL suite
+  without the perf rails — 2122 passed / 7 skipped (one fix on the way:
+  `stream_refit` defaults to every active ticker again, 9f02d9f); frontend
+  425 green, tsc + production build + headless workbench smoke clean. `seed_priors`
   moved to volfit/api/workflow_priors.py (workflow.py back under 400 lines;
   re-exported).
 - Riders: per-EXPIRY sources (merging chains) if ever wanted; the as-of
