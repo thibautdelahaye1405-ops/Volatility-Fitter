@@ -3,7 +3,7 @@
 // A workspace file is one JSON document:
 //   { schema: "volfit-workspace/1", savedAt, app: { version },
 //     backend: <the server's workspace doc>,      // opaque here (server-validated)
-//     shell:   { activity, tabs, layout, viewSettings, expiryFormat, nodeSources } }
+//     shell:   { activity, tabs, layout, viewSettings, expiryFormat, cameras } }
 // The backend part is authored + validated server-side (GET /workspace/export,
 // POST /workspace/import); this module owns the ENVELOPE and the shell part:
 // validation of a file the user opens (drag-drop / picker / server), the
@@ -31,7 +31,6 @@ export interface ShellBlob {
   layout?: Partial<{ nodesPane: boolean; nodesWidth: number; statusBar: boolean; aside: boolean; rememberView: boolean }>;
   viewSettings?: { scheme?: string; contrast?: number; brightness?: number };
   expiryFormat?: string;
-  nodeSources?: unknown;
 }
 
 export interface WorkspaceBundle {

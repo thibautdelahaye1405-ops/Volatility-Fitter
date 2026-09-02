@@ -49,6 +49,9 @@ export function useUniverse() {
   const { universe, source, refreshUniverse } = useSmileSession();
 
   const [query, setQuery] = useState("");
+  /** The source whose catalogue the search reads; null = the universe source.
+   *  A name added from another source is PINNED to it (state/tickerSources). */
+  const [searchSource, setSearchSource] = useState<string | null>(null);
   const [results, setResults] = useState<SymbolMatch[]>([]);
   const [searching, setSearching] = useState(false);
   /** A "verb:target" tag for the in-flight action (disables that row). */
@@ -67,7 +70,7 @@ export function useUniverse() {
       setSearching(true);
       api
         .get<{ matches: SymbolMatch[] }>("/universe/search", {
-          params: { q: query, limit: 10 },
+          params: { q: query, limit: 10, ...(searchSource ? { source: searchSource } : {}) },
           signal: controller.signal,
         })
         .then((r) => {
@@ -85,7 +88,7 @@ export function useUniverse() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [query, searchSource]);
 
   const refreshSaved = useCallback(() => {
     api.get<SavedUniverses>("/universes").then(setSaved).catch(() => {});
@@ -112,11 +115,16 @@ export function useUniverse() {
   );
 
   const addTicker = useCallback(
-    (symbol: string) =>
+    (symbol: string, source?: string) =>
       act(
         `add:${symbol}`,
-        // Adding a ticker can trigger a chain fetch on the backend.
-        () => api.post("/universe/tickers", { body: { symbol }, timeoutMs: 300_000 }),
+        // Adding a ticker can trigger a chain fetch on the backend; with a
+        // `source` the name is resolved there and pinned to it.
+        () =>
+          api.post("/universe/tickers", {
+            body: source ? { symbol, source } : { symbol },
+            timeoutMs: 300_000,
+          }),
         refreshUniverse,
       ),
     [act, refreshUniverse],
@@ -160,6 +168,8 @@ export function useUniverse() {
     source,
     query,
     setQuery,
+    searchSource,
+    setSearchSource,
     results,
     searching,
     busy,

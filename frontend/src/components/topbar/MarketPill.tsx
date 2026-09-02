@@ -7,9 +7,12 @@
 // keeps its backend name but is drawn yellow — amber sat too close to red at
 // a glance). No dropdown: the
 // click hands off to the shell (the Universe dialog's Data-sources card);
-// the as-of picker lives under Fetch ▾ (AsOfRows).
+// the as-of picker lives under Fetch ▾ (AsOfRows). Tickers PINNED to another
+// source (state/tickerSources.ts) show as a "+N" after the source name, listed
+// in the tooltip.
 import type { SourceStatus, UseDataSourcesResult } from "../../state/useDataSources";
 import type { UseAsOfResult } from "../../state/useAsOf";
+import { useSmileSession } from "../../state/smileSession";
 import { asofLabel } from "./AsOfRows";
 
 /** Tailwind dot colour for each status level ("amber" = a degraded-but-usable
@@ -34,8 +37,15 @@ export default function MarketPill({
 }) {
   const { sources, active, switching, dataAge } = dataSources;
   const { asof, busy: asofBusy } = asofHook;
+  const { universe } = useSmileSession();
 
   const activeSource = sources.find((s) => s.id === active);
+  // Tickers pinned to a source OTHER than the universe's default.
+  const pinned = Object.entries(universe?.tickerSources ?? {}).filter(([, sid]) => sid !== active);
+  const labelOf = (id: string) => sources.find((s) => s.id === id)?.label ?? id;
+  const pinNote = pinned.length
+    ? `\nPinned: ${pinned.map(([t, sid]) => `${t} → ${labelOf(sid)}`).join(", ")}`
+    : "";
   const historical = asof !== null && asof.mode !== "live";
   // Data-age staleness of the LIVE view (backend data_age; null off-live).
   // Red-stale live data means "live" is really the previous session — say so.
@@ -46,9 +56,9 @@ export default function MarketPill({
     <button
       onClick={onClick}
       title={
-        staleLive
+        (staleLive
           ? `Live view is pricing quotes ${dataAge!.label} old (worst: ${dataAge!.worstTicker})\n${TITLE}`
-          : TITLE
+          : TITLE) + pinNote
       }
       className={[
         "flex items-center gap-2 rounded-md border px-2.5 py-1 hover:border-slate-600",
@@ -65,6 +75,11 @@ export default function MarketPill({
         } ${switching ? "animate-pulse" : ""}`}
       />
       <span className="font-medium">{activeSource?.label ?? (active || "Source")}</span>
+      {pinned.length > 0 && (
+        <span className="text-[10px] text-slate-500" data-testid="pill-pinned-count">
+          +{pinned.length}
+        </span>
+      )}
       {asof && (
         <span className={`text-slate-400 ${asofBusy ? "animate-pulse" : ""}`}>
           · {redStale ? "prev session" : asofLabel(asof)}

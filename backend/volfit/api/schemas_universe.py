@@ -28,9 +28,17 @@ class SymbolSearchResponse(BaseModel):
 
 
 class AddTickerRequest(BaseModel):
-    """Add one symbol to the active universe."""
+    """Add one symbol to the active universe — on ``source`` (a registered
+    data-source id, the name is pinned there) or the universe's default."""
 
     symbol: str = Field(min_length=1, max_length=20)
+    source: str | None = None
+
+
+class SetTickerSourceRequest(BaseModel):
+    """Pin a ticker to a data source; None = follow the universe source."""
+
+    source: str | None = None
 
 
 class SavedUniversesResponse(BaseModel):

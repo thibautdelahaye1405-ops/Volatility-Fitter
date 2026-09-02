@@ -16,6 +16,9 @@ export interface DataSourceInfo {
   status: SourceStatus;
   detail: string;
   active: boolean;
+  /** The active tickers this source serves now — pinned to it, or following
+   *  it as the universe's default (state/tickerSources.ts). */
+  tickers?: string[];
 }
 
 /** Worst loaded live-chain age across the universe (backend data_age).

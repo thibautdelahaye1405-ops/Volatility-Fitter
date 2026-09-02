@@ -228,7 +228,7 @@ def test_follow_is_never_forced(client):
     state.set_options(state.options().model_copy(update={"autoUpdate": "spot"}))
     st = client.get(f"/spot/{TICKER}").json()
     assert st["follow"] == "scenario" and st["followForced"] is False
-    state.is_streaming = lambda: True
+    state.is_streaming = lambda ticker=None: True
     assert client.get(f"/spot/{TICKER}").json()["follow"] == "scenario"
 
 

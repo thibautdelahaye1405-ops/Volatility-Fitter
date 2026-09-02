@@ -17,7 +17,7 @@ Implements the explicit, mode-gated triggers (ROADMAP workflow):
     (volfit.api.workflow_stages), so a fit is byte-identical whichever verb
     produced it;
   * ``seed_priors``   — explicit prev-close prior seeding (built, calibrated and
-    saved only on demand).
+    saved only on demand; the body lives in volfit.api.workflow_priors).
 
 The unified snapshot verb (``POST /fetch/snapshot``: chains -> spot transport ->
 optional cheap prior roll -> optional auto-calibrate, V3.7 item 15) lives in
@@ -51,6 +51,7 @@ from volfit.api.workflow_spot import (  # noqa: F401  (re-exports: the scheduler
     fetch_spots,
     sync_market_shifts,
 )
+from volfit.api.workflow_priors import seed_priors  # noqa: F401  (re-export: the router)
 from volfit.api.workflow_stages import (  # noqa: F401  (re-exports: test seams + callers)
     Group,
     _parametric_items,
@@ -58,11 +59,12 @@ from volfit.api.workflow_stages import (  # noqa: F401  (re-exports: test seams 
 )
 
 
-def _source_label(state: AppState) -> str:
-    """Human-readable name of the active data source (for the fetch narration)."""
+def _source_label(state: AppState, ticker: str | None = None) -> str:
+    """Human-readable name of a ticker's data source (its pin, else the
+    universe's default; no ticker = the default) for the fetch narration."""
     from volfit.api.datasource import SOURCE_LABELS
 
-    sid = state.active_source
+    sid = state.source_of(ticker) if ticker else state.active_source
     return SOURCE_LABELS.get(sid, sid.title())
 
 
@@ -162,20 +164,21 @@ def calibration_chains(state: AppState, tickers: list[str]) -> bool:
       before it the ladder is empty and ``lit_nodes`` would find nothing).
     Best-effort per ticker — an unreachable feed is skipped, as ``lit_nodes``
     already tolerates."""
-    streaming = state.is_streaming()
-    source = _source_label(state)
-    for ticker in tickers:
+    any_stream = False
+    for ticker in tickers:  # per ticker: a pinned name may stream beside request-path ones
         try:
-            if streaming:
+            if state.is_streaming(ticker):
+                any_stream = True
                 with state.activity.activity(
-                    "fetch", f"Snapshotting {ticker} quotes + spot from the {source} book"
+                    "fetch",
+                    f"Snapshotting {ticker} quotes + spot from the {_source_label(state, ticker)} book",
                 ):
                     state.refresh_chain(ticker)
             else:
                 state.ensure_chain(ticker)
         except Exception:
             pass
-    return streaming
+    return any_stream
 
 
 def _start_stages(state: AppState, stages: list[list[Group]]) -> bool:
@@ -281,7 +284,6 @@ def _refresh_chains(state: AppState, chosen: list[str]) -> tuple[list[str], dict
     order, ticker -> chain spot). ``refresh_chain`` marks the nodes stale and
     bumps the data version while PRESERVING the calibrated pointers + spot
     shift (the frozen-until-Calibrate contract)."""
-    source = _source_label(state)
     n = len(chosen)
 
     def _refresh_one(ticker: str) -> tuple[str, float | None]:
@@ -297,7 +299,9 @@ def _refresh_chains(state: AppState, chosen: list[str]) -> tuple[list[str], dict
         k = chosen.index(ticker) + 1
         try:
             with state.activity.activity(
-                "fetch", f"Fetching {ticker} quotes from {source}", detail=f"chain {k} of {n}"
+                "fetch",
+                f"Fetching {ticker} quotes from {_source_label(state, ticker)}",
+                detail=f"chain {k} of {n}",
             ):
                 return ticker, float(state.refresh_chain(ticker))
         except Exception:
@@ -333,9 +337,12 @@ def fetch_options(
     return FetchResult(tickers=fetched, spots=spots, calibrationStarted=started)
 
 
-def stream_refit(state: AppState, fit_mode: str = "mid") -> bool:
-    """The streaming throttled refit: refetch each ticker's chain (served from the
-    live WS book) and recalibrate ALL lit nodes in the background.
+def stream_refit(
+    state: AppState, fit_mode: str = "mid", tickers: list[str] | None = None
+) -> bool:
+    """The streaming throttled refit: refetch each STREAMING ticker's chain
+    (served from its live book; ``tickers`` = the scheduler's partition, default
+    ``state.streaming_tickers()``) and recalibrate ALL lit nodes in the background.
 
     Gated by ``autoCalibrate`` — it is the master switch for unattended refits, so
     with it OFF this is a no-op (the surface still tracks spot via the transport
@@ -345,58 +352,14 @@ def stream_refit(state: AppState, fit_mode: str = "mid") -> bool:
     """
     if not state.options().autoCalibrate:
         return False
-    source = _source_label(state)
     fetched = False
-    for ticker in state.active_tickers():
+    for ticker in tickers if tickers is not None else state.streaming_tickers():
         try:
-            with state.activity.activity("fetch", f"Streaming {ticker} quotes from {source}"):
+            with state.activity.activity(
+                "fetch", f"Streaming {ticker} quotes from {_source_label(state, ticker)}"
+            ):
                 state.refresh_chain(ticker)  # reads the live book under streaming
             fetched = True
         except Exception:
             continue
     return calibrate_all(state, fit_mode) if fetched else False
-
-
-# ------------------------------------------------------------------ priors
-def seed_priors(state: AppState, tickers: list[str] | None = None, fit_mode: str = "mid") -> int:
-    """Explicitly seed previous-close priors for lit nodes lacking a saved one.
-
-    For each such node: switch the as-of to the provider's previous close, fetch +
-    calibrate that chain, save the LQD fit as the node's prior, then restore the
-    live as-of. Returns the number of priors seeded. Skips nodes that already have
-    a saved prior and tickers whose provider has no previous-close history.
-    """
-    from volfit.api.state import AsOfSelection
-    from volfit.models.lqd.basis import LQDParams  # noqa: F401  (type clarity)
-    from volfit.api.state import PriorRecord
-
-    chosen = tickers if tickers is not None else state.active_tickers()
-    if "prev_close" not in state.provider.historical_modes():
-        return 0
-    seeded = 0
-    live = state.as_of
-    try:
-        for ticker in chosen:
-            nodes = [
-                (t, iso) for t, iso in lit_nodes(state, [ticker])
-                if state.get_prior((t, iso)) is None
-            ]
-            if not nodes:
-                continue
-            state.set_as_of(AsOfSelection(mode="prev_close"))
-            for t, iso in nodes:
-                try:
-                    record = service._compute_fit(state, t, iso, fit_mode)
-                except Exception:
-                    continue
-                prior = PriorRecord(
-                    curve=service.model_curve(record),
-                    params=record.result.params,
-                    t=record.prepared.t,
-                )
-                state.save_prior((t, iso), prior)
-                seeded += 1
-            state.set_as_of(live)  # restore between tickers (set_as_of clears caches)
-    finally:
-        state.set_as_of(live)
-    return seeded

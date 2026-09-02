@@ -21,6 +21,7 @@ from volfit.api.schemas_universe import (
     SavedUniversesResponse,
     SetExpiriesRequest,
     SetLitRequest,
+    SetTickerSourceRequest,
     SymbolSearchResponse,
 )
 from volfit.api.state import UnknownNodeError
@@ -39,15 +40,22 @@ def get_universe(request: Request) -> UniverseResponse:
 
 @router.get("/universe/search", response_model=SymbolSearchResponse)
 def search_symbols(
-    request: Request, q: str = Query("", min_length=0), limit: int = Query(10, ge=1, le=25)
+    request: Request,
+    q: str = Query("", min_length=0),
+    limit: int = Query(10, ge=1, le=25),
+    source: str | None = Query(None),
 ) -> SymbolSearchResponse:
-    return svc.search(_state(request), q, limit)
+    """Search one source's catalogue (``source``; default: the universe's)."""
+    try:
+        return svc.search(_state(request), q, limit, source)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
 
 
 @router.post("/universe/tickers", response_model=UniverseResponse)
 def add_ticker(body: AddTickerRequest, request: Request) -> UniverseResponse:
     try:
-        return svc.add_ticker(_state(request), body.symbol)
+        return svc.add_ticker(_state(request), body.symbol, body.source)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
 
@@ -60,6 +68,17 @@ def remove_ticker(symbol: str, request: Request) -> UniverseResponse:
         raise HTTPException(status_code=404, detail=str(exc)) from None
     except ValueError as exc:  # removing the last ticker
         raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+@router.put("/universe/{ticker}/source", response_model=UniverseResponse)
+def put_ticker_source(
+    ticker: str, body: SetTickerSourceRequest, request: Request
+) -> UniverseResponse:
+    """Pin a ticker to a registered data source (null = the universe source)."""
+    try:
+        return svc.set_ticker_source(_state(request), ticker, body.source)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
 
 
 # --------------------------------------------------------- expiry selection

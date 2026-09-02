@@ -1189,9 +1189,14 @@ class UniverseResponse(BaseModel):
     asOf: str
     tickers: list[str]
     expiries: dict[str, list[ExpiryInfo]]
-    #: ticker -> why it has no ladder on the active source ("Cboe lists no
-    #: options for 'SX5E INDEX'", "throttled"); absent when it resolves.
+    #: ticker -> why it has no ladder on its source ("Cboe lists no options
+    #: for 'SX5E INDEX'", "throttled"); absent when it resolves.
     errors: dict[str, str] = {}
+    #: The universe's default source (the Data Source selector) and the explicit
+    #: per-ticker pins (ticker -> source id; a ticker absent here follows the
+    #: default) — the multi-source engine (volfit.api.state_sources).
+    defaultSource: str = ""
+    tickerSources: dict[str, str] = {}
 
 
 class PriorSavedResponse(BaseModel):

@@ -225,7 +225,7 @@ def market_layer(
         forward=forward,
         spot=spot,
         timestamp=timestamp,
-        live=bool(state.is_streaming()),
+        live=bool(state.is_streaming(ticker)),
         quotes=quotes,
         model=model,
     )

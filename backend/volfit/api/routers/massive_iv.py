@@ -50,7 +50,7 @@ def get_massive_iv(
 ) -> MassiveIvResponse:
     """Massive IV/greeks for a ticker, optionally restricted to one expiry."""
     state = request.app.state.volfit
-    provider = state.provider
+    provider = state.provider_for(ticker.upper())  # the ticker's own source
     if not isinstance(provider, MassiveProvider):
         raise HTTPException(
             status_code=404, detail="Massive IV overlay requires the Massive provider"

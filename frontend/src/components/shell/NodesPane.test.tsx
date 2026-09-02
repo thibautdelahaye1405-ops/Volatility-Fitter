@@ -20,7 +20,13 @@ interface Rung {
   dataSource?: string | null;
   asOfExact?: boolean | null;
 }
-interface Universe { asOf: string; tickers: string[]; expiries: Record<string, Rung[]> }
+interface Universe {
+  asOf: string;
+  tickers: string[];
+  expiries: Record<string, Rung[]>;
+  defaultSource?: string;
+  tickerSources?: Record<string, string>;
+}
 
 const baseUniverse: Universe = {
   asOf: "x",
@@ -174,5 +180,27 @@ describe("NodesPane per-node effective as-of", () => {
     expect(asOfTitle({ effectiveAsOf: "2026-06-10T16:26:00", dataSource: "massive", asOfExact: true }, now))
       .toBe("effective as-of · 2026-06-10T16:26:00 UTC · massive · 4m");
     expect(asOfTitle({ effectiveAsOf: null, dataSource: null, asOfExact: null }, now)).toContain("press Fetch");
+  });
+});
+
+describe("NodesPane per-ticker source pill", () => {
+  it("badges a ticker pinned to another source than the universe's, and nothing otherwise", () => {
+    universeFixture = {
+      ...baseUniverse,
+      defaultSource: "cboe",
+      tickerSources: { AAPL: "bloomberg", SPY: "cboe" }, // SPY's pin IS the default: no pill
+    };
+    render(<NodesPane />);
+    const pills = screen.getAllByTestId("ticker-source-pill");
+    expect(pills).toHaveLength(1);
+    expect(pills[0].textContent).toBe("BBG");
+    expect(pills[0].getAttribute("title")).toBe("Pinned to Bloomberg");
+    expect(document.getElementById("nodes-row-g_AAPL")!.textContent).toContain("BBG");
+    expect(document.getElementById("nodes-row-g_SPY")!.textContent).not.toContain("CBOE");
+  });
+
+  it("shows no pill when nothing is pinned", () => {
+    render(<NodesPane />);
+    expect(screen.queryByTestId("ticker-source-pill")).toBeNull();
   });
 });

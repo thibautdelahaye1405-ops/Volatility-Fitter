@@ -64,6 +64,7 @@ from volfit.data.dividends import (
     forward_consistent_cash_schedule,
     theoretical_forward,
 )
+from volfit.api.state_sources import SourcesMixin
 from volfit.api.state_universe import UniverseMixin, UnknownNodeError  # noqa: F401 (re-export)
 from volfit.data import governance
 from volfit.data.forwards import ImpliedForward, ResolvedForward, implied_forwards
@@ -145,7 +146,7 @@ def _utcnow() -> datetime:
     """Naive UTC 'now' (the chain timestamps' convention)."""
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
-class AppState(UniverseMixin):
+class AppState(SourcesMixin, UniverseMixin):
     """Provider handle plus all caches; one instance per FastAPI app.
 
     Universe management and per-ticker expiry selection are provided by
@@ -179,6 +180,7 @@ class AppState(UniverseMixin):
     _forwards_version = ScopedField("forwards_version")
     _spot_shift = ScopedField("spot_shift")
     _spot_follow = ScopedField("spot_follow")
+    _ticker_sources = ScopedField("ticker_sources")
     _spot_version = ScopedField("spot_version")
     _spot_version_by_ticker = ScopedField("spot_version_by_ticker")
     _sessions = ScopedField("sessions")
@@ -219,8 +221,10 @@ class AppState(UniverseMixin):
         #: behaviour, so the existing suite is byte-identical.
         self._gated = gated
         #: Available market-data sources keyed by id ("yahoo"/"bloomberg"/
-        #: "massive"/"synthetic"). `self.provider` is the *active* one; the Data
-        #: Source selector switches `_active_source` at runtime.
+        #: "massive"/"synthetic"). `self.provider` is the universe's DEFAULT one
+        #: (the Data Source selector switches `_active_source` at runtime); a
+        #: ticker pinned elsewhere routes through `provider_for(ticker)`
+        #: (volfit.api.state_sources, the multi-source engine).
         if providers:
             self._providers = dict(providers)
             self._active_source = active_source or next(iter(self._providers))
@@ -403,6 +407,10 @@ class AppState(UniverseMixin):
         #: book or an Auto-update timer moves the market followers only.
         #: Workspace-scoped (user intent).
         self._spot_follow: dict[str, str] = {}
+        #: ticker -> data-source id it is PINNED to (volfit.api.state_sources;
+        #: absent = follows the default source). Workspace-scoped, saved with a
+        #: named universe.
+        self._ticker_sources: dict[str, str] = {}
         self._spot_version = 0
         self._spot_version_by_ticker: dict[str, int] = {}
         #: Latest KNOWN provider spot per ticker: (spot, UTC stamp, "stream" |
@@ -495,7 +503,8 @@ class AppState(UniverseMixin):
     # ------------------------------------------------------------ data sources
     @property
     def provider(self) -> OptionChainProvider:
-        """The currently active market-data provider."""
+        """The universe's DEFAULT market-data provider (the as-of picker's and
+        the catalogue search's). Per-ticker work must use ``provider_for``."""
         return self._providers[self._active_source]
 
     @property
@@ -548,13 +557,24 @@ class AppState(UniverseMixin):
             for t, mode in self._selection_mode.items():
                 if mode == "custom" and t in self._selected:
                     self._pending_selections[t] = list(self._selected[t])
+            pinned = {
+                t for t in self._active_tickers
+                if self._ticker_sources.get(t) in self._providers
+            }
+            was_live = self._asof == AsOfSelection()
             self._active_source = source_id
             self._asof = AsOfSelection()  # a new feed starts live
-            self._available.clear()
-            self._ticker_errors.clear()  # the new feed gets a fresh verdict per ticker
-            self._selected.clear()
-            self._selection_mode.clear()
-            self._clear_chain_caches()
+            if pinned and was_live:
+                # Pinned tickers keep their feed AND their caches; only the
+                # tickers FOLLOWING the default refetch on the new feed.
+                for t in [t for t in self._active_tickers if t not in pinned]:
+                    self._drop_ticker_chain_caches(t)
+            else:
+                self._available.clear()
+                self._ticker_errors.clear()  # the new feed gets a fresh verdict per ticker
+                self._selected.clear()
+                self._selection_mode.clear()
+                self._clear_chain_caches()
         return self._active_source
 
     def _clear_chain_caches(self) -> None:
@@ -743,13 +763,14 @@ class AppState(UniverseMixin):
         """Fetch a chain for the current as-of: live (+capture) / provider EOD /
         captured replay from the store."""
         sel = self._asof
-        # Tell a flat-file-backed provider the ACTIVE universe (not just its static
-        # watchlist) so the day's flat-file cache co-caches every active ticker —
+        prov = self.provider_for(ticker)  # the ticker's own source (a pin, else the default)
+        # Tell a flat-file-backed provider the tickers IT serves (not just its
+        # static watchlist) so the day's flat-file cache co-caches every one —
         # else a name added in the Universe tab is filtered out and shows 0 expiries.
-        hint = getattr(self.provider, "set_flat_universe", None)
+        hint = getattr(prov, "set_flat_universe", None)
         if hint is not None:
             try:
-                hint(self.active_tickers())
+                hint(self.tickers_of(self.source_of(ticker)))
             except Exception:  # noqa: BLE001 — never block a fetch on the hint
                 pass
         if sel.mode == "captured":
@@ -760,14 +781,10 @@ class AppState(UniverseMixin):
                 )
             return snap
         if sel.mode in ("prev_close", "eod"):
-            return self.provider.fetch_chain(
-                ticker, chosen, as_of=AsOf(mode=sel.mode, on=sel.on)
-            )
+            return prov.fetch_chain(ticker, chosen, as_of=AsOf(mode=sel.mode, on=sel.on))
         if sel.mode == "intraday":
-            return self.provider.fetch_chain(
-                ticker, chosen, as_of=AsOf(mode="intraday", ts=sel.ts)
-            )
-        snap = self.provider.fetch_chain(ticker, chosen)  # live
+            return prov.fetch_chain(ticker, chosen, as_of=AsOf(mode="intraday", ts=sel.ts))
+        snap = prov.fetch_chain(ticker, chosen)  # live
         self._persist_capture(snap)
         return snap
 
@@ -776,7 +793,7 @@ class AppState(UniverseMixin):
             return None
         with VolStore(self.store_path) as store:
             # This source's capture (or a legacy untagged one), never another feed's.
-            return store.snapshot_at(ticker, ts, source=self._active_source)
+            return store.snapshot_at(ticker, ts, source=self.source_of(ticker))
 
     def _persist_capture(self, snap: ChainSnapshot) -> None:
         """Best-effort: save a live chain to the store for later replay, deduped
@@ -784,14 +801,15 @@ class AppState(UniverseMixin):
         (the as-of picker offers a source's own captures only). Never fails a
         fetch. Skipped for sources with their own history channel (Massive flat
         files / Bloomberg Terminal) — see ``NO_AUTO_CAPTURE_SOURCES``."""
-        if self.store_path is None or self._active_source in NO_AUTO_CAPTURE_SOURCES:
+        sid = self.source_of(snap.ticker)  # tagged with the TICKER's source
+        if self.store_path is None or sid in NO_AUTO_CAPTURE_SOURCES:
             return
         try:
             with VolStore(self.store_path) as store:
                 last = store.last_snapshot_ts(snap.ticker)
                 if last is not None and abs((snap.timestamp - last).total_seconds()) < 60:
                     return
-                store.save_snapshot(snap, source=self._active_source)
+                store.save_snapshot(snap, source=sid)
         except Exception:
             pass
 
@@ -943,69 +961,6 @@ class AppState(UniverseMixin):
         return self.fit_settings()
 
     # ------------------------------------------------ real-time streaming (WS)
-    def sync_streaming(self) -> None:
-        """Start/stop/resubscribe each provider's real-time stream to match the
-        active source, ``autoStream`` AND the current universe. Idempotent and
-        cheap (a no-op once in the right state, thanks to the provider's
-        contract-listing cache), so the scheduler can call it every tick. A
-        provider streams iff it is the active source, exposes ``start_streaming``
-        (Massive / Bloomberg) and ``autoStream`` is on — the one switch that opens
-        the book; any other streaming provider (e.g. after a source switch) is
-        stopped so it does not leak a background socket. When the desired contract
-        set changes (a ticker added/removed or its expiry selection edited) the
-        stream is restarted on the new subscription (``start_streaming`` tears the
-        old one down first)."""
-        with self._lock:
-            active = self._active_source
-            auto = self._options.autoStream
-            providers = dict(self._providers)
-        for sid, prov in providers.items():
-            if not hasattr(prov, "start_streaming"):
-                continue
-            streaming = prov.is_streaming()
-            # Stream the active source's book iff autoStream is on: the book then
-            # feeds Fetch / Calibrate / the tick stream, and the scheduler's
-            # streaming branch does the live transport + refit (unless frozen).
-            want = sid == active and auto
-            if not want:
-                if streaming:
-                    prov.stop_streaming()  # source/mode no longer wants it
-                continue
-            desired = self._desired_stream_contracts(prov)
-            if not desired:
-                continue  # nothing fittable yet; leave any warm stream as-is
-            if not streaming:
-                prov.start_streaming(desired)
-            else:
-                # Resubscribe only if the provider can report its current
-                # subscription (else we can't diff and must not thrash-restart).
-                # A provider that can edit its live subscription in place
-                # (``update_streaming`` — Bloomberg) gets the incremental path:
-                # only the new/gone contracts move, the rest keep ticking with no
-                # warming gap; otherwise the stream is restarted on the new set.
-                probe = getattr(prov, "streaming_contracts", None)
-                if probe is not None and set(desired) != set(probe()):
-                    updater = getattr(prov, "update_streaming", None)
-                    (updater or prov.start_streaming)(desired)  # universe changed
-
-    def _desired_stream_contracts(self, prov) -> list[str]:
-        """The option tickers the active universe wants streamed (cheap once the
-        provider's contract listing is cached). A bad ticker never blocks the rest."""
-        contracts: list[str] = []
-        for ticker in self.active_tickers():
-            try:
-                contracts += prov.option_tickers(ticker, self.selected_expiries(ticker))
-            except Exception:  # noqa: BLE001 — a bad ticker never blocks streaming
-                continue
-        return contracts
-
-    def is_streaming(self) -> bool:
-        """Whether the active provider currently has a live real-time book (used by
-        the scheduler's throttled refit branch)."""
-        prov = self.provider
-        probe = getattr(prov, "is_streaming", None)
-        return bool(probe is not None and probe())
-
     # ----------------------------------------------------- options (meta) settings
     @property
     def options_version(self) -> int:
@@ -1382,7 +1337,7 @@ class AppState(UniverseMixin):
         with self._lock:
             chosen = list(self._selected.get(ticker, []))
         try:
-            live = float(self.provider.spot(ticker, chosen))
+            live = float(self.provider_for(ticker).spot(ticker, chosen))
         except Exception:
             return float(self.snapshot(ticker).spot)
         if live > 0.0:
@@ -1396,8 +1351,8 @@ class AppState(UniverseMixin):
         streaming book while it is live (``provider.book_spot``, non-blocking;
         source "stream"), else the last probe (source "probe"); None when
         nothing was ever probed."""
-        if self.is_streaming():
-            reader = getattr(self.provider, "book_spot", None)
+        if self.is_streaming(ticker):
+            reader = getattr(self.provider_for(ticker), "book_spot", None)
             with self._lock:
                 chosen = list(self._selected.get(ticker, []))
             try:

@@ -3,21 +3,25 @@
 //
 // One mental model, one card: every ticker row shows its expiry chips with the
 // lit/dark designation toggled directly on the chips (the shared lit map —
-// nodes pane + Graph canvas follow), ▸ expands the expiry-selection picker,
-// Remove drops the ticker. The header hosts the catalogue search (results in
-// an anchored dropdown); the right column stacks the Data-sources card (pick
-// the active feed; the per-node policy is UI-ready but disabled until the
-// multi-source engine — state/nodeSources.ts) over the saved-universes aside
-// (when a store is configured). Edits flow into the shared smile session, so
-// the nodes pane and every lens update immediately (tabs of removed nodes are
-// pruned). Live backend only (the universe lives on the server).
+// nodes pane + Graph canvas follow), its DATA SOURCE select (the multi-source
+// engine, state/tickerSources.ts: a ticker pinned to another source fetches,
+// streams and captures from it; the rest follow the universe source), ▸
+// expands the expiry-selection picker, Remove drops the ticker. The header
+// hosts the catalogue search (results in an anchored dropdown) with a source
+// selector — a name added from another source's catalogue is pinned to it;
+// the right column stacks the Data-sources card (the universe source + the
+// pins summary, components/universe/DataSourcesCard) over the saved-universes
+// aside (when a store is configured). Edits flow into the shared smile
+// session, so the nodes pane and every lens update immediately (tabs of
+// removed nodes are pruned). Live backend only (the universe lives on the
+// server).
 import { useState } from "react";
 import { FolderOpen, Plus, Save, Trash2 } from "lucide-react";
 import { useUniverse } from "../state/useUniverse";
 import { useWorkflowContext } from "../state/workflowContext";
-import { PER_NODE_HINT, useNodeSources } from "../state/nodeSources";
+import { useTickerSources } from "../state/tickerSources";
 import { useOptionalSnapshotFile } from "../state/snapshotFile";
-import type { SourceStatus } from "../state/useDataSources";
+import DataSourcesCard from "../components/universe/DataSourcesCard";
 import ExpiryPicker from "../components/ExpiryPicker";
 import LitDarkMatrix from "../components/LitDarkMatrix";
 
@@ -30,13 +34,9 @@ const smallBtn =
   "flex items-center gap-1 rounded border border-slate-700 bg-surface-800 px-2 py-0.5 text-[11px] " +
   "font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
   "enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
-const segBtn = "px-2 py-0.5 text-[10px] font-medium transition-colors";
-
-const STATUS_DOT: Record<SourceStatus, string> = {
-  green: "bg-emerald-500",
-  amber: "bg-yellow-400", // degraded-but-usable: yellow, never mistaken for red
-  red: "bg-rose-500",
-};
+const miniSelect =
+  "shrink-0 rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1.5 text-[11px] " +
+  "text-slate-300 outline-none hover:border-slate-600 focus:border-accent-500";
 
 export default function UniverseManager() {
   const {
@@ -44,6 +44,8 @@ export default function UniverseManager() {
     source,
     query,
     setQuery,
+    searchSource,
+    setSearchSource,
     results,
     searching,
     busy,
@@ -57,7 +59,7 @@ export default function UniverseManager() {
     refreshUniverse,
   } = useUniverse();
   const { dataSources } = useWorkflowContext();
-  const { policy, setMode, clearOverrides } = useNodeSources();
+  const pinsHook = useTickerSources();
   const [newName, setNewName] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -82,7 +84,14 @@ export default function UniverseManager() {
   const showResults = query.trim() !== "";
   const { sources, active, switching, switchSource } = dataSources;
   const snapshot = useOptionalSnapshotFile();
-  const overrideCount = Object.keys(policy.overrides).length;
+  const labelOf = (id: string) => sources.find((s) => s.id === id)?.label ?? id;
+  // The catalogue the search reads: the universe source unless another is chosen.
+  const addSource = searchSource ?? active;
+  const onOtherSource = addSource !== active;
+  const shownError = error ?? pinsHook.error;
+  const clearPins = () => {
+    for (const t of Object.keys(pinsHook.pins)) void pinsHook.setTickerSource(t, null);
+  };
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
@@ -93,14 +102,32 @@ export default function UniverseManager() {
           of {universe?.asOf}
         </span>
 
-        {/* Add underlying: search-as-you-type, results anchored below. */}
-        <div className="relative w-96 max-w-full">
+        {/* Add underlying: search-as-you-type on ONE source's catalogue, results anchored below. */}
+        <div className="relative flex w-[30rem] max-w-full items-center gap-1.5">
           <input
             className={inputClass}
             placeholder="Add underlying — search symbol or name (e.g. AAPL, Microsoft)…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          {sources.length > 1 && (
+            <label className="flex shrink-0 items-center gap-1 text-[10px] text-slate-500">
+              in
+              <select
+                className={miniSelect}
+                value={addSource}
+                aria-label="Search source"
+                title="Search this source's catalogue; a name added from another source is pinned to it"
+                onChange={(e) => setSearchSource(e.target.value === active ? null : e.target.value)}
+              >
+                {sources.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.id === active ? `${s.label} (default)` : s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {showResults && (
             <>
               {/* Click-away closes by clearing the query. */}
@@ -109,7 +136,7 @@ export default function UniverseManager() {
                 aria-hidden
                 onClick={() => setQuery("")}
               />
-              <div className="absolute left-0 right-0 z-20 mt-1 max-h-80 overflow-y-auto rounded-lg border border-slate-700 bg-surface-800 py-1 shadow-xl shadow-black/40">
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-lg border border-slate-700 bg-surface-800 py-1 shadow-xl shadow-black/40">
                 {searching && <p className="px-3 py-2 text-[11px] text-slate-500">Searching…</p>}
                 {!searching && results.length === 0 && (
                   <p className="px-3 py-2 text-[11px] text-slate-500">No matches.</p>
@@ -137,10 +164,17 @@ export default function UniverseManager() {
                       <button
                         className={smallBtn}
                         disabled={present || busy !== null}
-                        onClick={() => addTicker(m.symbol)}
+                        title={onOtherSource ? `Add and pin to ${labelOf(addSource)}` : undefined}
+                        onClick={() => addTicker(m.symbol, onOtherSource ? addSource : undefined)}
                       >
                         <Plus size={11} strokeWidth={1.75} className="opacity-80" />
-                        {present ? "Added" : busy === `add:${m.symbol}` ? "Adding…" : "Add"}
+                        {present
+                          ? "Added"
+                          : busy === `add:${m.symbol}`
+                            ? "Adding…"
+                            : onOtherSource
+                              ? `Add on ${labelOf(addSource)}`
+                              : "Add"}
                       </button>
                     </div>
                   );
@@ -150,9 +184,9 @@ export default function UniverseManager() {
           )}
         </div>
 
-        {error && (
-          <span className="ml-auto truncate text-[11px] text-amber-400" title={error}>
-            {error}
+        {shownError && (
+          <span className="ml-auto truncate text-[11px] text-amber-400" title={shownError}>
+            {shownError}
           </span>
         )}
       </div>
@@ -166,11 +200,19 @@ export default function UniverseManager() {
             onToggleExpand={(t) => setExpanded((cur) => (cur === t ? null : t))}
             renderExpanded={(t) => <ExpiryPicker ticker={t} onChanged={refreshUniverse} />}
             sourceColumn={{
-              // One active feed today: every row shows the universe source.
-              label: () => active,
-              options: sources.map((s) => ({ id: s.id, label: s.label })),
-              disabled: true,
-              title: PER_NODE_HINT,
+              // The ticker's PIN ("" = follows the universe source); a change
+              // refetches it from the chosen feed and marks its nodes stale.
+              label: (t) => pinsHook.pins[t] ?? "",
+              options: [
+                { id: "", label: `Default (${labelOf(active)})` },
+                ...sources.map((s) => ({
+                  id: s.id,
+                  label: s.status === "red" ? `${s.label} (red)` : s.label,
+                })),
+              ],
+              disabled: pinsHook.busy !== null,
+              title: "Data source this ticker fetches from — pinned here, or the universe source",
+              onChange: (t, id) => void pinsHook.setTickerSource(t, id || null),
             }}
             actions={(t) => (
               <button
@@ -189,104 +231,17 @@ export default function UniverseManager() {
         </div>
 
         <div className="flex w-80 shrink-0 flex-col gap-4">
-          {/* Data sources: the active feed (radio list) + the per-node policy */}
-          <section className={`${card} shrink-0`}>
-            <h2 className="mb-1 text-sm font-semibold text-slate-100">Data sources</h2>
-            <p className="mb-2 text-[11px] text-slate-500">
-              One active feed for the whole universe; switching refetches the chains.
-            </p>
-            {sources.length === 0 ? (
-              <p className="text-[11px] text-slate-500">No data sources registered.</p>
-            ) : (
-              <div
-                role="radiogroup"
-                aria-label="Active data source"
-                className={`flex flex-col gap-0.5 ${switching ? "animate-pulse" : ""}`}
-              >
-                {sources.map((s) => {
-                  // A red light WARNS (the probe failed / timed out / the feed
-                  // is down) but never locks the choice: the user must always
-                  // be able to leave a hung source for another one.
-                  const unavailable = s.status === "red";
-                  const isActive = s.id === active;
-                  return (
-                    <button
-                      key={s.id}
-                      role="radio"
-                      aria-checked={isActive}
-                      disabled={switching}
-                      title={unavailable ? `${s.detail} — switching is still allowed` : undefined}
-                      onClick={() => void switchSource(s.id)}
-                      className={[
-                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors",
-                        isActive
-                          ? "bg-accent-500/10 text-accent-300"
-                          : unavailable
-                            ? "text-slate-500 hover:bg-slate-700/40 hover:text-slate-200"
-                            : "text-slate-300 hover:bg-slate-700/40 hover:text-slate-100",
-                      ].join(" ")}
-                    >
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[s.status]}`} />
-                      <span className="min-w-0 flex-1 truncate font-medium">{s.label}</span>
-                      <span className="truncate text-[10px] text-slate-500" title={s.detail}>
-                        {s.detail}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {snapshot !== null && (
-              <button
-                className="mt-2 w-full rounded-md border border-dashed border-slate-700 px-2 py-1.5 text-left text-[11px] text-slate-400 transition-colors hover:border-slate-500 hover:text-slate-200"
-                title="Open a snapshot file (quotes + calibrations): it becomes the File data source"
-                disabled={snapshot.busy}
-                onClick={() => void snapshot.openPicker()}
-              >
-                + Open snapshot file… <span className="text-slate-600">(File source)</span>
-              </button>
-            )}
-
-            {/* Per-node policy: UI-ready, disabled until the multi-source engine. */}
-            <div className="mt-3 border-t border-slate-800/60 pt-2">
-              <div className="mb-1.5 flex items-center justify-between gap-2">
-                <span className="text-[11px] font-medium text-slate-300">Per-node sources</span>
-                <div className="flex overflow-hidden rounded-md border border-slate-700 bg-surface-800">
-                  <button
-                    className={`${segBtn} ${
-                      policy.mode === "universe"
-                        ? "bg-accent-600/25 text-accent-400"
-                        : "text-slate-400 hover:text-slate-200"
-                    }`}
-                    onClick={() => setMode("universe")}
-                  >
-                    Universe source
-                  </button>
-                  <button
-                    className={`${segBtn} cursor-not-allowed text-slate-600`}
-                    disabled
-                    title={PER_NODE_HINT}
-                  >
-                    Per node
-                  </button>
-                </div>
-              </div>
-              <p className="text-[10px] text-slate-500">
-                Every node fetches from the universe source today; per-node picks are recorded for
-                the multi-source engine.
-                {overrideCount > 0 && (
-                  <>
-                    {" "}
-                    {overrideCount} recorded ·{" "}
-                    <button className="text-slate-400 underline hover:text-slate-200" onClick={clearOverrides}>
-                      clear
-                    </button>
-                  </>
-                )}
-              </p>
-            </div>
-          </section>
+          <DataSourcesCard
+            sources={sources}
+            active={active}
+            switching={switching}
+            switchSource={switchSource}
+            snapshot={snapshot}
+            pins={pinsHook.pins}
+            labelOf={labelOf}
+            clearPins={clearPins}
+            pinBusy={pinsHook.busy}
+          />
 
           {/* Saved universes */}
           <aside className={`${card} min-h-0 flex-1`}>
@@ -299,7 +254,8 @@ export default function UniverseManager() {
             ) : (
               <>
                 <p className="mb-2 text-[11px] text-slate-500">
-                  Save the active set, then reload it any time.
+                  Save the active set (tickers, expiry picks, lit marks, source pins), then
+                  reload it any time.
                 </p>
                 <div className="mb-3 flex gap-1.5">
                   <input

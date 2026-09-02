@@ -25,6 +25,17 @@ class UnknownNodeError(KeyError):
     """Requested (ticker, expiry) does not exist in the active universe."""
 
 
+def _pins_for(wanted: list[str], sources: dict[str, str] | None, providers: dict) -> dict[str, str]:
+    """The saved per-ticker source pins worth keeping: tickers of the universe
+    being installed, sources still registered (volfit.api.state_sources)."""
+    keep = set(wanted)
+    return {
+        portable_ticker(t.strip().upper()): s
+        for t, s in (sources or {}).items()
+        if portable_ticker(t.strip().upper()) in keep and s in providers
+    }
+
+
 class UniverseMixin:
     """Active-ticker set and per-ticker expiry selection (see module docstring)."""
 
@@ -44,25 +55,31 @@ class UniverseMixin:
                 return True
         return ticker in self.provider.list_tickers()
 
-    def add_ticker(self, symbol: str) -> str:
+    def add_ticker(self, symbol: str, source: str | None = None) -> str:
         """Add a ticker to the universe, validating it has fittable expiries.
 
         Fetches the chain outside the lock (network); raises UnknownNodeError
         if the symbol cannot be fetched or carries no parity-implyable expiry.
         Idempotent. Pre-caches the snapshot/forwards and resets the graph
-        universe so it rebuilds over the new node set.
+        universe so it rebuilds over the new node set. ``source`` resolves and
+        fetches the name on THAT registered source and pins it there (the
+        multi-source engine, volfit.api.state_sources); None = the default.
         """
         sym = portable_ticker(symbol.strip().upper())  # portable across sources
         if not sym:
             raise UnknownNodeError("empty ticker symbol")
-        sym = self._resolve_file_alias(sym)
+        sym = self._resolve_file_alias(sym, source)
         with self._lock:
             if sym in self._active_tickers:
                 return sym
+        sid = source or self._active_source
+        if sid not in self._providers:
+            raise UnknownNodeError(f"unknown data source {sid!r}")
+        prov = self._providers[sid]
         try:
-            available = self.provider.available_expiries(sym)
+            available = prov.available_expiries(sym)
             chosen = default_selection(available, self.reference_date)
-            snap = self.provider.fetch_chain(sym, chosen)
+            snap = prov.fetch_chain(sym, chosen)
         except Exception as exc:  # bad symbol, no data, network — all 404 here
             raise UnknownNodeError(f"could not add {sym!r}: {exc}") from None
         fwds = implied_forwards(snap, self.reference_date)
@@ -76,18 +93,21 @@ class UniverseMixin:
                 self._snapshots[sym] = snap
                 self._forwards[sym] = fwds
                 self._active_tickers.append(sym)
+                if source is not None:
+                    self._ticker_sources[sym] = source
                 self._universe = None
         return sym
 
-    def _resolve_file_alias(self, sym: str) -> str:
+    def _resolve_file_alias(self, sym: str, source: str | None = None) -> str:
         """Index-root discovery for snapshot files (volfit.data.roots): under
         the FILE source a typed parent / sibling root that is not itself a
         bundle ticker (``SPX`` for a file keyed ``SPXW``) resolves to the
         bundle ticker it aliases, so the add lands on the node the file
         carries. Every other source returns the symbol unchanged."""
-        if self.active_source != FILE_SOURCE_ID:
+        sid = source or self.active_source
+        if sid != FILE_SOURCE_ID:
             return sym
-        resolve = getattr(self.provider, "resolve_alias", None)
+        resolve = getattr(self._providers[sid], "resolve_alias", None)
         if resolve is None:
             return sym
         return resolve(sym) or sym
@@ -114,15 +134,22 @@ class UniverseMixin:
                 raise ValueError("cannot remove the last ticker in the universe")
             self._active_tickers.remove(sym)
             self._drop_ticker_caches(sym)
+            self._ticker_sources.pop(sym, None)  # a pin dies with its ticker
             self._universe = None
 
-    def set_active_tickers(self, symbols: list[str]) -> list[str]:
+    def set_active_tickers(
+        self, symbols: list[str], sources: dict[str, str] | None = None
+    ) -> list[str]:
         """Replace the universe (loading a saved one); unfetchable symbols are
         skipped. Each ticker starts on the default selection (callers re-apply
-        any saved custom picks). Raises ValueError if nothing usable survives."""
+        any saved custom picks). ``sources`` = the saved per-ticker pins, set
+        FIRST so each ticker resolves on its own feed. Raises ValueError if
+        nothing usable survives."""
         wanted = list(
             dict.fromkeys(portable_ticker(s.strip().upper()) for s in symbols if s.strip())
         )
+        with self._lock:
+            self._ticker_sources = _pins_for(wanted, sources, self._providers)
         validated: list[str] = []
         fetched: dict[str, tuple] = {}
         for sym in wanted:
@@ -132,9 +159,10 @@ class UniverseMixin:
                 if have:
                     validated.append(sym)
                     continue
-                available = self.provider.available_expiries(sym)
+                prov = self.provider_for(sym)  # its pin, else the default source
+                available = prov.available_expiries(sym)
                 chosen = default_selection(available, self.reference_date)
-                snap = self.provider.fetch_chain(sym, chosen)
+                snap = prov.fetch_chain(sym, chosen)
                 fwds = implied_forwards(snap, self.reference_date)
                 if not fwds:
                     continue
@@ -156,7 +184,10 @@ class UniverseMixin:
         return validated
 
     def restore_universe(
-        self, tickers: list[str], selections: dict[str, list[str] | None] | None = None
+        self,
+        tickers: list[str],
+        selections: dict[str, list[str] | None] | None = None,
+        sources: dict[str, str] | None = None,
     ) -> None:
         """Set the active ticker list (+ custom expiry picks) WITHOUT fetching.
 
@@ -173,6 +204,7 @@ class UniverseMixin:
             return
         with self._lock:
             self._active_tickers = wanted
+            self._ticker_sources = _pins_for(wanted, sources, self._providers)
             self._pending_selections = {}
             for ticker, picks in (selections or {}).items():
                 sym = portable_ticker(ticker.strip().upper())
@@ -206,8 +238,8 @@ class UniverseMixin:
             if self._available.get(ticker):  # already resolved with a real ladder
                 return
         try:
-            available = self.provider.available_expiries(ticker)  # network, no lock
-            reason = "" if available else f"{self._active_source} lists no expiries for {ticker!r}"
+            available = self.provider_for(ticker).available_expiries(ticker)  # network, no lock
+            reason = "" if available else f"{self.source_of(ticker)} lists no expiries for {ticker!r}"
         except Exception as exc:  # a provider error is a transient miss -> retry
             available = []
             text = str(exc).strip()
@@ -242,7 +274,7 @@ class UniverseMixin:
         """Why ``ticker`` has no ladder / no chain on the active source (the
         provider's own reason when it keeps one, else the last listing miss);
         None when it resolves fine."""
-        own = getattr(self.provider, "ticker_error", None)
+        own = getattr(self.provider_for(ticker), "ticker_error", None)
         reason = own(ticker) if own is not None else None
         if reason:
             return reason

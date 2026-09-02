@@ -136,9 +136,9 @@ class LiveSlice:
 def live_chain(state: AppState, ticker: str, expiry: date) -> ChainSnapshot | None:
     """The node's live chain straight from the provider's streaming book, or None
     (not streaming, no book reader, book not ready). NEVER a request."""
-    if not state.is_streaming():
+    if not state.is_streaming(ticker):
         return None
-    reader = getattr(state.provider, "live_chain", None)
+    reader = getattr(state.provider_for(ticker), "live_chain", None)
     if reader is None:
         return None
     try:
@@ -274,7 +274,7 @@ class LiveTableTracker:
         return LiveTableFrame(type="status", streaming=streaming, ready=ready)
 
     def frame(self, state: AppState, ticker: str, expiry_iso: str) -> LiveTableFrame | None:
-        if not state.is_streaming():
+        if not state.is_streaming(ticker):
             self._sent.clear()
             self._fingerprint = None
             return self._status(False, False)

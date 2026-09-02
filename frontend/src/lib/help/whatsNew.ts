@@ -7,6 +7,15 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-02",
+    title: "Per-ticker data sources",
+    items: [
+      "The active data source is now a **default**, not a rule: each ticker row in Manage universe has a source select. Pin a ticker to another source — a Eurex index on Bloomberg beside names on Cboe — and it fetches, streams and captures from there while the rest of the universe follows the default. *Default (…)* unpins; a changed pin refetches the ticker and marks its nodes stale.",
+      "To add a name only another source lists, choose that source in the search box's **in:** selector: the search reads that catalogue and *Add on Bloomberg* pins the new ticker to it. Pins travel with the workspace and with saved universes, and survive a switch of the universe source.",
+      "The Nodes pane shows a small source pill (BBG, MSV, …) on a pinned ticker, the market pill a *+N* count with the pins in its tooltip, the Data-sources card the tickers each source serves, and the Spot card names the ticker's own source. A pinned streaming name streams beside request-path names.",
+    ],
+  },
+  {
+    date: "2026-09-02",
     title: "One Auto-update setting: spot only or spot + quotes, and a stream that just flows",
     items: [
       "A calibration always prices spot and option quotes from the same snapshot — a Fetch, or a synchronous read of the streaming book. Calibration is on-demand (the default) or continuous with **Auto-calibrate**, which refits whenever a quotes + spot snapshot arrives and on your edits.",

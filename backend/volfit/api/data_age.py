@@ -90,16 +90,17 @@ def ticker_ages(state, now: datetime | None = None) -> dict[str, float]:
     cache are aged, so this is as cheap as a status poll."""
     if state.as_of.mode != "live":
         return {}
-    # Cached snapshots always come from the ACTIVE provider (a source switch
-    # clears all chain caches — state.set_active_source), so provider kind is a
-    # sound per-state discriminator: any non-synthetic provider is a real feed
-    # whose chains carry a market clock even without a tick size (Eurex & co).
+    # A cached snapshot always comes from the TICKER's own provider (a pin, else
+    # the default; a source change drops that ticker's chain caches), so the
+    # provider kind is a sound per-ticker discriminator: any non-synthetic
+    # provider is a real feed whose chains carry a market clock even without a
+    # tick size (Eurex & co).
     from volfit.data.provider import SyntheticProvider
 
-    real_feed = not isinstance(state.provider, SyntheticProvider)
     now = now or _now_utc_naive()
     ages: dict[str, float] = {}
     for ticker in state.active_tickers():
+        real_feed = not isinstance(state.provider_for(ticker), SyntheticProvider)
         age = chain_age_minutes(state.loaded_snapshot(ticker), now, real_feed=real_feed)
         if age is not None:
             ages[ticker] = age

@@ -114,6 +114,7 @@ def datasources_payload(state, refresh: bool = False, probe: bool = True) -> dic
             "status": level,
             "detail": detail,
             "active": sid == active,
+            "tickers": state.tickers_of(sid),  # what it serves now (pins + followers)
         }
         for sid, (level, detail) in statuses.items()
     ]

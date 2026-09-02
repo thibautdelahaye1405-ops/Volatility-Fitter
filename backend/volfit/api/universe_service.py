@@ -57,7 +57,8 @@ def universe_payload(state: AppState) -> UniverseResponse:
     # not list the symbol, a throttled feed) — the Nodes pane names them.
     errors = {t: reason for t in tickers if (reason := state.ticker_error(t))}
     return UniverseResponse(
-        asOf=state.reference_date.isoformat(), tickers=tickers, expiries=expiries, errors=errors
+        asOf=state.reference_date.isoformat(), tickers=tickers, expiries=expiries, errors=errors,
+        defaultSource=state.active_source, tickerSources=state.ticker_sources(),
     )
 
 
@@ -78,9 +79,15 @@ def _ladder(state: AppState, ticker: str) -> list[ExpiryInfo]:
     ]
 
 
-def search(state: AppState, query: str, limit: int) -> SymbolSearchResponse:
+def search(
+    state: AppState, query: str, limit: int, source: str | None = None
+) -> SymbolSearchResponse:
     """Provider symbol search for the add-ticker picker."""
-    matches = state.provider.search_symbols(query, limit)
+    sid = source or state.active_source  # the catalogue of ONE registered source
+    prov = state._providers.get(sid)
+    if prov is None:
+        raise UnknownNodeError(f"unknown data source {sid!r}")
+    matches = prov.search_symbols(query, limit)
     return SymbolSearchResponse(
         query=query,
         matches=[
@@ -90,9 +97,9 @@ def search(state: AppState, query: str, limit: int) -> SymbolSearchResponse:
     )
 
 
-def add_ticker(state: AppState, symbol: str) -> UniverseResponse:
+def add_ticker(state: AppState, symbol: str, source: str | None = None) -> UniverseResponse:
     """Add a ticker (validated by AppState) and return the new universe."""
-    state.add_ticker(symbol)  # raises UnknownNodeError on a bad symbol
+    state.add_ticker(symbol, source)  # raises UnknownNodeError on a bad symbol / source
     return universe_payload(state)
 
 
@@ -103,6 +110,13 @@ def remove_ticker(state: AppState, symbol: str) -> UniverseResponse:
 
 
 # ----------------------------------------------------- per-ticker expiries
+def set_ticker_source(state: AppState, ticker: str, source: str | None) -> UniverseResponse:
+    """Pin a ticker to a registered source (None = follow the universe source);
+    its nodes go stale and refetch from there (volfit.api.state_sources)."""
+    state.set_ticker_source(ticker, source)
+    return universe_payload(state)
+
+
 def expiry_picker(state: AppState, ticker: str) -> ExpiryPickerResponse:
     """Full available expiry list of a ticker with current selection flags."""
     available = state.available_expiries(ticker)  # UnknownNodeError if unknown
@@ -194,7 +208,9 @@ def save_current(state: AppState, name: str) -> SavedUniversesResponse:
             selections[t] = None
     with VolStore(state.store_path) as store:
         save_universe(
-            store, Universe(name=name.strip(), tickers=tuple(tickers), selections=selections)
+            store,
+            Universe(name=name.strip(), tickers=tuple(tickers), selections=selections,
+                     sources=state.ticker_sources()),
         )
         set_last_universe(store, name.strip())  # restore it as the default next startup
         return SavedUniversesResponse(names=list_universes(store), storeEnabled=True)
@@ -209,7 +225,7 @@ def load_saved(state: AppState, name: str) -> UniverseResponse:
         if universe is None:
             raise UnknownNodeError(f"no saved universe named {name!r}")
         set_last_universe(store, name)  # the loaded universe is now the startup default
-    state.set_active_tickers(list(universe.tickers))  # all start on the default rule
+    state.set_active_tickers(list(universe.tickers), sources=universe.sources)  # default rule + saved pins
     for ticker, picks in (universe.selections or {}).items():
         if picks:  # custom: re-apply explicit picks where the dates still exist
             try:
@@ -249,7 +265,7 @@ def restore_last_universe(state: AppState) -> str | None:
     if universe is None:
         return None
     try:
-        state.restore_universe(list(universe.tickers), universe.selections or {})
+        state.restore_universe(list(universe.tickers), universe.selections or {}, universe.sources)
     except Exception:  # noqa: BLE001
         return None
     return name

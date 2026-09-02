@@ -113,6 +113,9 @@ class Workspace:
         #: ticker -> "market" | "scenario": what the spot follows (the Spot
         #: panel selector, AppState.spot_follow); absent = "market".
         self.spot_follow: dict[str, str] = {}
+        #: ticker -> data-source id it is pinned to (volfit.api.state_sources);
+        #: absent = follows the universe's default source.
+        self.ticker_sources: dict[str, str] = {}
         self.spot_version = 0
         self.spot_version_by_ticker: dict[str, int] = {}
         self.sessions: dict[tuple[str, str], EditSession] = {}
@@ -160,6 +163,7 @@ def build_doc(state) -> dict:
         dark = sorted(ws.dark_nodes)
         shifts = dict(ws.spot_shift)
         follow = {t: v for t, v in ws.spot_follow.items() if v == "scenario"}
+        pins = dict(ws.ticker_sources)
         last_mode = ws.last_fit_mode
         asof = ws.asof
         tickers = list(state._active_tickers)
@@ -201,6 +205,7 @@ def build_doc(state) -> dict:
         "graphMessageEdges": [e.model_dump(mode="json") for e in msg_edges],
         "spotShifts": {t: float(v) for t, v in sorted(shifts.items())},
         "spotFollow": dict(sorted(follow.items())),
+        "tickerSources": dict(sorted(pins.items())),
         "lastFitMode": last_mode,
         "filterStates": wfd.filter_states_docs(filter_states),
         "filterHistory": wfd.history_docs(filter_history),  # non-empty rings only
@@ -249,6 +254,7 @@ def restore_doc(state, doc: dict) -> None:
     ]
     ws.spot_shift = {t: float(v) for t, v in doc.get("spotShifts", {}).items()}
     ws.spot_follow = {t: str(v) for t, v in doc.get("spotFollow", {}).items()}
+    ws.ticker_sources = {str(t): str(v) for t, v in doc.get("tickerSources", {}).items()}
     ws.last_fit_mode = str(doc.get("lastFitMode", "mid"))
     ws.asof = _asof_from(doc.get("asOf") or {}, AsOfSelection)
     ws.filter_states = wfd.filter_states_from(doc.get("filterStates", []))
@@ -298,7 +304,9 @@ def restore_doc(state, doc: dict) -> None:
 
     uni = doc.get("universe") or {}
     if uni.get("tickers"):
-        state.restore_universe(uni["tickers"], uni.get("selections") or {})
+        state.restore_universe(
+            uni["tickers"], uni.get("selections") or {}, dict(doc.get("tickerSources", {}))
+        )
     state.log_event(
         "workspace_restore",
         payload={

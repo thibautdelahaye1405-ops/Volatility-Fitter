@@ -44,9 +44,14 @@ export interface UniverseResponse {
   asOf: string;
   tickers: string[];
   expiries: Record<string, UniverseExpiry[]>;
-  /** ticker -> why it has no ladder on the active source ("Cboe lists no
-   *  options for 'SX5E INDEX'"); absent when it resolves. */
+  /** ticker -> why it has no ladder on its source ("Cboe lists no options
+   *  for 'SX5E INDEX'"); absent when it resolves. */
   errors?: Record<string, string>;
+  /** The universe's default source id (the Data Source selector) and the
+   *  explicit per-ticker pins (ticker -> source id; a ticker absent here
+   *  follows the default) — state/tickerSources.ts. Optional for the mock. */
+  defaultSource?: string;
+  tickerSources?: Record<string, string>;
 }
 
 /** Mid-ladder rung (3rd if ≥ 3 expiries): neither the noisy front month nor

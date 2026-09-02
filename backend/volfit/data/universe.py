@@ -38,6 +38,10 @@ class Universe:
     min_days: int = 1
     max_days: int = 3650
     selections: dict[str, list[str] | None] = field(default_factory=dict)
+    #: ticker -> data-source id it is PINNED to (the multi-source engine,
+    #: volfit.api.state_sources); a ticker absent here follows the universe's
+    #: default source. Saved so a named universe carries its feeds.
+    sources: dict[str, str] = field(default_factory=dict)
 
     def filter_expiries(self, expiries: list[date], asof: date) -> list[date]:
         """Expiries within the universe's [min_days, max_days] window, sorted."""
@@ -52,6 +56,7 @@ class Universe:
             "min_days": self.min_days,
             "max_days": self.max_days,
             "selections": self.selections,
+            "sources": self.sources,
         }
 
     @staticmethod
@@ -62,6 +67,7 @@ class Universe:
             min_days=int(config["min_days"]),
             max_days=int(config["max_days"]),
             selections=config.get("selections", {}),
+            sources=dict(config.get("sources", {}) or {}),
         )
 
 

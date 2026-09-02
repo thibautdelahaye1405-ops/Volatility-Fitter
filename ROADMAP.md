@@ -993,9 +993,11 @@ below) — every recorded rider is closed except the ones listed here:
    the entitlement / rate-limit gate is remembered for the SESSION — restart
    :8000 to retry after an upgrade; `VOLFIT_MASSIVE_HIST_NBBO=0` pins the
    marks path); `expiries.classify_expiry` (Fri-only weekly) vs the picker's
-   Mon/Wed/Fri "Dailies" bucket stays divergent by choice; the per-node
-   source policy in the Universe dialog is still inert; a Bloomberg-session
-   look at the yellow "no data" pill on a non-US name; captures made before
+   Mon/Wed/Fri "Dailies" bucket stays divergent by choice; per-ticker
+   sources SHIPPED (wrap 2026-09-02h — a live Bloomberg + Cboe look at a
+   pinned name streaming beside request-path ones is the rider); a
+   Bloomberg-session look at the yellow "no data" pill on a non-US name;
+   captures made before
    store schema v10 are unattributed and no longer offered by the picker
    (they still replay from a saved selection).
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
@@ -1011,6 +1013,87 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-02h) — PER-TICKER SOURCES: THE MULTI-SOURCE ENGINE, BUILT AND WIRED
+
+User request: "Per-ticker sources: build and wire" — the Universe dialog's
+"Per-node sources" card had been UI-ready-but-inert since the shell v2 arc
+(a localStorage policy with no effect). Built as PER-TICKER pins (a chain is
+fetched per ticker; per-expiry sourcing would mean merging chains from two
+feeds and was not asked for).
+
+- **Engine** (`volfit/api/state_sources.py`, `SourcesMixin` on AppState):
+  `_ticker_sources` (ticker → source id; workspace-scoped `ScopedField`,
+  saved in the workspace doc as `tickerSources` and with a named universe —
+  `Universe.sources`), `source_of(t)` (the pin when it names a registered
+  source, else `_active_source` = the universe's DEFAULT), `provider_for(t)`,
+  `tickers_of(sid)`, `set_ticker_source(t, sid | None)` (a change drops that
+  ticker's chain-derived caches — `_drop_ticker_chain_caches`, the
+  per-ticker counterpart of `_clear_chain_caches`: custom picks stashed for
+  the lazy re-resolution, saved priors + lit map kept — and bumps its data
+  version). `set_active_source` now keeps pinned tickers' feeds AND caches
+  (only the followers refetch; the legacy clear-all path stays when nothing
+  is pinned or the as-of was not live). `add_ticker(symbol, source)` resolves
+  and fetches on that source and pins there; `set_active_tickers` /
+  `restore_universe` / `restore_doc` install the saved pins FIRST so each
+  ticker resolves on its own feed (`_pins_for`: unregistered sources
+  dropped); `remove_ticker` drops the pin.
+- **Every per-ticker call routes through `provider_for`**: `_fetch_asof`
+  (+ the flat-file hint gets the tickers THAT provider serves), `live_spot`,
+  `live_spot_reading`, `_ensure_selection` / `ticker_error` (the reason names
+  the ticker's source), the capture tag (`_persist_capture` /
+  `_load_captured` / the export publish use `source_of(ticker)`; the
+  no-auto-capture rule per ticker), `node_effective_asof` (per-ticker
+  `dataSource`), `fetch_preview._advertised` (per ticker, its own history),
+  `data_age` (real-feed per ticker), the Massive IV overlay, `seed_priors`
+  (skips a ticker whose source has no prev close), `SpotState.sourceLabel` /
+  `streaming`, `table.marketLive`, `smile_layers.MarketLayer.live`,
+  `table_stream.live_chain` + the tracker. The as-of picker and the
+  catalogue search keep the DEFAULT source's capabilities (a global choice;
+  per-ticker honoring shows as ≠ as-of); `GET /universe/search?source=`
+  searches one source's catalogue.
+- **Streaming per provider** (`sync_streaming` moved into the mixin): a
+  streaming-capable provider opens its book iff `autoStream` and it serves
+  ≥ 1 active ticker, on THOSE tickers' contracts; `is_streaming(ticker)`
+  answers per ticker (`is_streaming()` = any); `streaming_tickers()` /
+  `request_tickers()` partition the universe and the scheduler serves BOTH
+  in one tick: the book side (`sync_market_shifts(streaming)`,
+  `stream_refit(…, streaming)`) and the Auto-update timer for the request
+  side (`fetch_snapshot(request)` / `fetch_spots(request)`; the timer is inert
+  only when every ticker streams). `calibration_chains` takes the
+  synchronous book snapshot per streaming ticker.
+- **API**: `UniverseResponse.defaultSource` + `tickerSources` (pins only);
+  `PUT /universe/{ticker}/source {source | null}`; `POST /universe/tickers
+  {symbol, source?}`; `GET /datasources` sources[i].tickers (what each source
+  serves now). Fetch narration names the ticker's source.
+- **Frontend** (fork): `state/tickerSources.ts` (`useTickerSources`, server-
+  backed; the localStorage policy `nodeSources.ts` deleted, the shell blob no
+  longer carries it); the Universe dialog's Data-sources card = "Universe
+  source (default)" radio (per-source ticker counts) + "Per-ticker sources"
+  (the matrix's per-row source select ENABLED: Default (…) / each source;
+  "N pinned · clear"); the add search gains an "in: <source>" select (a name
+  added on another source is pinned there); Nodes-pane source pill (BBG /
+  MSV / …) on a ticker pinned off the default; Market pill "+N" with the pins
+  in its title; guides (universe + data-sources "Per-ticker sources"),
+  glossary, What's new.
+- Locks: tests/test_ticker_sources.py (14: routing + caches + data version,
+  pin validation, the default switch keeps pins, remove drops the pin,
+  captures tagged per ticker, streaming per provider / a book beside the
+  request path / the scheduler's one-tick split, workspace + saved-universe
+  round trips incl. an unregistered saved source, the API: pin / unpin /
+  404s / per-source search + add / `sourceLabel` / datasources tickers);
+  the scheduler + spot tests' `is_streaming` seams take the ticker.
+  Frontend: NodesPane.test (+2, the source pill), state/tickerSources.test
+  (2). Regression: backend slice 661 passed / 7 skipped, frontend 425 green,
+  tsc + production build + headless workbench smoke clean. `seed_priors`
+  moved to volfit/api/workflow_priors.py (workflow.py back under 400 lines;
+  re-exported).
+- Riders: per-EXPIRY sources (merging chains) if ever wanted; the as-of
+  picker stays global (per-ticker as-of capability would need a per-ticker
+  picker); a Bloomberg + Cboe live session to watch a pinned SX5E stream
+  beside request-path names.
+- USER-side: restart :8000 (new endpoints + payload fields; the workspace
+  doc gains `tickerSources`).
 
 ### 🧭 SESSION WRAP (2026-09-02g) — THE DATA MODEL: ONE AUTO-UPDATE SETTING, A STREAM THAT JUST FLOWS, A SPOT UPDATE ONLY TRANSPORTS
 

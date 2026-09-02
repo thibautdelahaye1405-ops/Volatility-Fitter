@@ -27,6 +27,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { ChevronDown, ChevronRight, Filter, Settings2 } from "lucide-react";
 import { useSmileSession } from "../../state/smileSession";
+import { shortSourceLabel, sourceLabel } from "../../state/tickerSources";
 import { useWorkbench } from "../../state/workbench";
 import { useLitMap } from "../../state/litMap";
 import { useQualityReport } from "../../state/qualityContext";
@@ -249,6 +250,17 @@ export default function NodesPane() {
                       no data
                     </span>
                   )}
+                  {/* Pinned to another source than the universe's (state/tickerSources). */}
+                  {universe?.tickerSources?.[ticker] !== undefined &&
+                    universe.tickerSources[ticker] !== universe.defaultSource && (
+                      <span
+                        className="ml-1 shrink-0 rounded border border-sky-500/40 bg-sky-500/10 px-1 text-[9px] font-semibold uppercase tracking-wider text-sky-300"
+                        title={`Pinned to ${sourceLabel(universe.tickerSources[ticker])}`}
+                        data-testid="ticker-source-pill"
+                      >
+                        {shortSourceLabel(universe.tickerSources[ticker])}
+                      </span>
+                    )}
                 </button>
                 {live && (
                   <span className="hidden shrink-0 gap-0.5 group-hover:flex">

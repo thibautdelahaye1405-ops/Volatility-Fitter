@@ -36,10 +36,11 @@ def _regime_label(regime: str | float) -> str:
     return f"custom {regime:g}"
 
 
-def _source_label(state: AppState) -> str:
+def _source_label(state: AppState, ticker: str) -> str:
+    """The TICKER's source (its pin, else the universe's default)."""
     from volfit.api.datasource import SOURCE_LABELS
 
-    sid = state.active_source
+    sid = state.source_of(ticker)
     return SOURCE_LABELS.get(sid, sid.title())
 
 
@@ -80,8 +81,8 @@ def spot_state(state: AppState, ticker: str) -> SpotState:
         liveReturn=ret,
         liveAt=at,
         liveSource=src,
-        streaming=bool(state.is_streaming()),
-        sourceLabel=_source_label(state),
+        streaming=bool(state.is_streaming(ticker)),
+        sourceLabel=_source_label(state, ticker),
         litNodes=n_lit,
         lvEnabled=bool(state.options().localVolEnabled),
     )

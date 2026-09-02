@@ -23,8 +23,8 @@ Conventions in the reference implementation worth keeping:
 
 | Route | Semantics |
 |---|---|
-| `GET /datasources` | All configured sources with status lights (`?refresh=true` re-probes health). |
-| `POST /datasource/{source_id}` | Switch the active source; refetches on the new feed. |
+| `GET /datasources` | All configured sources with status lights (`?refresh=true` re-probes health) and, per source, the active tickers it serves now (pins + followers). |
+| `POST /datasource/{source_id}` | Switch the universe's DEFAULT source; the tickers following it refetch on the new feed, pinned tickers keep theirs. |
 | `GET /asof`, `POST /asof` | Global as-of selection (live / previous close / historical). |
 | `POST /fetch/spots` | Fetch spots; transports surfaces analytically (no refit). |
 | `POST /fetch/options` | Fetch option chains; marks affected nodes stale; calibrates only if auto-calibrate is on. |
@@ -36,8 +36,9 @@ Conventions in the reference implementation worth keeping:
 | Route | Semantics |
 |---|---|
 | `GET /universe` | Selected universe (tickers, expiries, counts). |
-| `GET /universe/search` | Provider symbol search. |
-| `POST /universe/tickers`, `DELETE /universe/tickers/{symbol}` | Add/remove tickers. |
+| `GET /universe/search` | Symbol search in ONE source's catalogue (`?source=` — default: the universe source). |
+| `POST /universe/tickers`, `DELETE /universe/tickers/{symbol}` | Add/remove tickers; `{symbol, source?}` adds on that source and pins the name there. |
+| `PUT /universe/{ticker}/source` | Pin a ticker to a registered data source (`{source: id \| null}`; null = follow the universe source) — the multi-source engine (2026-09-02h): the ticker refetches, streams and captures from its own feed; `GET /universe` reports `defaultSource` + `tickerSources`. |
 | `GET/PUT /universe/{ticker}/expiries`, `POST .../expiries/reset` | Per-ticker expiry selection with expiry-type labels. |
 | `GET /universe/lit`, `PUT /universe/lit/{ticker}`, `PUT /universe/lit/{ticker}/{expiry}` | Lit/dark state at ticker and node granularity. |
 | `GET /universes`, `POST /universes/{name}`, `DELETE /universes/{name}`, `POST /universe/load/{name}` | Named universe save/list/delete/load. |

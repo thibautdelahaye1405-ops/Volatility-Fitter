@@ -28,7 +28,7 @@ def _state(**opts) -> AppState:
     state = AppState(REF_DATE)
     if opts:
         state.set_options(state.options().model_copy(update=opts))
-    state.is_streaming = lambda: False  # the request path unless a test streams
+    state.is_streaming = lambda ticker=None: False  # the request path unless a test streams
     return state
 
 
@@ -140,7 +140,7 @@ def test_streaming_makes_auto_update_inert_and_syncs_the_book(monkeypatch):
     monkeypatch.setattr(workflow, "sync_market_shifts", _counting(calls, "sync"))
     monkeypatch.setattr(workflow, "stream_refit", _counting(calls, "refit"))
     sched = Scheduler(state)
-    state.is_streaming = lambda: True
+    state.is_streaming = lambda ticker=None: True
     sched.tick(now=100.0)
     assert calls == {"sync": 1}
     sched.tick(now=100.0 + STREAM_SYNC_SECONDS - 1.0)  # inside the sync cadence
@@ -149,7 +149,7 @@ def test_streaming_makes_auto_update_inert_and_syncs_the_book(monkeypatch):
     assert calls == {"sync": 2}
     assert sched.seconds_to_next_update(now=200.0) == -1.0  # inert while streaming
     assert sched.seconds_to_next_refit(now=200.0) == -1.0  # autoCalibrate off
-    state.is_streaming = lambda: False  # the stream drops: the timer is back
+    state.is_streaming = lambda ticker=None: False  # the stream drops: the timer is back
     assert sched.seconds_to_next_update(now=200.0) >= 0.0
 
 
@@ -165,7 +165,7 @@ def test_streaming_refit_follows_autocalibrate_and_its_cadence(monkeypatch):
     sched = Scheduler(state)
     sched.tick(now=100.0)  # not streaming: nothing
     assert calls == {}
-    state.is_streaming = lambda: True
+    state.is_streaming = lambda ticker=None: True
     sched.tick(now=200.0)
     assert calls["refit"] == 1
     sched.tick(now=201.0)  # inside the throttle window
@@ -187,7 +187,7 @@ def test_freeze_holds_transport_and_refit_while_streaming(monkeypatch):
     monkeypatch.setattr(workflow, "sync_market_shifts", _counting(calls, "sync"))
     monkeypatch.setattr(workflow, "stream_refit", _counting(calls, "refit"))
     sched = Scheduler(state)
-    state.is_streaming = lambda: True
+    state.is_streaming = lambda ticker=None: True
     sched.tick(now=10_000.0)
     assert calls == {}
     assert sched.seconds_to_next_refit(now=10_000.0) == -1.0

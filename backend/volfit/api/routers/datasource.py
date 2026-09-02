@@ -25,6 +25,9 @@ class DataSource(BaseModel):
     status: str  # "green" (real-time) | "amber" (delayed) | "red" (unavailable)
     detail: str
     active: bool
+    #: The active tickers this source serves now — pinned to it, or following
+    #: it as the universe's default (volfit.api.state_sources).
+    tickers: list[str] = []
 
 
 class DataAge(BaseModel):

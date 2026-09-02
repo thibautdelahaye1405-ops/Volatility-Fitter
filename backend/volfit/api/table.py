@@ -161,7 +161,7 @@ def _market_rows(
         "marketForward": f,
         "marketSpot": spot,
         "marketTimestamp": timestamp,
-        "marketLive": bool(state.is_streaming()),
+        "marketLive": bool(state.is_streaming(ticker)),
         "marketRows": rows,
     }
 

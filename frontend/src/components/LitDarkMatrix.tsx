@@ -26,16 +26,16 @@ const sourceSelect =
   "text-slate-400 outline-none hover:border-slate-600 focus:border-accent-500 " +
   "disabled:cursor-not-allowed disabled:opacity-60";
 
-/** Optional per-ticker data-source column (state/nodeSources.ts). Today the
- *  select is rendered DISABLED and always shows the universe source; the
- *  multi-source engine will enable it and route `onChange` into overrides. */
+/** Per-ticker data-source column (state/tickerSources.ts, the multi-source
+ *  engine): the select's value is the ticker's PIN (an `options[].id`, "" =
+ *  follow the universe source) and `onChange` pins / unpins it on the server. */
 export interface SourceColumn {
   /** Source id (an `options[].id`) shown for this ticker's row. */
   label: (ticker: string) => string;
   options: { id: string; label: string }[];
-  disabled: boolean;
-  /** Tooltip explaining the disabled state. */
-  title: string;
+  disabled?: boolean;
+  /** Tooltip of the select. */
+  title?: string;
   onChange?: (ticker: string, sourceId: string) => void;
 }
 

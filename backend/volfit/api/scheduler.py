@@ -110,25 +110,24 @@ class Scheduler:
         self._state.sync_streaming()
 
         opts = self._state.options()
-        if self._state.is_streaming():
-            # A live book: spot and quotes flow continuously, Auto-update is
-            # inert. Unless the fit is frozen, the market-following tickers
-            # (Spot card selector) take the book spot at the sync cadence — a
-            # free read, pure transport; scenario tickers keep their dial —
-            # and, with autoCalibrate on (the master switch for unattended
-            # refits), the streaming refit rebuilds every chain from the book
-            # and recalibrates the lit nodes every ``streamRefitSeconds``.
-            if opts.streamFreezeFit:
-                return
+        streaming = self._state.streaming_tickers()  # per ticker: a pinned Bloomberg
+        request = self._state.request_tickers()  # name streams beside Cboe names
+        if streaming and not opts.streamFreezeFit:
+            # The live books: spot and quotes flow continuously — the market-
+            # following tickers take the book spot at the sync cadence (a free
+            # read, pure transport; scenario tickers keep their dial) and, with
+            # autoCalibrate on (the master switch for unattended refits), the
+            # streaming refit rebuilds THOSE chains from the book and
+            # recalibrates the lit nodes every ``streamRefitSeconds``.
             if now - self._last_spot >= STREAM_SYNC_SECONDS:
                 self._last_spot = now
-                workflow.sync_market_shifts(self._state)
+                workflow.sync_market_shifts(self._state, streaming)
             if opts.autoCalibrate and now - self._last_refit >= opts.streamRefitSeconds:
                 self._last_refit = now
-                workflow.stream_refit(self._state, self._state.last_fit_mode)
-            return
-        # The request path: one timer, its verb chosen by ``autoUpdate``.
-        if opts.autoUpdate == "off" or now - self._last_update < opts.autoUpdateSeconds:
+                workflow.stream_refit(self._state, self._state.last_fit_mode, streaming)
+        # The request path (the tickers WITHOUT a book): one timer, its verb
+        # chosen by ``autoUpdate``; inert while every ticker streams.
+        if not request or opts.autoUpdate == "off" or now - self._last_update < opts.autoUpdateSeconds:
             return
         self._last_update = now
         if opts.autoUpdate == "snapshot":
@@ -136,16 +135,16 @@ class Scheduler:
 
             # Quotes + spot in one snapshot (then the optional prior roll and, with
             # autoCalibrate on, the background calibration of the lit nodes).
-            workflow_fetch.fetch_snapshot(self._state, fit_mode=self._state.last_fit_mode)
+            workflow_fetch.fetch_snapshot(self._state, request, fit_mode=self._state.last_fit_mode)
         else:  # "spot": the probe + transport — never a refit
-            workflow.fetch_spots(self._state)
+            workflow.fetch_spots(self._state, request)
 
     # ------------------------------------------------------------- status
     def seconds_to_next_update(self, now: float | None = None) -> float:
         """Countdown to the next Auto-update tick; -1 when off or while a book
         streams (the timer is inert then — the UI shows a button instead)."""
         opts = self._state.options()
-        if opts.autoUpdate == "off" or self._state.is_streaming():
+        if opts.autoUpdate == "off" or not self._state.request_tickers():
             return -1.0
         now = time.monotonic() if now is None else now
         return max(0.0, opts.autoUpdateSeconds - (now - self._last_update))
@@ -154,7 +153,7 @@ class Scheduler:
         """Countdown to the next streaming refit; -1 unless a book streams with
         autoCalibrate on and the fit not frozen."""
         opts = self._state.options()
-        if not (self._state.is_streaming() and opts.autoCalibrate and not opts.streamFreezeFit):
+        if not (self._state.streaming_tickers() and opts.autoCalibrate and not opts.streamFreezeFit):
             return -1.0
         now = time.monotonic() if now is None else now
         return max(0.0, opts.streamRefitSeconds - (now - self._last_refit))

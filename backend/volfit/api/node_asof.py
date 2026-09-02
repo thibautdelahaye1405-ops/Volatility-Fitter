@@ -66,7 +66,7 @@ def node_effective_asof(state: AppState, ticker: str) -> NodeAsOf:
         return NO_CHAIN
     day = requested_day(state.as_of, state.reference_date)
     exact = True if day is None else snap.timestamp.date() == day
-    return snap.timestamp.isoformat(), state.active_source, exact
+    return snap.timestamp.isoformat(), state.source_of(ticker), exact
 
 
 def ticker_asof_map(state: AppState, tickers) -> dict[str, NodeAsOf]:

@@ -31,11 +31,12 @@ def fetch_spots(state: AppState, tickers: list[str] | None = None) -> dict[str, 
     chosen = tickers if tickers is not None else state.active_tickers()
     from volfit.api import workflow  # lazy: workflow re-exports this module
 
-    source = workflow._source_label(state)
     out: dict[str, LiveSpot] = {}
     for ticker in chosen:
         try:
-            with state.activity.activity("fetch", f"Fetching {ticker} spot from {source}"):
+            with state.activity.activity(
+                "fetch", f"Fetching {ticker} spot from {workflow._source_label(state, ticker)}"
+            ):
                 anchor = float(state.anchor_spot(ticker))
                 live = float(state.live_spot(ticker))
         except Exception:
