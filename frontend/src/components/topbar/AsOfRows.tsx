@@ -38,25 +38,27 @@ const asofRowClass = (active: boolean): string =>
   ].join(" ");
 
 /** One within-day moment row. */
-function AsofMomentRow({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
+function AsofMomentRow({ label, active, onClick, disabled = false, reason }: {
+  label: string; active: boolean; onClick: () => void; disabled?: boolean; reason?: string;
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
+      aria-disabled={disabled}
+      title={disabled ? reason : undefined}
       className={[
-        "flex w-full items-center gap-2 py-1 pl-6 pr-3 text-left text-[11px] transition-colors",
-        active ? "text-accent-300" : "text-slate-400 hover:bg-slate-700/40 hover:text-slate-200",
+        "flex w-full items-center gap-2 px-6 py-1.5 text-left text-xs transition-colors",
+        disabled
+          ? "cursor-not-allowed text-slate-600"
+          : active
+            ? "bg-accent-500/10 text-accent-300"
+            : "text-slate-300 hover:bg-slate-700/40",
       ].join(" ")}
     >
       <span className="flex-1">{label}</span>
-      {active && <span className="text-accent-400">✓</span>}
+      {disabled && reason && <span className="truncate text-[10px] text-slate-600">{reason}</span>}
+      {active && !disabled && <span className="text-accent-400">✓</span>}
     </button>
   );
 }
@@ -118,49 +120,65 @@ export function AsOfRows({
         const isOpen = d.date === openDay;
         const isSelDay = asof.mode !== "live" && asof.day === d.date;
         const hasIntra = d.hasCaptures || d.intraday;
+        const nothing = !d.hasClose && !hasIntra;
+        // Every moment is listed; one the active source cannot serve is DIMMED
+        // and disabled with the reason, never offered as a live pick and never
+        // silently degraded to something else.
+        const marks = d.spread === "marks";
+        const closeWhy = d.hasClose ? undefined : d.isToday ? "today has no close yet" : "no close for this day on this source";
+        const intraWhy = hasIntra ? undefined : d.isToday
+          ? "today's latest is Live — pick Live"
+          : "this source cannot fetch an intraday moment for this day";
         return (
-          <div key={`day-${d.date}`}>
+          <div key={`day-${d.date}`} data-testid={`asof-day-${d.date}`} data-empty={nothing}>
             <button
               onClick={() => setExpandedDay(d.date)}
               className={[
                 "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors",
                 isSelDay
                   ? "bg-accent-500/10 text-accent-300"
-                  : "text-slate-300 hover:bg-slate-700/40",
+                  : nothing
+                    ? "text-slate-500 hover:bg-slate-700/40"
+                    : "text-slate-300 hover:bg-slate-700/40",
               ].join(" ")}
+              title={d.reason ?? undefined}
             >
               <span className="flex-1 font-medium">{fmtDay(d.date, d.isToday)}</span>
+              {marks && !nothing && (
+                <span className="rounded border border-slate-700 px-1 text-[9px] uppercase tracking-wider text-slate-500" title="Historical chains from this source are bid = ask closes (marks), not a two-sided market">
+                  marks
+                </span>
+              )}
               <span className="text-[10px] text-slate-500">{isOpen ? "▾" : "▸"}</span>
             </button>
             {isOpen && (
               <div className="bg-surface-900/60 py-0.5">
-                {d.hasClose && (
+                <AsofMomentRow
+                  label="Close (official)"
+                  active={isSelDay && asof.moment === "close"}
+                  disabled={!d.hasClose}
+                  reason={closeWhy}
+                  onClick={() => { close(); void setMoment(d.date, "close"); }}
+                />
+                <AsofMomentRow
+                  label="Latest snapshot"
+                  active={isSelDay && asof.moment === "latest"}
+                  disabled={!hasIntra}
+                  reason={intraWhy}
+                  onClick={() => { close(); void setMoment(d.date, "latest"); }}
+                />
+                {asof.closeOffsets.map((n) => (
                   <AsofMomentRow
-                    label="Close (official)"
-                    active={isSelDay && asof.moment === "close"}
-                    onClick={() => { close(); void setMoment(d.date, "close"); }}
+                    key={`off-${d.date}-${n}`}
+                    label={`${n} min before close`}
+                    active={isSelDay && asof.moment === "before_close" && asof.offset === n}
+                    disabled={!hasIntra}
+                    reason={intraWhy}
+                    onClick={() => { close(); void setMoment(d.date, "before_close", n); }}
                   />
-                )}
-                {hasIntra && (
-                  <AsofMomentRow
-                    label="Latest snapshot"
-                    active={isSelDay && asof.moment === "latest"}
-                    onClick={() => { close(); void setMoment(d.date, "latest"); }}
-                  />
-                )}
-                {hasIntra &&
-                  asof.closeOffsets.map((n) => (
-                    <AsofMomentRow
-                      key={`off-${d.date}-${n}`}
-                      label={`${n} min before close`}
-                      active={
-                        isSelDay && asof.moment === "before_close" && asof.offset === n
-                      }
-                      onClick={() => { close(); void setMoment(d.date, "before_close", n); }}
-                    />
-                  ))}
-                {!d.hasClose && !hasIntra && (
-                  <div className="px-6 py-1.5 text-[10px] text-slate-600">No data</div>
+                ))}
+                {nothing && (
+                  <div className="px-6 py-1.5 text-[10px] text-slate-600">{d.reason ?? "No data"}</div>
                 )}
               </div>
             )}

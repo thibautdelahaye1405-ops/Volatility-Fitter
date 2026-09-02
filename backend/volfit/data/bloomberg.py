@@ -60,6 +60,8 @@ from volfit.data.bloomberg_live import BloombergStreamingMixin
 from volfit.data.bloomberg_search import instrument_search
 from volfit.data.dividends import Dividend
 from volfit.data.fieldmap import int_or_none, price_or_none
+from volfit.data.expiry_time import session_close_utc
+from volfit.data.roots import is_index_root, normalize_root
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
 from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
@@ -76,16 +78,37 @@ _ASSET_CLASS_BY_UPPER = {c.upper(): c for c in _ASSET_CLASSES}
 #: descriptor, so only quote fields + the exercise flag are requested here).
 _QUOTE_FIELDS = ("BID", "ASK", "LAST_PRICE", "VOLUME", "OPEN_INT", "OPT_EXER_TYP")
 
-#: CHAIN_PERIODICITY_OVRD value requesting ALL listed series (dailies +
-#: weeklies + monthlies + quarterlies): the empty string, per the vocabulary
-#: the installed xbbg ships (xbbg.ext.options.ChainPeriodicity, ALL = "").
+#: Chain periodicity requesting ALL listed series (dailies + weeklies +
+#: monthlies + quarterlies): the empty string, per the vocabulary the installed
+#: xbbg ships (xbbg.ext.options.ChainPeriodicity, ALL = "") — sent as NO
+#: periodicity override (an empty override is a no-op on the wire).
 CHAIN_ALL_SERIES = ""
+#: CHAIN_POINTS_OVRD — the COUNT cap of a CHAIN_TICKERS request. Bloomberg
+#: truncates the chain to a modest default without it (the monthly-biased
+#: ladder the app used to get); large enough for an index root's full listing.
+CHAIN_POINTS = 50000
 
 #: Seconds a parsed OPT_CHAIN is reused. Chains GROW intraday (new dailies
 #: list during the session) so the cache must expire — cf. the exchange
 #: provider's 60 s raw-chain TTL; longer here because each refresh is a
 #: metered ``bds`` and the ladder shifts far slower than quotes do.
 CHAIN_CACHE_TTL = 600.0
+
+
+def _parse_chain_frame(frame) -> list:
+    """Parsed contracts out of a chain ``bds`` frame — CHAIN_TICKERS (one
+    security per row, e.g. "SPY US 09/05/26 C450 Equity") or OPT_CHAIN
+    ("Security Description" descriptors): every non-metadata column is tried
+    and the first one that yields contracts wins, so the column's name (which
+    differs between the two fields and xbbg versions) never matters."""
+    cols = columns(frame)
+    for name, values in cols.items():
+        if name in ("ticker", "field"):
+            continue
+        parsed = [p for p in (parse_descriptor(str(v)) for v in values) if p]
+        if parsed:
+            return parsed
+    return []
 
 
 def _default_blp():
@@ -194,6 +217,8 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         * **exchange-coded equity shorthand** — a root plus a 2-letter market
           code but no asset class ("SAP GY", "VOD LN", "7203 JT"): append
           " Equity" (the asset class is implied by the exchange code);
+        * **bare index root** — a known cash-index root ("SPX", "NDX", "VIX",
+          the universe's portable spelling, volfit.data.symbols): " Index";
         * **bare ticker** — a single token ("SPY", "NVDA"): append the default
           yellow key (``yellow_key``, "US Equity"), i.e. the US listing.
         """
@@ -206,6 +231,8 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
             return " ".join(parts[:-1] + [asset_class])
         if len(parts) >= 2:  # exchange-coded equity (root + market code)
             return f"{t} Equity"
+        if is_index_root(t):  # the portable bare index root ("SPX") -> "SPX Index"
+            return f"{normalize_root(t)} Index"
         return f"{t} {self.yellow_key}"
 
     def list_tickers(self) -> list[str]:
@@ -300,33 +327,37 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         ``chain_ttl`` seconds — chains list new dailies intraday, so the cache
         expires instead of living forever).
 
-        The request carries the ``CHAIN_PERIODICITY_OVRD`` override (value
-        ``chain_periodicity``, "" = ALL series) through xbbg's ``overrides=``
-        kwarg — the exact route xbbg's own ``option_chain`` helper uses
-        (xbbg.ext.options; blp routes UPPERCASE override keys to Bloomberg
-        field overrides). Without it the Terminal's monthly-biased chain
-        default hides most weeklies/dailies. Live verification of the override
-        is blocked by the account-side workflow gate
-        (Docs/bloomberg_workflow_review_account.md)."""
+        The request is the ``CHAIN_TICKERS`` bulk field with the ``CHAIN_*_OVRD``
+        overrides — the field those overrides belong to (xbbg.ext.options
+        ``option_chain`` issues them against CHAIN_TICKERS; ``OPT_CHAIN``
+        silently ignores them, which is why the app used to receive the
+        Terminal's monthly-biased default chain: 11 SPY rungs vs 31 on Cboe).
+        ``CHAIN_POINTS_OVRD`` lifts the count cap; ``CHAIN_PERIODICITY_OVRD``
+        goes only when a periodicity is pinned ("" = ALL = no override).
+        ``chain_periodicity=None`` is the escape hatch: the legacy bare
+        ``OPT_CHAIN`` request. A CHAIN_TICKERS answer with no parsable contract
+        falls back to OPT_CHAIN too, so a Terminal that lacks the field still
+        serves a ladder. Live verification is blocked by the account-side
+        workflow gate (Docs/bloomberg_workflow_review_account.md)."""
         key = ticker.upper()
         now = self._clock()
         hit = self._chain_cache.get(key)
         if hit is not None and now - hit[0] <= self.chain_ttl:
             return hit[1]
         blp = self._blp_module()
-        kwargs: dict = {}
-        if self.chain_periodicity is not None:  # None = send no override at all
-            kwargs["overrides"] = {"CHAIN_PERIODICITY_OVRD": self.chain_periodicity}
-        frame = blp.bds(self._security(ticker), "OPT_CHAIN", **kwargs)
-        cols = columns(frame)
-        # The descriptor column is "Security Description"; fall back to the last
-        # non-metadata column if a future xbbg names it differently.
-        desc_col = "Security Description"
-        if desc_col not in cols:
-            extras = [c for c in cols if c not in ("ticker", "field")]
-            desc_col = extras[-1] if extras else ""
-        descriptors = cols.get(desc_col, [])
-        parsed = [p for p in (parse_descriptor(str(d)) for d in descriptors) if p]
+        security = self._security(ticker)
+        if self.chain_periodicity is None:  # legacy request, no override at all
+            parsed = _parse_chain_frame(blp.bds(security, "OPT_CHAIN"))
+        else:
+            overrides = {"CHAIN_POINTS_OVRD": str(CHAIN_POINTS)}
+            if self.chain_periodicity:  # a pinned periodicity ("M", "W", ...)
+                overrides["CHAIN_PERIODICITY_OVRD"] = self.chain_periodicity
+            try:
+                parsed = _parse_chain_frame(blp.bds(security, "CHAIN_TICKERS", overrides=overrides))
+            except Exception:  # noqa: BLE001 — a Terminal / rig without the field
+                parsed = []
+            if not parsed:  # no CHAIN_TICKERS entitlement / empty answer: the legacy field
+                parsed = _parse_chain_frame(blp.bds(security, "OPT_CHAIN"))
         self._chain_cache[key] = (now, parsed)
         return parsed
 
@@ -339,16 +370,21 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         else:
             self._chain_cache.pop(ticker.upper(), None)
 
+    def _keep_expiry(self, expiry: date, today: date) -> bool:
+        """Inside ``max_days``; TODAY's expiry only while its session is open
+        (a 0DTE is a live node until the close)."""
+        days = (expiry - today).days
+        if days > self.max_days:
+            return False
+        if days > 0:
+            return True
+        return days == 0 and datetime.now(timezone.utc).replace(tzinfo=None) < session_close_utc(today)
+
     def available_expiries(self, ticker: str) -> list[date]:
-        """All listed expiries inside (0, max_days], parsed from the descriptors."""
+        """All listed expiries inside (0, max_days] (+ today's while its session
+        is open), parsed from the chain contracts."""
         today = date.today()
-        return sorted(
-            {
-                p.expiry
-                for p in self._chain(ticker)
-                if 0 < (p.expiry - today).days <= self.max_days
-            }
-        )
+        return sorted({p.expiry for p in self._chain(ticker) if self._keep_expiry(p.expiry, today)})
 
     # -- as-of history -------------------------------------------------------
 
@@ -405,9 +441,7 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         today = date.today()
         parsed = self._chain(ticker)
         if expiries is None:
-            wanted = {
-                p.expiry for p in parsed if 0 < (p.expiry - today).days <= self.max_days
-            }
+            wanted = {p.expiry for p in parsed if self._keep_expiry(p.expiry, today)}
         else:
             wanted = set(expiries)
         contracts = [p for p in parsed if p.expiry in wanted]

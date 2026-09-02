@@ -12,6 +12,11 @@ export interface ActivityInfo {
   detail: string; // secondary line, e.g. "de-americanizing"
   done: number; // progress numerator (0 with total 0 => indeterminate)
   total: number; // progress denominator
+  /** Caption for done/total when they are not plain counts ("3.2 / 13.0 MB"
+   *  for a chain download); "" = show "done/total". Optional for older payloads. */
+  label?: string;
+  /** Milliseconds since the in-flight activity started (the elapsed gauge). */
+  elapsedMs?: number;
   seq: number; // monotonic; advances on every change
 }
 

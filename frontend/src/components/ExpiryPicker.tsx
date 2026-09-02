@@ -33,6 +33,7 @@ const COMMIT_DEBOUNCE_MS = 300;
 /** Bulk-selection chips (each adds every matching expiry to the selection). */
 const CHIPS = [
   { id: "0dte", label: "0DTE" },
+  { id: "daily", label: "Dailies" },
   { id: "weekly", label: "Weeklies" },
   { id: "monthly", label: "Monthly" },
   { id: "quarterly", label: "Quarterly" },

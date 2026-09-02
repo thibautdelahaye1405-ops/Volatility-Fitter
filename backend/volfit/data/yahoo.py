@@ -37,6 +37,7 @@ from typing import Callable, Sequence
 
 from volfit.data.fieldmap import int_or_none as _int_or_none
 from volfit.data.fieldmap import price_or_none as _price_or_none
+from volfit.data.roots import is_index_root, normalize_root
 from volfit.data.provider import OptionChainProvider, SymbolMatch
 from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
@@ -95,7 +96,17 @@ class YahooProvider(OptionChainProvider):
         else on the watchlist is a US-listed stock/ETF, hence American."""
         if self.exercise_style is not None:
             return self.exercise_style
-        return "european" if ticker.startswith("^") else "american"
+        return "european" if self._symbol(ticker).startswith("^") else "american"
+
+    @staticmethod
+    def _symbol(ticker: str) -> str:
+        """Yahoo's spelling of a universe ticker: a known cash-index root gets
+        its "^" (the universe stores the portable bare root, volfit.data.symbols:
+        "SPX" -> "^SPX"); anything else passes through."""
+        t = ticker.strip()
+        if t.startswith("^"):
+            return t
+        return f"^{normalize_root(t)}" if is_index_root(t) else t
 
     def list_tickers(self) -> list[str]:
         return list(self._tickers)
@@ -179,7 +190,7 @@ class YahooProvider(OptionChainProvider):
     def available_expiries(self, ticker: str) -> list[date]:
         """All listed expiries inside (0, max_days], unthinned — the full list
         the universe picker offers. One cheap ``Ticker.options`` call, no chains."""
-        t = self._ticker_factory(ticker)
+        t = self._ticker_factory(self._symbol(ticker))
         today = date.today()
         out: list[date] = []
         for iso in tuple(getattr(t, "options", ()) or ()):
@@ -264,7 +275,7 @@ class YahooProvider(OptionChainProvider):
     def spot(self, ticker: str, expiries: list[date] | None = None) -> float:
         """Lightweight spot for real-time polling: fast_info only, no chain
         fetch (overrides the base contract's full re-fetch)."""
-        return self._spot(self._ticker_factory(ticker), ticker)
+        return self._spot(self._ticker_factory(self._symbol(ticker)), ticker)
 
     def fetch_chain(
         self,
@@ -274,7 +285,7 @@ class YahooProvider(OptionChainProvider):
     ) -> ChainSnapshot:
         """Fetch spot + the requested expiries (the universe selection), or the
         thinned ladder when none is given; skip (warn) failing expiries."""
-        t = self._ticker_factory(ticker)
+        t = self._ticker_factory(self._symbol(ticker))
         spot = self._spot(t, ticker)
         if expiries is None:
             chosen = self._select_expiries(t, ticker)  # legacy sqrt-thinned ladder

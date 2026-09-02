@@ -23,7 +23,12 @@ class AsOfDay(BaseModel):
     isToday: bool
     hasClose: bool  # an official close is available for this day
     hasCaptures: bool  # at least one captured intraday snapshot exists
-    intraday: bool  # the provider can fetch an arbitrary instant this day
+    intraday: bool  # the provider can fetch an arbitrary PAST instant this day
+    #: What a historical chain of this day carries: "quotes" (two-sided) or
+    #: "marks" (bid = ask aggregate closes — Massive's flat files).
+    spread: str = "quotes"
+    #: Why nothing can be picked on this day (today = Live), else None.
+    reason: str | None = None
 
 
 class AsOfResponse(BaseModel):

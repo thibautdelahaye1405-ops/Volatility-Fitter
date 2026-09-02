@@ -80,11 +80,14 @@ def test_restore_universe_normalizes_decorated_symbols():
     assert state.active_tickers() == ["AAPL", "MSFT"]  # decorated -> bare, deduped
 
 
-def test_restore_universe_keeps_non_us_and_index_symbols():
-    """Non-US names and indices are Bloomberg-only and keep their full security."""
+def test_restore_universe_normalizes_index_roots_and_keeps_non_us_names():
+    """A known cash index collapses to its portable bare root (every source
+    spells it differently: "SPX Index" / "^SPX" / "I:SPX" / "_SPX"); non-US
+    names — a Eurex index, a German equity — are Bloomberg/Eurex-only and keep
+    their full security (a venue that lacks them reports "not listed")."""
     state = AppState(REF)
-    state.restore_universe(["SPX INDEX", "SAP GY EQUITY"])
-    assert state.active_tickers() == ["SPX INDEX", "SAP GY EQUITY"]
+    state.restore_universe(["SPX INDEX", "^VIX", "SX5E INDEX", "SAP GY EQUITY"])
+    assert state.active_tickers() == ["SPX", "VIX", "SX5E INDEX", "SAP GY EQUITY"]
 
 
 def test_provider_chain_failure_degrades_not_500():

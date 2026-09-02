@@ -154,6 +154,7 @@ class FlatFileStore:
             exercise_style="american",  # US single-stock / ETF options
             tick_size=US_OPTION_TICK,
             settlement=settlement_map({q.expiry for q in quotes}, root=upper),
+            quote_kind="marks",  # aggregate closes: bid = ask, no spread
         )
 
     # ------------------------------------------------------------- internals

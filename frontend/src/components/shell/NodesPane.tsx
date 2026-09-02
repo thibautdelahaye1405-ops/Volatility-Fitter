@@ -240,6 +240,15 @@ export default function NodesPane() {
                     </span>
                   )}
                   {ladder.some((r) => r.asOfExact === false) && <AsOfMismatchPill />}
+                  {universe?.errors?.[ticker] && (
+                    <span
+                      className="ml-1 shrink-0 rounded border border-yellow-500/40 bg-yellow-500/10 px-1 text-[9px] font-semibold uppercase tracking-wider text-yellow-300"
+                      title={universe.errors[ticker]}
+                      data-testid="ticker-error-pill"
+                    >
+                      no data
+                    </span>
+                  )}
                 </button>
                 {live && (
                   <span className="hidden shrink-0 gap-0.5 group-hover:flex">

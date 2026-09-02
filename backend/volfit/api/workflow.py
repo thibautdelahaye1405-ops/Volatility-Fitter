@@ -122,6 +122,8 @@ def status(state: AppState, fit_mode: str = "mid") -> CalibrationStatus:
             detail=act.detail,
             done=act.done,
             total=act.total,
+            label=act.label,
+            elapsedMs=act.elapsedMs,
             seq=act.seq,
         ),
     )
@@ -278,6 +280,7 @@ def _refresh_chains(state: AppState, chosen: list[str]) -> tuple[list[str], dict
     bumps the data version while PRESERVING the calibrated pointers + spot
     shift (the frozen-until-Calibrate contract)."""
     source = _source_label(state)
+    n = len(chosen)
 
     def _refresh_one(ticker: str) -> tuple[str, float | None]:
         """Refetch one ticker's chain (blocking network); None spot on failure.
@@ -286,9 +289,14 @@ def _refresh_chains(state: AppState, chosen: list[str]) -> tuple[list[str], dict
         snapshot/forwards/version under the per-call lock and does its network
         I/O outside it, and the activity reporter + provider HTTP client are
         thread-safe — so the chains can be fetched concurrently instead of
-        serially (turning Σ per-ticker latency into the slowest single fetch)."""
+        serially (turning Σ per-ticker latency into the slowest single fetch).
+        The frame narrates "k of n" and, via volfit.data.progress, the download's
+        bytes (a determinate gauge whenever the venue sends a Content-Length)."""
+        k = chosen.index(ticker) + 1
         try:
-            with state.activity.activity("fetch", f"Fetching {ticker} quotes from {source}"):
+            with state.activity.activity(
+                "fetch", f"Fetching {ticker} quotes from {source}", detail=f"chain {k} of {n}"
+            ):
                 return ticker, float(state.refresh_chain(ticker))
         except Exception:
             return ticker, None

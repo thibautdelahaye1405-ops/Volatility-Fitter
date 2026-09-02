@@ -219,6 +219,7 @@ export default function SmileViewer() {
             market={fr.market} calib={fr.calib}
             showCalibQuotes={showCalibQuotes} showCalibFit={showCalibFit}
             liveFlash={liveTicks.flash}
+            quoteKind={smile.quoteKind ?? "quotes"}
             prior={smile.prior} priorTransported={smile.priorTransported}
             scenario={scenarioCurve}
             kWindow={kWindow} onKWindowChange={setKWindow} fullRange={[smile.kMin, smile.kMax]}

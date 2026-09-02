@@ -118,6 +118,11 @@ class ChainSnapshot:
     #: model, so a parity regression reads the asymmetry as a spurious
     #: forward/discount. Consumers must pin F = spot, D = 1 instead.
     zero_carry: bool = False
+    #: What the quotes ARE: "quotes" = a two-sided market (bid/ask as quoted);
+    #: "marks" = one mark per contract with bid = ask (a daily/minute aggregate
+    #: close — Massive's flat-file history and Previous Close), so the smile
+    #: carries no spread: the chart draws a mark, not a band, and says so.
+    quote_kind: str = "quotes"
     #: Price increment of the venue the quotes came from ($0.01 for US penny-
     #: quoted options), or None when prices are EXACT (synthetic chains, chains
     #: synthesized from provider IVs). Real feeds set it so quote prep can drop

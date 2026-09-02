@@ -34,7 +34,7 @@ const segBtn = "px-2 py-0.5 text-[10px] font-medium transition-colors";
 
 const STATUS_DOT: Record<SourceStatus, string> = {
   green: "bg-emerald-500",
-  amber: "bg-amber-400",
+  amber: "bg-yellow-400", // degraded-but-usable: yellow, never mistaken for red
   red: "bg-rose-500",
 };
 
@@ -204,6 +204,9 @@ export default function UniverseManager() {
                 className={`flex flex-col gap-0.5 ${switching ? "animate-pulse" : ""}`}
               >
                 {sources.map((s) => {
+                  // A red light WARNS (the probe failed / timed out / the feed
+                  // is down) but never locks the choice: the user must always
+                  // be able to leave a hung source for another one.
                   const unavailable = s.status === "red";
                   const isActive = s.id === active;
                   return (
@@ -211,15 +214,15 @@ export default function UniverseManager() {
                       key={s.id}
                       role="radio"
                       aria-checked={isActive}
-                      disabled={unavailable || switching}
-                      title={unavailable ? s.detail : undefined}
+                      disabled={switching}
+                      title={unavailable ? `${s.detail} — switching is still allowed` : undefined}
                       onClick={() => void switchSource(s.id)}
                       className={[
                         "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors",
-                        unavailable
-                          ? "cursor-not-allowed text-slate-600"
-                          : isActive
-                            ? "bg-accent-500/10 text-accent-300"
+                        isActive
+                          ? "bg-accent-500/10 text-accent-300"
+                          : unavailable
+                            ? "text-slate-500 hover:bg-slate-700/40 hover:text-slate-200"
                             : "text-slate-300 hover:bg-slate-700/40 hover:text-slate-100",
                       ].join(" ")}
                     >

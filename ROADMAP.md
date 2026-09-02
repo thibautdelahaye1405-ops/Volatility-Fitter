@@ -981,11 +981,141 @@ below) — every recorded rider is closed except the ones listed here:
    help corpus if the 1.30 MB bundle matters; try Ask's Claude tier against a
    real key once ($env:VOLFIT_ANTHROPIC_KEY on the server); fix the stale
    `mixed` dividend sentence in Docs/handoff/SETTINGS_REFERENCE.md §3.
+5. MARKET-DATA FETCH riders (wrap 2026-09-02c below; none are gates): a LIVE
+   Terminal check of the `CHAIN_TICKERS` + `CHAIN_POINTS_OVRD` chain request
+   (FakeBlp locks the wire only — the fallback to `OPT_CHAIN` covers a
+   Terminal without the field); `expiries.classify_expiry` (Fri-only weekly)
+   vs the picker's Mon/Wed/Fri "Dailies" bucket stays divergent by choice;
+   the per-node source policy in the Universe dialog is still inert; a
+   Bloomberg-session look at the yellow "no data" pill on a non-US name.
 USER-side: restart the long-running :8000 (new OptionsSettings fields,
-endpoints, the eSSVI compare family, the midnight roll, the /help router);
-existing stores default the new gates. First launch after this commit opens
-the Help Center's Welcome page once (Esc closes it; Help ▾ Welcome brings it
-back).
+endpoints, the eSSVI compare family, the midnight roll, the /help router, and
+— wrap 2026-09-02c — the new payload fields `UniverseResponse.errors`,
+`SmileData.quoteKind`, `ActivityInfo.label/elapsedMs`, `AsOfDay.spread/reason`
+plus the long-lived probe pool); existing stores default the new gates. A
+saved universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX".
+First launch after this commit opens the Help Center's Welcome page once (Esc
+closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-02c) — MARKET-DATA FETCHING: THE GAUGE, AN HONEST AS-OF PICKER, SOURCES THAT NEVER LOCK, PORTABLE INDEX TICKERS
+
+Six user reports on 2026-09-02 about fetching market data: Cboe "does not
+work", Bloomberg lists monthlies only, Massive history shows no bid/ask,
+tickers must be re-added after a source switch, a switch that hangs, and a
+fetch with no sign of progress. Three were misdiagnoses in the app (Cboe, the
+Massive bid/ask, the re-adding) and three were real gaps. The previous session
+ended before this wrap / the commit; the resumed session found the arc
+complete and green (this commit).
+
+- **Root cause 1 — Cboe "broken" = a Eurex name in the universe.** The
+  user's universe holds `SX5E INDEX`; the Cboe CDN 404s it and
+  `ExchangeChainProvider` red-lit the WHOLE feed on the last ticker's error
+  (`_last_error`), flapping with whichever ticker fetched last. Now per
+  ticker: `_unlisted` ("lists no options" / "not found") vs `_errors` (a real
+  transport / parse failure); `feed_status` stays amber and NAMES the
+  unlisted symbols ("· not listed: SX5E INDEX"), red only for a transport
+  failure; `ticker_error()` on the provider, `UniverseMixin.ticker_error`
+  (the provider's reason, else the last listing miss remembered in
+  `_ticker_errors`, cleared on a good resolution and on a source switch),
+  `UniverseResponse.errors` → a yellow **no data** pill on the Nodes-pane
+  row (title = the venue's reason). `CboeAdapter.probe` tries up to three
+  tickers (a watchlist starting with a non-US name must not read as
+  unreachable); `serve.py _can_serve` budget 4 → 12 s (a cold ~14 MB SPX
+  file used to get Cboe skipped at startup).
+- **Root cause 2 — the switch hang.** `datasource.probe_statuses` built and
+  JOINED a pool per call, so a hung venue probe blocked `/datasources` and
+  the switch behind it. Now a long-lived `_PROBE_POOL` (4 workers, never
+  joined), `_INFLIGHT` de-duplication per provider (a stuck probe is awaited
+  again next poll, not re-submitted every 30 s), one deadline per poll
+  (`_PROBE_TIMEOUT` → red "probe timed out"), and `probe=False` on the switch
+  path (`switch_source` answers from the status cache, `PENDING_STATUS` for
+  the never-probed). Frontend: `SWITCH_TIMEOUT_MS` 20 s, a failed switch is
+  narrated into the status bar's *Last* chip (`useDataSources(onError)` →
+  `noteAction`) and the registry re-read; the Data-sources radio no longer
+  DISABLES a red source (it warns — "switching is still allowed").
+- **Root cause 3 — Bloomberg monthlies only.** The `CHAIN_PERIODICITY_OVRD`
+  override was sent on `OPT_CHAIN`, which ignores it (11 SPY rungs vs 31 on
+  Cboe). The chain is now the `CHAIN_TICKERS` bulk field with
+  `CHAIN_POINTS_OVRD=50000` (the count cap; `CHAIN_PERIODICITY_OVRD` only
+  when a periodicity is pinned — "" = ALL = no override on the wire);
+  `chain_periodicity=None` = the legacy bare `OPT_CHAIN`; an empty / failing
+  `CHAIN_TICKERS` answer falls back to `OPT_CHAIN`; `_parse_chain_frame` is
+  column-agnostic (the first column yielding contracts wins). `_security`
+  spells a bare index root "SPX Index". Live Terminal verification STILL
+  DUE (FakeBlp locks the wire).
+- **Root cause 4 — Massive history "has no bid/ask" = MARKS.** Its flat-file
+  day / minute aggregates and Previous Close are one close per contract,
+  bid = ask by construction (real historical NBBO = the `quotes_v1`
+  whole-market tick files, hours per day — the backtest capture, never an
+  interactive fetch). `ChainSnapshot.quote_kind` ("quotes" | "marks"; set by
+  `flatfiles`, the Massive prev-close path and `_chain_from_iv`),
+  `provider.historical_quote_kind()`, `SmileData.quoteKind` (`service.
+  quote_kind`); `QuoteLayer marks` draws a hollow diamond per contract
+  (`data-mark`), no bid/ask ribbon; the Smile legend says **Close marks · no
+  bid/ask** (`marks-legend`); the market layer draws marks only when not
+  live.
+- **Honest as-of picker.** `asof_payload`: trading days only
+  (`is_trading_day` / `prev_trading_day` — holidays used to be listed and
+  dead-end the pick), `intraday` only for a PAST session of an
+  intraday-capable provider, today always listed but dimmed with the reason
+  ("today is Live — pick Live"), per-day `spread` ("quotes" | "marks") and
+  `reason` (`AsOfDay` schema); `_resolve_moment` refuses today's latest /
+  before-close; `AppState.set_asof` validates an EOD day against
+  `available_history`; `fetch_preview._advertised` judges the whole
+  selection (an EOD day in the history, an intraday instant in the past).
+  Massive `intraday_capable` now requires the flat store (the per-contract
+  NBBO path serves ≤ 40 contracts — never a chain) and `available_history`
+  lists NYSE sessions. `AsOfRows` lists EVERY moment and disables what the
+  source cannot serve with the reason (title + caption), tags a marks-only
+  history per day, `data-testid="asof-day-<date>"` + `data-empty`.
+- **The fetch gauge.** `volfit.data.progress` — a contextvar bridge
+  (`bind` / `report` / `bytes_label`) so the data layer narrates without
+  importing the api layer; `ActivityReporter.activity` binds the frame's
+  `progress` callback for the block; `ActivityEvent.label` ("3.2 / 13.0 MB")
+  + `elapsedMs` (monotonic since push); `ExchangeChainProvider.
+  _default_fetch_json` STREAMS the venue file (bytes vs Content-Length into
+  the hook) under `DOWNLOAD_BUDGET_SECONDS` = 120 wall-clock (httpx's timeout
+  is per socket op — a trickling CDN could hold a fetch for minutes);
+  `_refresh_chains` frames read "chain k of n". Status bar: the step's
+  elapsed ("· 12 s", `formatElapsed`), the label caption next to a
+  determinate bar, and — with no measured progress — `TimeBar`: elapsed vs
+  the client `ACTION_TIMEOUT_MS` (600 s; yellow past half, rose past 90 %)
+  from `useWorkflow.pendingSince / pendingTimeoutMs`.
+- **Portable index tickers.** `symbols.portable_ticker` collapses every
+  spelling of a known cash index ("SPX Index", "^SPX", "I:SPX", "_SPX",
+  "spx") to the OCC root (`roots.normalize_root` / `INDEX_ROOTS`); each
+  provider re-decorates on the way out (`BloombergProvider._security`
+  " Index", `YahooProvider._symbol` "^", `MassiveProvider._underlying` "I:"
+  on contracts / snapshot / feed_status; the Cboe adapter "_"); non-US names
+  (`SX5E INDEX`, `SAP GY Equity`) stay as typed. `restore_universe`
+  normalizes, so a ticker never needs re-adding after a switch.
+- **Listed-ladder rule.** Today's expiry is kept while its session is open
+  (`_keep_expiry` in the exchange and Bloomberg providers,
+  `session_close_utc`): a 0DTE is a live node until the close. A Cboe index
+  file settles each expiry per its LISTING root (`RawChain.roots`: SPX AM on
+  3rd Fridays, SPXW PM on weeklies, the parent winning a shared date, via
+  `default_settlement`). The expiry picker gains a **Dailies** chip.
+- **Yellow.** The "amber" level keeps its backend name but is drawn
+  `bg-yellow-400` / `text-yellow-300` (StatusBar, MarketPill,
+  UniverseManager; paper tokens in index.css) — amber sat too close to red.
+- Help: the Data-sources guide (as-of honesty, the gauge, portable tickers,
+  the no-data pill, the non-locking switch) + What's new.
+- Locks: `test_market_data_fetch.py` (14: gauge fields, streamed bytes,
+  the download budget, the never-joined probe pool, the cache-only switch,
+  the named unlisted ticker, today's-expiry rule, per-root settlement,
+  portable roots, the honest as-of payload / holidays / Massive history,
+  the marks smile), test_cboe (unlisted = amber + named, transport = red),
+  test_bloomberg (CHAIN_TICKERS + count cap, pinned periodicity, the
+  OPT_CHAIN fallback, `_security` index roots), test_asof (no intraday
+  without the store), test_api_universe (index roots), QuoteLayer.test
+  (marks), StatusBar.test (`formatElapsed`), AsOfRows.test (3). Regression:
+  the api / data / venue slice 520 passed / 7 skipped, frontend 413 green,
+  tsc + production build clean.
+- Riders: the Terminal check of `CHAIN_TICKERS`; `classify_expiry` vs the
+  Dailies bucket (divergent by choice); the per-node source policy is still
+  inert; a Bloomberg-session look at the no-data pill on a non-US name.
+- USER-side: restart the long-running :8000 (new payload fields + the probe
+  pool); a saved universe with "SPX INDEX" restores as "SPX".
 
 ### 🧭 SESSION WRAP (2026-09-02b) — SPOT MOVE CARD: MARKET / SCENARIO, RECALIBRATE = CALIBRATE PER TICKER
 

@@ -45,6 +45,9 @@ interface SmileChartProps {
   showCalibFit?: boolean;
   /** Strike keys (4 dp) whose live band moved in the last frame (flash). */
   liveFlash?: Set<string>;
+  /** "marks" when the calibration chain is bid = ask closes (a Massive
+   *  historical chain): quotes draw as diamonds and the legend says so. */
+  quoteKind?: "quotes" | "marks";
   prior: SmilePoint[];
   /** True when `prior` is the active fetched prior (spot-updated): drawn as a
    *  distinct dotted teal "spot-updated prior" line rather than the saved dash. */
@@ -138,6 +141,7 @@ export default function SmileChart({
   showCalibQuotes = false,
   showCalibFit = true,
   liveFlash,
+  quoteKind = "quotes",
   prior,
   priorTransported = false,
   kWindow,
@@ -419,9 +423,15 @@ export default function SmileChart({
       {/* Legend */}
       <div className="mb-1 flex shrink-0 items-center gap-4 px-1 text-[11px] text-slate-400">
         {/* Market frame (primary): quotes + target, fit at the prevailing spot */}
-        <span className="flex items-center gap-1.5" title="The prevailing bid/ask quotes (the market as quoted; live when streaming)">
-          <span className="inline-block h-3 w-0.5 rounded bg-red-400" /> Market quotes
-        </span>
+        {quoteKind === "marks" ? (
+          <span className="flex items-center gap-1.5 text-yellow-300" title="This chain is one CLOSE per contract (bid = ask, from aggregate history) — there is no bid/ask spread to draw" data-testid="marks-legend">
+            <span className="inline-block h-2 w-2 rotate-45 border border-yellow-300" /> Close marks · no bid/ask
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5" title="The prevailing bid/ask quotes (the market as quoted; live when streaming)">
+            <span className="inline-block h-3 w-0.5 rounded bg-red-400" /> Market quotes
+          </span>
+        )}
         {model.length > 0 && (
           <span className="flex items-center gap-1.5" title={`The fit rolled to the prevailing spot${market.spot !== null ? ` (S ${market.spot.toFixed(2)})` : ""} under the dynamics regime`}>
             <span className="h-0.5 w-5 rounded bg-accent-400" /> Fit @ market spot
@@ -582,6 +592,7 @@ export default function SmileChart({
                     showTarget={showTarget}
                     selectedIndex={selectedIndex}
                     onQuoteSelect={onQuoteSelect}
+                    marks={quoteKind === "marks"}
                   />
                 )}
 
@@ -599,6 +610,7 @@ export default function SmileChart({
                   selectedIndex={selectedIndex}
                   onQuoteSelect={onQuoteSelect}
                   flash={liveFlash}
+                  marks={quoteKind === "marks" && !market.live}
                 />
 
                 {/* Prior: saved = dashed slate; active fetched (spot-updated) =

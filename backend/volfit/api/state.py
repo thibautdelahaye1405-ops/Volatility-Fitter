@@ -243,6 +243,9 @@ class AppState(UniverseMixin):
         #: the subset actually fetched/fitted (``_selected``), and whether that
         #: subset follows the default rule ("auto") or the user's picks ("custom").
         self._available: dict[str, list[date]] = {}
+        #: ticker -> why its ladder failed to resolve on the active source (the
+        #: universe payload surfaces it; cleared on the next good resolution).
+        self._ticker_errors: dict[str, str] = {}
         self._selected: dict[str, list[date]] = {}
         self._selection_mode: dict[str, str] = {}
         #: Custom expiry picks of a restored saved universe, applied LAZILY on
@@ -503,13 +506,16 @@ class AppState(UniverseMixin):
         """All configured data-source ids, in registration order."""
         return list(self._providers)
 
-    def source_statuses(self, refresh: bool = False) -> dict[str, tuple[str, str]]:
-        """Per-source (level, detail) feed status, cached with a short TTL."""
+    def source_statuses(
+        self, refresh: bool = False, probe: bool = True
+    ) -> dict[str, tuple[str, str]]:
+        """Per-source (level, detail) feed status, cached with a short TTL.
+        ``probe=False`` = cache only (a source switch never waits on a feed)."""
         from volfit.api.datasource import probe_statuses
 
         if refresh:
             self._status_cache.clear()
-        return probe_statuses(self._providers, self._status_cache)
+        return probe_statuses(self._providers, self._status_cache, probe=probe)
 
     def file_provider(self):
         """The ``file`` data source (snapshot files, wave 3 A2), registered on
@@ -544,6 +550,7 @@ class AppState(UniverseMixin):
             self._active_source = source_id
             self._asof = AsOfSelection()  # a new feed starts live
             self._available.clear()
+            self._ticker_errors.clear()  # the new feed gets a fresh verdict per ticker
             self._selected.clear()
             self._selection_mode.clear()
             self._clear_chain_caches()
@@ -704,6 +711,18 @@ class AppState(UniverseMixin):
                 )
             if selection.mode == "eod" and selection.on is None:
                 raise UnknownNodeError("eod as-of requires a date")
+            if selection.mode == "eod":
+                # Only a day the provider lists: a holiday / an unpublished day
+                # used to be accepted and dead-end the fetch.
+                tickers = self.active_tickers()
+                try:
+                    history = self.provider.available_history(tickers[0]) if tickers else []
+                except Exception:  # noqa: BLE001 — an unreadable listing: trust the mode
+                    history = []
+                if history and selection.on not in set(history):
+                    raise UnknownNodeError(
+                        f"{self._active_source!r} serves no close for {selection.on.isoformat()}"
+                    )
         if selection.mode == "captured" and selection.ts is None:
             raise UnknownNodeError("captured as-of requires a timestamp")
         if selection.mode == "intraday":

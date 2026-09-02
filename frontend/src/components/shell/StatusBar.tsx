@@ -19,9 +19,10 @@ import type { SourceStatus } from "../../state/useDataSources";
 import type { AsOfState } from "../../state/useAsOf";
 import type { WorkflowAction } from "../../state/useWorkflow";
 
+/** Source status light — the "amber" level is drawn yellow (see MarketPill). */
 const STATUS_DOT: Record<SourceStatus, string> = {
   green: "bg-emerald-500",
-  amber: "bg-amber-400",
+  amber: "bg-yellow-400",
   red: "bg-rose-500",
 };
 
@@ -97,6 +98,35 @@ function ProgressBar({ done, total, color }: { done: number; total: number; colo
   );
 }
 
+/** "12 s" / "2m 05s" — the elapsed-time caption of the gauge. */
+export function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  return `${m}m ${String(s % 60).padStart(2, "0")}s`;
+}
+
+/** Elapsed vs the client timeout of the in-flight action: the gauge when no
+ *  measured progress exists. Turns yellow past half the budget, rose near it. */
+function TimeBar({ elapsedMs, timeoutMs }: { elapsedMs: number; timeoutMs: number }) {
+  const frac = timeoutMs > 0 ? Math.min(1, elapsedMs / timeoutMs) : 0;
+  const color = frac > 0.9 ? "bg-rose-400" : frac > 0.5 ? "bg-yellow-400" : "bg-sky-400";
+  return (
+    <span
+      className="flex shrink-0 items-center gap-2"
+      title={`Elapsed ${formatElapsed(elapsedMs)} of a ${formatElapsed(timeoutMs)} client timeout`}
+      data-testid="time-bar"
+    >
+      <span className="inline-block h-1 w-28 overflow-hidden rounded-full bg-surface-700">
+        <span className={`block h-full rounded-full ${color}`} style={{ width: `${frac * 100}%` }} />
+      </span>
+      <span className="font-mono text-[10px] text-slate-500">
+        {formatElapsed(elapsedMs)} / {formatElapsed(timeoutMs)}
+      </span>
+    </span>
+  );
+}
+
 /** One muted summary chip in the right cluster. */
 function Chip({ label, value, tone, title }: { label: string; value: string; tone?: string; title?: string }) {
   return (
@@ -114,9 +144,11 @@ export default function StatusBar() {
   const { format } = useExpiryFormat();
   const ws = useOptionalWorkspaceFile();
   const now = useClock();
-  const { calib, sched, pending, lastAction } = workflow;
+  const { calib, sched, pending, pendingSince, pendingTimeoutMs, lastAction } = workflow;
   const act = calib?.activity;
   const running = calib?.running ?? false;
+  // Elapsed of the in-flight client action (Fetch / Calibrate), from its send.
+  const actionElapsed = pendingSince !== null ? Math.max(0, now - pendingSince) : null;
 
   // ---- Primary line + gauge (backend activity > job flag > optimistic label) --
   let message = "";
@@ -143,6 +175,11 @@ export default function StatusBar() {
   const color = STAGE_COLOR[stage] ?? "bg-accent-400";
   const gaugeDone = running ? (calib?.done ?? 0) : (act?.done ?? 0);
   const gaugeTotal = running ? (calib?.total ?? 0) : (act?.total ?? 0);
+  // Caption next to a determinate bar: the activity's own label ("3.2 / 13.0
+  // MB" of a download) when it has one, else plain counts.
+  const gaugeLabel = !running && act?.label ? act.label : `${gaugeDone}/${gaugeTotal}`;
+  // Elapsed of the narrated step (backend) — "· 12 s" after the message.
+  const stepElapsed = act?.active ? (act.elapsedMs ?? 0) : null;
 
   // ---- Idle summary -------------------------------------------------------
   const lit = calib?.litNodes ?? 0;
@@ -174,15 +211,26 @@ export default function StatusBar() {
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${color} animate-pulse`} />
             <span className="shrink-0 font-medium text-slate-200">{message}</span>
             {detail && <span className="truncate font-mono text-[11px] text-slate-500">· {detail}</span>}
+            {stepElapsed !== null && stepElapsed >= 1000 && (
+              <span className="shrink-0 font-mono text-[10px] text-slate-500" title="Elapsed on this step" data-testid="step-elapsed">
+                · {formatElapsed(stepElapsed)}
+              </span>
+            )}
             {gauge === "progress" && (
               <span className="flex shrink-0 items-center gap-2">
                 <ProgressBar done={gaugeDone} total={gaugeTotal} color={color} />
                 {gaugeTotal > 0 && (
-                  <span className="font-mono text-[10px] text-slate-500">{gaugeDone}/{gaugeTotal}</span>
+                  <span className="font-mono text-[10px] text-slate-500">{gaugeLabel}</span>
                 )}
               </span>
             )}
-            {gauge === "indeterminate" && <IndeterminateBar color={color} />}
+            {/* No measured progress: elapsed vs the action's client timeout when
+                one is in flight, else the indeterminate strip. */}
+            {gauge === "indeterminate" && actionElapsed !== null && pendingTimeoutMs !== null ? (
+              <TimeBar elapsedMs={actionElapsed} timeoutMs={pendingTimeoutMs} />
+            ) : gauge === "indeterminate" ? (
+              <IndeterminateBar color={color} />
+            ) : null}
           </>
         ) : (
           <>
@@ -246,7 +294,7 @@ export default function StatusBar() {
               <Chip
                 label="Quotes"
                 value={dataAge.label}
-                tone={dataAge.level === "red" ? "text-rose-300" : "text-amber-300"}
+                tone={dataAge.level === "red" ? "text-rose-300" : "text-yellow-300"}
                 title={`Worst live-chain age (${dataAge.worstTicker})`}
               />
             )}

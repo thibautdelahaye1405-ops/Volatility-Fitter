@@ -182,6 +182,10 @@ export interface SmileData {
    *  "no_fittable_market"): the node's data is unfittable, the dotted
    *  transported prior is the served surface and the cue says so. */
   degraded?: string | null;
+  /** What the calibration quotes ARE: "quotes" (a two-sided market) or "marks"
+   *  (bid = ask aggregate closes — a Massive historical chain): the chart draws
+   *  marks instead of an invisible zero-width band and says so. */
+  quoteKind?: "quotes" | "marks";
   /** Inputs drifted since the last calibration — the displayed fit is frozen
    *  (stale) until an explicit Calibrate. Optional for older payloads / mock. */
   stale?: boolean;

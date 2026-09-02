@@ -114,6 +114,13 @@ class OptionChainProvider(abc.ABC):
         """As-of modes this provider supports (default: live only)."""
         return {"live"}
 
+    def historical_quote_kind(self) -> str:
+        """What a HISTORICAL chain from this provider carries: "quotes" (a real
+        two-sided market — Bloomberg's PX_BID/PX_ASK history) or "marks" (one
+        close per contract, bid = ask — Massive's aggregate flat files). The
+        as-of picker labels the choice with it."""
+        return "quotes"
+
     def available_history(self, ticker: str) -> list[date]:
         """Past trading days this provider can serve an EOD chain for (default:
         none). Newest last; the as-of picker offers these as 'day (close)'."""

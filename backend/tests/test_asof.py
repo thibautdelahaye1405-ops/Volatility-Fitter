@@ -75,7 +75,10 @@ def test_massive_intraday_reconstructs_chain_at_instant():
         raise AssertionError(f"unexpected url {url}")
 
     provider = MassiveProvider(["SPY"], api_key="k", http_get=http_get)
-    assert provider.intraday_capable() is True
+    # The per-contract NBBO path serves ≤ 40 contracts — never a real chain —
+    # so the picker is NOT told this provider can serve an instant without the
+    # flat-file store (it would offer moments that hard-fail on a real ladder).
+    assert provider.intraday_capable() is False
     ts = datetime(2026, 6, 12, 19, 45)
     chain = provider.fetch_chain("SPY", [exp], as_of=AsOf(mode="intraday", ts=ts))
     assert chain.timestamp == ts

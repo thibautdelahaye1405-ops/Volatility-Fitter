@@ -81,6 +81,7 @@ def parse_chain(ticker: str, payload: dict) -> RawChain:
         raise ValueError(f"Cboe payload for {ticker!r} carries no underlying price")
     key = ticker.strip().upper()
     quotes: list[OptionQuote] = []
+    roots: dict = {}  # expiry -> listing root (the parent wins when both list a date)
     for rec in data.get("options") or []:
         sym = rec.get("option")
         if not sym:
@@ -89,6 +90,9 @@ def parse_chain(ticker: str, payload: dict) -> RawChain:
             occ = parse_option_symbol(f"O:{sym}")
         except ValueError:
             continue  # not an OCC symbol: skip the row, never the chain
+        root = occ.underlying.upper()
+        if occ.expiry not in roots or PARENT_OF.get(root, root) == root:
+            roots[occ.expiry] = root
         quotes.append(
             OptionQuote(
                 ticker=key,
@@ -113,6 +117,7 @@ def parse_chain(ticker: str, payload: dict) -> RawChain:
         spot_bid=price_or_none(data.get("bid")),
         spot_ask=price_or_none(data.get("ask")),
         security_type=sec_type,
+        roots=roots,
     )
 
 
@@ -140,9 +145,13 @@ class CboeAdapter:
         return float(spot)
 
     def probe(self, tickers: Sequence[str], fetch_json: Callable[[str], dict]) -> bool:
-        """One small underlying-quote request for the first ticker."""
-        try:
-            self.fetch_spot(tickers[0], fetch_json)
-            return True
-        except Exception:  # noqa: BLE001
-            return False
+        """One small underlying-quote request — the first ticker Cboe answers
+        for (up to three tried: a watchlist that starts with a non-US name must
+        not read as "Cboe unreachable")."""
+        for ticker in list(tickers)[:3]:
+            try:
+                self.fetch_spot(ticker, fetch_json)
+                return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False

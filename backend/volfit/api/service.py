@@ -1615,9 +1615,16 @@ def _no_fit_smile_payload(
         anchorModel=None,
         surfaceRmsError=0.0,
         degraded=degraded,
+        quoteKind=quote_kind(state, ticker),
         market=market,
         calib=None,
     )
+
+
+def quote_kind(state: AppState, ticker: str) -> str:
+    """"quotes" | "marks" of the ticker's loaded chain (ChainSnapshot.quote_kind)."""
+    snap = state.loaded_snapshot(ticker)
+    return getattr(snap, "quote_kind", "quotes") if snap is not None else "quotes"
 
 
 def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> SmileData:
@@ -1735,6 +1742,7 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
         T=prepared.t,
         forward=prepared.forward,
         model=model,
+        quoteKind=quote_kind(state, ticker),
         market=market,
         calib=smile_layers.calib_layer(base),
         prior=prior,

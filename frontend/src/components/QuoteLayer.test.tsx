@@ -68,3 +68,22 @@ describe("QuoteLayer beams", () => {
     expect(onQuoteSelect).toHaveBeenCalledWith(10);
   });
 });
+
+describe("QuoteLayer marks", () => {
+  it("draws a hollow diamond per mark (bid = ask closes) and no beam or ribbon", () => {
+    const { layer } = renderLayer([q(-0.1, { bid: 0.2, ask: 0.2 }), q(0, { bid: 0.2, ask: 0.2 })], { marks: true, showTarget: true });
+    const groups = layer.querySelectorAll(":scope > g");
+    expect(groups.length).toBe(2);
+    for (const g of groups) {
+      const paths = g.querySelectorAll("path");
+      expect(paths.length).toBe(1);
+      expect(paths[0].getAttribute("data-mark")).toBe("1");
+      expect(paths[0].getAttribute("d")).toMatch(/^M.*Z$/); // a closed diamond, not a zero-length stem
+    }
+    // No bid/ask ribbon even with the target shown (there is no spread to
+    // fill) — only the mid target line survives.
+    const direct = layer.querySelectorAll(":scope > path");
+    expect(direct.length).toBe(1);
+    expect(direct[0].getAttribute("fill")).toBe("none");
+  });
+});

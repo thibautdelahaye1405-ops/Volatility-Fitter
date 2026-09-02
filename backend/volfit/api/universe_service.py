@@ -53,8 +53,11 @@ def universe_payload(state: AppState) -> UniverseResponse:
     addition fetches nothing either (three Nones before the first Fetch)."""
     tickers = state.active_tickers()
     expiries = {ticker: _ladder(state, ticker) for ticker in tickers}
+    # Per-ticker reasons for an empty ladder on this source (a venue that does
+    # not list the symbol, a throttled feed) — the Nodes pane names them.
+    errors = {t: reason for t in tickers if (reason := state.ticker_error(t))}
     return UniverseResponse(
-        asOf=state.reference_date.isoformat(), tickers=tickers, expiries=expiries
+        asOf=state.reference_date.isoformat(), tickers=tickers, expiries=expiries, errors=errors
     )
 
 

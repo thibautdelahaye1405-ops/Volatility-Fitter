@@ -37,6 +37,8 @@ from typing import Callable, Iterator, Sequence
 
 from volfit.core.black import black_call
 from volfit.data.fieldmap import int_or_none, price_or_none
+from volfit.data.roots import is_index_root, normalize_root
+from volfit.data.expiry_time import is_trading_day
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
 from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
@@ -204,7 +206,7 @@ class MassiveProvider(OptionChainProvider):
         tickers = self.list_tickers()
         if not tickers:
             return ("red", "no tickers configured")
-        symbol = tickers[0].upper()
+        symbol = self._underlying(tickers[0])
         try:
             ref = self._get(
                 f"{self.base_url}/v3/reference/options/contracts",
@@ -298,7 +300,7 @@ class MassiveProvider(OptionChainProvider):
         today = date.today()
         expiries: set[date] = set()
         params = {
-            "underlying_ticker": key,
+            "underlying_ticker": self._underlying(ticker),
             "expired": "false",
             "order": "asc",
             "sort": "expiration_date",
@@ -362,7 +364,7 @@ class MassiveProvider(OptionChainProvider):
         httpx client) — wall-clock drops from the sum of per-expiry fetches to ~the
         slowest single one. Results are concatenated in sorted-expiry order, so the
         output is deterministic regardless of completion order."""
-        path = f"/v3/snapshot/options/{ticker.upper()}"
+        path = f"/v3/snapshot/options/{self._underlying(ticker)}"
 
         def fetch_expiry(expiry: date) -> list[dict]:
             return list(
@@ -389,6 +391,16 @@ class MassiveProvider(OptionChainProvider):
             )
         )
 
+    @staticmethod
+    def _underlying(ticker: str) -> str:
+        """Massive/Polygon's spelling of a universe ticker: a known cash-index
+        root gets the "I:" prefix ("SPX" -> "I:SPX", the universe's portable
+        bare root, volfit.data.symbols); anything else upper-cased."""
+        t = ticker.strip().upper()
+        if t.startswith("I:"):
+            return t
+        return f"I:{normalize_root(t)}" if is_index_root(t) else t
+
     def historical_modes(self) -> set[str]:
         """Live + Previous Close (the snapshot's day close). With a flat-file
         history store, also per-day **EOD** (the official daily-aggregate close for
@@ -399,28 +411,38 @@ class MassiveProvider(OptionChainProvider):
         return modes
 
     def available_history(self, ticker: str) -> list[date]:
-        """Recent trading days the flat-file store can serve an EOD close for
-        (newest last). Approximated as the last ~20 weekdays up to yesterday —
-        today's file isn't published until after the close, and a non-trading day
-        simply yields no bars (an empty chain) when fetched. Empty without a store."""
+        """Recent TRADING days the flat-file store can serve an EOD close for
+        (newest last): the last ~20 NYSE sessions up to yesterday — today's file
+        isn't published until after the close, and a holiday has no file at
+        all (it used to be listed and dead-ended the pick). Empty without a store."""
         if not self._flat_ready():
             return []
         out: list[date] = []
         day = date.today() - timedelta(days=1)
         while len(out) < 20:
-            if day.weekday() < 5:
+            if is_trading_day(day):
                 out.append(day)
             day -= timedelta(days=1)
         return list(reversed(out))
+
+    def historical_quote_kind(self) -> str:
+        """Every Massive historical chain (EOD / intraday off the flat files,
+        Previous Close) is built from aggregate CLOSES: one mark per contract,
+        bid = ask. Real historical NBBO (Massive's ``quotes_v1`` flat files) is
+        a whole-market tick file per day — hours to scan, the backtest capture's
+        job — so the interactive as-of serves marks and says so."""
+        return "marks"
 
     def _flat_ready(self) -> bool:
         return bool(self.flat_store is not None and self.flat_store.available())
 
     def intraday_capable(self) -> bool:
-        """Massive/Polygon can reconstruct a chain at a past INSTANT from the
-        per-contract historical NBBO quotes (``/v3/quotes``), so the as-of "latest"
-        / "before close" moments work even with no captured snapshot. Needs a key."""
-        return bool(self.api_key)
+        """Whether a PAST instant can be served: yes with the flat-file store
+        (minute aggregates — marks, ``historical_quote_kind``). Without it the
+        per-contract NBBO endpoint hard-fails past 40 contracts (no chain), so
+        the picker must not offer intraday moments it cannot honour. Today's
+        "latest" is Live on every provider and is never an intraday pick."""
+        return bool(self.api_key) and self._flat_ready()
 
     # -- real-time streaming (WebSocket live book) ---------------------------
 
@@ -680,6 +702,7 @@ class MassiveProvider(OptionChainProvider):
             exercise_style=_resolve_style(styles),
             tick_size=_US_OPTION_TICK,
             settlement=_settlement_for(quotes, ticker),
+            quote_kind="marks" if prev_close else "quotes",  # prev close = day-close marks
         )
 
     def _chain_from_iv(
@@ -733,6 +756,7 @@ class MassiveProvider(OptionChainProvider):
             quotes=quotes, exercise_style="european",
             zero_carry=True,  # parity is meaningless here: F = spot, D = 1 by construction
             settlement=_settlement_for(quotes, ticker),
+            quote_kind="marks",  # minute-aggregate closes: bid = ask
         )
 
     def _spot_from_parity(self, results: list[dict]) -> float | None:
@@ -891,7 +915,7 @@ class MassiveProvider(OptionChainProvider):
         wanted = set(expiries) if expiries else None
         out: list[dict] = []
         params = {
-            "underlying_ticker": ticker.upper(),
+            "underlying_ticker": self._underlying(ticker),
             "expired": "false",
             "order": "asc",
             "sort": "expiration_date",

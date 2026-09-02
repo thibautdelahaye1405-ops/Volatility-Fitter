@@ -38,7 +38,9 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
   }, [refreshUniverse, reload]);
 
   const workflow = useWorkflow(live, refreshViews, fitMode);
-  const dataSources = useDataSources(live, onSwitched);
+  // A failed switch lands in the status bar's "Last" chip (never silent).
+  const onSwitchError = useCallback((message: string) => workflow.noteAction(message, false), [workflow]);
+  const dataSources = useDataSources(live, onSwitched, onSwitchError);
   const asof = useAsOf(live, dataSources.active, onSwitched);
 
   return (

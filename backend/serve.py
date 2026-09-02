@@ -169,7 +169,7 @@ def _probe_level(provider, timeout: float = 4.0) -> str:
     return _bounded(lambda: provider.feed_status()[0], timeout, "red")
 
 
-def _can_serve(provider, attempts: int = 3, gap: float = 1.2, timeout: float = 4.0) -> bool:
+def _can_serve(provider, attempts: int = 3, gap: float = 1.2, timeout: float = 12.0) -> bool:
     """Whether a source can actually RESOLVE a non-empty expiry ladder for its
     first ticker — a startup-only data probe, so a connected-but-capped/gated feed
     (Bloomberg at its daily reference-data limit) is skipped in favour of one that
@@ -180,7 +180,9 @@ def _can_serve(provider, attempts: int = 3, gap: float = 1.2, timeout: float = 4
     rate-limiting a fresh process — does not cause a false skip; a hard refusal
     (a capped/gated feed) fails every attempt and is skipped. The probe shares the
     provider instance the app uses, so a successful chain enumeration warms its
-    cache rather than costing an extra request.
+    cache rather than costing an extra request. The 12 s budget covers a cold
+    multi-MB venue chain file (Cboe's SPX file is ~14 MB) on a slow link — a
+    4 s budget used to declare Cboe unable to serve and skip it.
     """
     tickers = provider.list_tickers()
     if not tickers:

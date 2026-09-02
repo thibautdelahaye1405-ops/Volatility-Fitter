@@ -207,10 +207,21 @@ class UniverseMixin:
                 return
         try:
             available = self.provider.available_expiries(ticker)  # network, no lock
-        except Exception:
-            available = []  # treat a provider error as a transient miss -> retry
+            reason = "" if available else f"{self._active_source} lists no expiries for {ticker!r}"
+        except Exception as exc:  # a provider error is a transient miss -> retry
+            available = []
+            text = str(exc).strip()
+            reason = text.splitlines()[-1][:120] if text else "expiry listing failed"
         if not available:
-            return  # leave unresolved so a later call re-probes the provider
+            # Leave unresolved so a later call re-probes the provider, but
+            # REMEMBER why (the universe payload names it — a venue that does
+            # not list the symbol, a throttled feed — instead of a silent
+            # empty node the user cannot tell from a fetch that never ran).
+            with self._lock:
+                self._ticker_errors[ticker] = reason
+            return
+        with self._lock:
+            self._ticker_errors.pop(ticker, None)
         chosen = default_selection(available, self.reference_date)
         with self._lock:
             if self._available.get(ticker):  # another thread resolved it first
@@ -226,6 +237,17 @@ class UniverseMixin:
             else:
                 self._selected[ticker] = chosen
                 self._selection_mode[ticker] = "auto"
+
+    def ticker_error(self, ticker: str) -> str | None:
+        """Why ``ticker`` has no ladder / no chain on the active source (the
+        provider's own reason when it keeps one, else the last listing miss);
+        None when it resolves fine."""
+        own = getattr(self.provider, "ticker_error", None)
+        reason = own(ticker) if own is not None else None
+        if reason:
+            return reason
+        with self._lock:
+            return self._ticker_errors.get(ticker)
 
     def available_expiries(self, ticker: str) -> list[date]:
         """Every expiry the provider lists for the ticker (the picker's list);

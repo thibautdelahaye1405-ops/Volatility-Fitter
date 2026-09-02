@@ -47,10 +47,15 @@ export interface UseDataSourcesResult {
 
 /** Re-probe interval so a source coming up/down updates its light. */
 const POLL_MS = 30_000;
+/** A switch answers from the backend's status cache (never a feed probe), so a
+ *  slow answer means the server itself is wedged — give up well before the
+ *  60 s default and tell the user. */
+const SWITCH_TIMEOUT_MS = 20_000;
 
 export function useDataSources(
   live: boolean,
   onSwitched?: () => void,
+  onError?: (message: string) => void,
 ): UseDataSourcesResult {
   const [sources, setSources] = useState<DataSourceInfo[]>([]);
   const [active, setActive] = useState("");
@@ -94,15 +99,19 @@ export function useDataSources(
       if (id === active || switching) return;
       setSwitching(true);
       try {
-        apply(await api.post<DataSourcesResponse>(`/datasource/${id}`));
+        apply(await api.post<DataSourcesResponse>(`/datasource/${id}`, { timeoutMs: SWITCH_TIMEOUT_MS }));
         onSwitched?.();
-      } catch {
-        /* switch failed: keep the current source */
+      } catch (err: unknown) {
+        // Never silent: say so, then re-read the registry — the backend may
+        // have switched before the answer got lost, and the lights must not
+        // stay frozen on the source we tried to leave.
+        onError?.(`Switch to ${id} failed: ${err instanceof Error ? err.message : String(err)}`);
+        refresh();
       } finally {
         setSwitching(false);
       }
     },
-    [active, switching, onSwitched],
+    [active, switching, onSwitched, onError, refresh],
   );
 
   return { sources, active, switching, dataAge, switchSource, refresh };

@@ -7,6 +7,18 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-02",
+    title: "Market data fetching: a real gauge, an honest as-of picker, sources that never lock",
+    items: [
+      "The status bar shows fetch progress: which chain is downloading (*chain 2 of 4*) with its bytes against the venue's file size, the elapsed time of the step, and elapsed versus the 10-minute client timeout when nothing can be measured. Every venue download is capped at 120 s.",
+      "The **As of** picker lists every day and moment but only enables what the active source can serve — today is Live, holidays are gone, Massive offers past instants only with its flat-file store — and tags Massive's history **marks**: its past-day chains are one close per contract (bid = ask), so the Smile chart draws hollow diamonds and says *Close marks · no bid/ask* instead of a zero-width band. Bloomberg history carries real bid/ask.",
+      "Tickers carry across sources (\"SPX\" is \"SPX Index\" on Bloomberg, \"^SPX\" on Yahoo, \"I:SPX\" on Massive, \"_SPX\" on Cboe). A name a venue does not list shows a yellow **no data** pill with the reason on its Nodes-pane row, and no longer turns the whole source red — the Cboe \"failure\" was a Eurex index sitting in the universe.",
+      "Switching data source never waits on a status probe, a hung probe no longer freezes the lights, a red source can still be switched to, and a failed switch is reported in the status bar.",
+      "Bloomberg chains are now requested through CHAIN_TICKERS with the count cap lifted — the field the periodicity override belongs to — so daily and weekly expiries list (the old OPT_CHAIN request ignored the override and returned the monthly-biased default). Today's expiry is listed until its session closes; an index file's weeklies settle PM and its 3rd-Friday monthlies AM. The expiry picker gains a **Dailies** chip.",
+      "Degraded-but-usable source status is drawn **yellow** (it was amber, too close to red).",
+    ],
+  },
+  {
+    date: "2026-09-02",
     title: "Spot move card: market spot or scenario, fine-tune, Recalibrate per ticker",
     items: [
       "The card now shows three spots — **Calibrated** (the anchor), **Market** (streamed off the Bloomberg / Massive book at ~1 Hz when a stream is up, else the last probe or the fetched chain's spot, with a ↻ probe button) and **Scenario** (anchor × the dial) — and a **Market spot / Scenario** selector: the followed level is lit, the other dimmed; following the market keeps every lens at the prevailing spot.",

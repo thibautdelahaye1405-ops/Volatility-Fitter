@@ -144,15 +144,35 @@ def test_spot_uses_the_light_quote_endpoint_and_falls_back_to_the_chain():
     assert prov.spot("SPY") == 100.0  # cached/downloaded chain spot
 
 
-def test_unknown_symbol_is_a_clean_error_and_status_reports_it():
+def test_unknown_symbol_is_a_clean_error_and_status_names_it_without_red():
+    """A symbol the venue does not list is a fact about THAT ticker: the fetch
+    raises a clean error, the source stays amber (usable for the others) and
+    names the unlisted symbol — it used to red-light the whole feed while one
+    Eurex name sat in the universe, flapping with whichever ticker fetched
+    last. A success on the same ticker clears the mark."""
     prov, fetch = _provider()
     with pytest.raises(ValueError, match="lists no options"):
         prov.fetch_chain("ZZZZQ")
-    assert prov.feed_status()[0] == "red"  # probe ok, but the last fetch was refused
+    assert prov.ticker_error("ZZZZQ") and "lists no options" in prov.ticker_error("ZZZZQ")
+    level, detail = prov.feed_status()
+    assert level == "amber" and detail.startswith("Cboe ~15-min delayed") and "not listed: ZZZZQ" in detail
     prov._status = None
-    prov.fetch_chain("SPY")  # a success clears the refusal
+    prov.fetch_chain("SPY")  # a good ticker never clears another one's mark
     prov._status = None
-    assert prov.feed_status() == ("amber", "Cboe ~15-min delayed")
+    assert "not listed: ZZZZQ" in prov.feed_status()[1]
+    assert prov.ticker_error("SPY") is None
+
+
+def test_transport_error_on_one_ticker_reads_red():
+    """A real transport / parse failure (not an unlisted symbol) is a source
+    problem: red, naming the failure."""
+    prov, fetch = _provider()
+    fetch.files["https://cdn.cboe.com/api/global/delayed_quotes/options/SPY.json"] = {"data": "garbage"}
+    with pytest.raises(ValueError):
+        prov.fetch_chain("SPY")
+    prov._status = None
+    level, detail = prov.feed_status()
+    assert level == "red" and "Cboe:" in detail
 
 
 def test_feed_status_red_when_unreachable():

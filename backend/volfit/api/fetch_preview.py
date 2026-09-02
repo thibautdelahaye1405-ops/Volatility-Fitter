@@ -38,13 +38,27 @@ from volfit.api.schemas_fetch_preview import (
 from volfit.api.state import AppState, AsOfSelection
 
 
-def _advertised(state: AppState, mode: str) -> bool:
-    """Whether the active provider CLAIMS to serve the requested mode."""
+def _advertised(state: AppState, sel: AsOfSelection) -> bool:
+    """Whether the active provider CAN serve the requested selection: the mode
+    is supported, an EOD day is in its history, an intraday instant is a PAST
+    session (today's would silently be the live chain)."""
+    mode = sel.mode
     if mode in ("live", "captured"):
         return True  # live IS the moment; a capture is replayed from the store
     if mode == "intraday":
-        return bool(state.provider.intraday_capable())
-    return mode in state.provider.historical_modes()
+        if not state.provider.intraday_capable() or sel.ts is None:
+            return False
+        return sel.ts.date() < state.reference_date
+    if mode not in state.provider.historical_modes():
+        return False
+    if mode == "eod" and sel.on is not None:
+        try:
+            tickers = state.active_tickers()
+            history = state.provider.available_history(tickers[0]) if tickers else []
+        except Exception:  # noqa: BLE001 — an unreadable history: trust the mode
+            return True
+        return not history or sel.on in set(history)
+    return True
 
 
 def _fallback_kind(state: AppState, stamp: str | None) -> str:
@@ -63,7 +77,7 @@ def _ticker_preview(
     except Exception:  # noqa: BLE001 — an unresolved ladder previews as empty
         nodes = 0
     stamp, _source, exact = node_effective_asof(state, ticker)
-    honors = _advertised(state, sel.mode) and exact is not False
+    honors = _advertised(state, sel) and exact is not False
     fallback: str | None = None
     if not honors:
         # Advertised-but-inexact: the loaded stamp says what was served; not

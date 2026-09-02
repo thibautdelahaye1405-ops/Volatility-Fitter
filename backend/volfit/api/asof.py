@@ -20,6 +20,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 
 from volfit.api.state import AppState, AsOfSelection
+from volfit.data.expiry_time import is_trading_day, prev_trading_day
 from volfit.data.store import VolStore
 
 #: US-equity regular-session close, used to anchor the "N minutes before close"
@@ -67,15 +68,9 @@ def _us_eastern_is_dst(on: date) -> bool:
     return dst_start <= on < dst_end
 
 
-def _is_weekday(d: date) -> bool:
-    return d.weekday() < 5
-
-
 def _prev_business_day(d: date) -> date:
-    d -= timedelta(days=1)
-    while not _is_weekday(d):
-        d -= timedelta(days=1)
-    return d
+    """The previous NYSE session (holidays skipped, not just weekends)."""
+    return prev_trading_day(d)
 
 
 def _captures_by_date(state: AppState) -> dict[date, list[datetime]]:
@@ -120,9 +115,20 @@ def _prev_session(history: list[date], today: date) -> date:
 
 
 def asof_payload(state: AppState) -> dict:
-    """Current selection plus the day-grouped capabilities for the dropdown."""
-    modes = state.provider.historical_modes()
-    intraday = state.provider.intraday_capable()
+    """Current selection plus the day-grouped capabilities for the dropdown.
+
+    Every day and moment offered is one the ACTIVE source can actually serve:
+    ``hasClose`` only for a day in its EOD history (or its prev-close day),
+    ``intraday`` only for a PAST session an intraday-capable provider can
+    reconstruct (today's "latest" is Live — never a historical pick that would
+    silently degrade to the live chain), no holidays, and ``spread`` says what
+    the served chain carries ("quotes" two-sided, "marks" bid = ask closes).
+    Today is always listed so the picker can SAY it is Live (dimmed) rather
+    than offer it or hide it; a ``reason`` explains a day with nothing."""
+    provider = state.provider
+    modes = provider.historical_modes()
+    intraday = provider.intraday_capable()
+    spread = getattr(provider, "historical_quote_kind", lambda: "quotes")()
     history = _history_dates(state)
     history_set = set(history)
     captures = _captures_by_date(state)
@@ -135,24 +141,30 @@ def asof_payload(state: AppState) -> dict:
         return "prev_close" in modes and d == prev_session
 
     # Candidate days: today + EOD days + captured days (+ the prev-close day),
-    # newest first, capped. Only days that can serve a moment are listed (an empty
-    # day would dead-end every pick): a day with real data (a close or captures)
-    # always shows; an intraday-capable provider can additionally synthesize a
-    # moment on any business day even with no stored data.
+    # newest first, capped — trading days only.
     candidates = {today, prev_session} | history_set | set(captures)
     days = []
     for d in sorted(candidates, reverse=True):
         has_close = _has_close(d)
         has_caps = bool(captures.get(d))
-        if not (has_close or has_caps or (intraday and _is_weekday(d))):
+        past = d < today
+        intra = bool(intraday and past and is_trading_day(d))
+        if not (has_close or has_caps or intra or d == today):
             continue
+        if d != today and not is_trading_day(d) and not has_caps:
+            continue  # a holiday: no file, no session
+        reason = None
+        if not (has_close or has_caps or intra):
+            reason = "today is Live — pick Live" if d == today else "nothing served for this day"
         days.append(
             {
                 "date": d.isoformat(),
                 "isToday": d == today,
                 "hasClose": has_close,
                 "hasCaptures": has_caps,
-                "intraday": intraday,
+                "intraday": intra,
+                "spread": "quotes" if has_caps and not (has_close or intra) else spread,
+                "reason": reason,
             }
         )
         if len(days) >= MAX_DAYS:
@@ -214,6 +226,8 @@ def _resolve_moment(
     if moment == "latest":
         if captures:
             return AsOfSelection(mode="captured", ts=captures[0], day=day, moment="latest")
+        if day >= state.reference_date:
+            raise ValueError("today's latest is Live — pick Live")
         if intraday:
             ts = min(market_close_utc(day), _now_utc())
             return AsOfSelection(mode="intraday", ts=ts, day=day, moment="latest")
@@ -225,7 +239,7 @@ def _resolve_moment(
         at_or_before = [t for t in captures if t <= target]
         if at_or_before:
             ts = at_or_before[0]  # captures is newest-first -> nearest <= target
-        elif intraday:
+        elif intraday and day < state.reference_date:
             return AsOfSelection(
                 mode="intraday", ts=target, day=day, moment="before_close", offset=minutes
             )

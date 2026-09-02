@@ -75,7 +75,7 @@ class FakeBlp:
 
     def bds(self, security, field, **kwargs):
         self.bds_calls.append((security, field, dict(kwargs)))
-        if field == "OPT_CHAIN":
+        if field in ("OPT_CHAIN", "CHAIN_TICKERS"):
             return self._chain
         if field == "DVD_HIST_ALL":
             if self._dvd is None:
@@ -169,28 +169,50 @@ def _desc(d: date, tail: str = "C500 Equity") -> str:
     return f"SPY US {d.month:02d}/{d.day:02d}/{d.year % 100:02d} {tail}"
 
 
-def test_opt_chain_sends_all_series_periodicity_override():
-    """The OPT_CHAIN bds must actually SEND CHAIN_PERIODICITY_OVRD="" (ALL
-    series, xbbg's ChainPeriodicity vocabulary): without the override the
-    Terminal applies its monthly-biased chain default (live check recorded 13
-    SPY expiries vs 29 on Yahoo). FakeBlp records kwargs so a silently-dropped
-    override cannot pass."""
+def test_chain_request_is_chain_tickers_with_the_count_cap():
+    """The chain must be requested through CHAIN_TICKERS — the field the
+    CHAIN_*_OVRD overrides belong to — with CHAIN_POINTS_OVRD lifting the count
+    cap and NO periodicity override for ALL series (an empty one is a no-op on
+    the wire). OPT_CHAIN ignored the override and answered the Terminal's
+    monthly-biased default (11 SPY rungs vs 31 on Cboe: no weeklies/dailies).
+    FakeBlp records kwargs so a silently-dropped override cannot pass."""
     provider, blp = _make_provider()
     provider.available_expiries("SPY")
-    security, field, kwargs = next(c for c in blp.bds_calls if c[1] == "OPT_CHAIN")
-    assert security == "SPY US Equity"
-    assert kwargs == {"overrides": {"CHAIN_PERIODICITY_OVRD": ""}}
+    security, field, kwargs = blp.bds_calls[0]
+    assert (security, field) == ("SPY US Equity", "CHAIN_TICKERS")
+    assert kwargs == {"overrides": {"CHAIN_POINTS_OVRD": "50000"}}
+    assert not any(c[1] == "OPT_CHAIN" for c in blp.bds_calls)  # no fallback needed
 
 
-def test_chain_periodicity_pinnable_and_omittable():
-    """"M" pins monthlies (the escape hatch for a misbehaving terminal); None
-    sends no override at all (the pre-override behavior)."""
+def test_chain_periodicity_pinnable_and_legacy_field_omittable():
+    """"M" pins monthlies (sent alongside the count cap); None is the escape
+    hatch: the legacy bare OPT_CHAIN request with no override at all."""
     provider, blp = _make_provider(chain_periodicity="M")
     provider.available_expiries("SPY")
-    assert blp.bds_calls[0][2] == {"overrides": {"CHAIN_PERIODICITY_OVRD": "M"}}
+    assert blp.bds_calls[0][1] == "CHAIN_TICKERS"
+    assert blp.bds_calls[0][2] == {
+        "overrides": {"CHAIN_POINTS_OVRD": "50000", "CHAIN_PERIODICITY_OVRD": "M"}
+    }
     provider, blp = _make_provider(chain_periodicity=None)
     provider.available_expiries("SPY")
-    assert blp.bds_calls[0][2] == {}
+    assert blp.bds_calls[0][1:] == ("OPT_CHAIN", {})
+
+
+def test_chain_tickers_empty_answer_falls_back_to_opt_chain():
+    """A Terminal that answers CHAIN_TICKERS with nothing parsable (no
+    entitlement / empty frame) still serves a ladder off the legacy field."""
+    ladder = [_future_weekday(4)]
+    blp = FakeBlp(_opt_chain_frame([_desc(d) for d in ladder]), {"SPY US Equity": {"PX_LAST": 741.75}})
+    empty = _opt_chain_frame([])
+
+    def bds(security, field, **kwargs):
+        blp.bds_calls.append((security, field, dict(kwargs)))
+        return empty if field == "CHAIN_TICKERS" else blp._chain
+
+    blp.bds = bds
+    provider = BloombergProvider(["SPY"], blp_module=blp)
+    assert provider.available_expiries("SPY") == ladder
+    assert [c[1] for c in blp.bds_calls] == ["CHAIN_TICKERS", "OPT_CHAIN"]
 
 
 def test_available_expiries_includes_weeklies_and_dailies():
@@ -218,8 +240,9 @@ class _FakeClock:
         self.t += seconds
 
 
-def _chain_bds_count(blp: FakeBlp) -> int:
-    return sum(1 for c in blp.bds_calls if c[1] == "OPT_CHAIN")
+def _chain_bds_count(blp) -> int:
+    """Chain requests sent (CHAIN_TICKERS, or the legacy OPT_CHAIN fallback)."""
+    return sum(1 for c in blp.bds_calls if c[1] in ("CHAIN_TICKERS", "OPT_CHAIN"))
 
 
 def test_chain_cache_ttl_and_explicit_refresh():
@@ -528,17 +551,31 @@ def test_merge_matches_dedupes_and_lets_rich_batch_fill():
     assert _merge_matches([equities, indices], limit=1)[0].symbol == "AAPL"  # trimmed
 
 
-def test_portable_ticker_strips_us_equity_only():
-    """US equities store as the bare ticker (portable across data sources);
-    non-US names and indices keep their full Bloomberg security. Case-insensitive
-    so it works on the title-case search result and the upper-cased stored form."""
+def test_portable_ticker_strips_us_equity_and_normalizes_index_roots():
+    """US equities store as the bare ticker and known cash indices as their bare
+    OCC root — every provider spelling collapses to one portable form, so a
+    ticker survives a source switch ("SPX Index" on Bloomberg is "^SPX" on
+    Yahoo, "I:SPX" on Massive, "_SPX" on the Cboe CDN); non-US names keep
+    their full Bloomberg security. Case-insensitive so it works on the
+    title-case search result and the upper-cased stored form."""
     from volfit.data.symbols import portable_ticker
 
     assert portable_ticker("AAPL US Equity") == "AAPL"
     assert portable_ticker("AAPL US EQUITY") == "AAPL"  # stored upper-case form
     assert portable_ticker("SAP GY Equity") == "SAP GY Equity"  # non-US: kept
-    assert portable_ticker("SPX Index") == "SPX Index"  # index: kept
+    assert portable_ticker("SX5E INDEX") == "SX5E INDEX"  # a Eurex index: not a US root, kept
+    for spelling in ("SPX Index", "SPX INDEX", "^SPX", "_SPX", "I:SPX", "spx"):
+        assert portable_ticker(spelling) == "SPX"
+    assert portable_ticker("SPXW") == "SPXW"  # a sibling root is its own portable name
     assert portable_ticker("AAPL") == "AAPL"  # already bare
+
+
+def test_security_spells_a_bare_index_root_as_index():
+    provider, _blp = _make_provider()
+    assert provider._security("SPX") == "SPX Index"
+    assert provider._security("VIX") == "VIX Index"
+    assert provider._security("SPX INDEX") == "SPX Index"
+    assert provider._security("SPY") == "SPY US Equity"
 
 
 # ----------------------------------------------------- non-US names & indices

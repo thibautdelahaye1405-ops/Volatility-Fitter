@@ -19,6 +19,11 @@ Design constraints (CLAUDE.md: compute must stay lightning-fast):
     started one is shown, the rest resume as it pops.
   * A monotonic ``seq`` bumps on every change so the frontend can tell a fresh
     narration from a repeat without diffing strings.
+  * Every frame remembers when it started (``elapsedMs`` in the snapshot — the
+    status bar's elapsed-time gauge), and a data-layer operation can feed a
+    measured progress into the live frame through volfit.data.progress (a
+    chain download reports bytes vs Content-Length with a "3.2 / 13.0 MB"
+    ``label``), so the bar is determinate whenever progress can be measured.
 
 Use the context manager so a frame is always popped, even on error:
 
@@ -31,9 +36,12 @@ Use the context manager so a frame is always popped, even on error:
 from __future__ import annotations
 
 import threading
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator
+
+from volfit.data import progress as data_progress
 
 
 @dataclass
@@ -46,6 +54,8 @@ class ActivityEvent:
     detail: str = ""  # secondary line, e.g. "de-americanizing"
     done: int = 0  # progress numerator (0 with total 0 => indeterminate)
     total: int = 0  # progress denominator
+    label: str = ""  # caption for done/total when they are not plain counts ("3.2 / 13.0 MB")
+    elapsedMs: int = 0  # milliseconds since the frame started
     seq: int = 0  # monotonic; advances on every change
 
 
@@ -57,6 +67,8 @@ class _Frame:
     detail: str
     done: int
     total: int
+    label: str = ""
+    started: float = 0.0  # time.monotonic() at push
 
 
 class ActivityHandle:
@@ -73,12 +85,17 @@ class ActivityHandle:
         detail: str | None = None,
         done: int | None = None,
         total: int | None = None,
+        label: str | None = None,
     ) -> None:
-        self._reporter._update(self._fid, message, detail, done, total)
+        self._reporter._update(self._fid, message, detail, done, total, label)
 
     def detail(self, text: str) -> None:
         """Shorthand: set just the secondary line (e.g. 'de-americanizing')."""
-        self._reporter._update(self._fid, None, text, None, None)
+        self._reporter._update(self._fid, None, text, None, None, None)
+
+    def progress(self, done: int, total: int = 0, label: str = "") -> None:
+        """The volfit.data.progress callback shape: a measured progress."""
+        self._reporter._update(self._fid, None, None, done, total, label)
 
 
 class ActivityReporter:
@@ -96,7 +113,9 @@ class ActivityReporter:
         with self._lock:
             fid = self._next_id
             self._next_id += 1
-            self._frames.append(_Frame(fid, stage, message, detail, done, total))
+            self._frames.append(
+                _Frame(fid, stage, message, detail, done, total, started=time.monotonic())
+            )
             self._seq += 1
             return fid
 
@@ -107,6 +126,7 @@ class ActivityReporter:
         detail: str | None,
         done: int | None,
         total: int | None,
+        label: str | None = None,
     ) -> None:
         with self._lock:
             for f in self._frames:
@@ -119,6 +139,8 @@ class ActivityReporter:
                         f.done = done
                     if total is not None:
                         f.total = total
+                    if label is not None:
+                        f.label = label
                     self._seq += 1
                     return
 
@@ -133,10 +155,14 @@ class ActivityReporter:
     def activity(
         self, stage: str, message: str, detail: str = "", done: int = 0, total: int = 0
     ) -> Iterator[ActivityHandle]:
-        """Push a frame for the duration of the block; always pop on exit."""
+        """Push a frame for the duration of the block; always pop on exit. The
+        data layer's progress hook is bound to the frame for the block, so a
+        provider's download narrates its bytes into it."""
         fid = self.push(stage, message, detail, done, total)
+        handle = ActivityHandle(self, fid)
         try:
-            yield ActivityHandle(self, fid)
+            with data_progress.bind(handle.progress):
+                yield handle
         finally:
             self.pop(fid)
 
@@ -153,5 +179,7 @@ class ActivityReporter:
                 detail=f.detail,
                 done=f.done,
                 total=f.total,
+                label=f.label,
+                elapsedMs=int((time.monotonic() - f.started) * 1000.0),
                 seq=self._seq,
             )

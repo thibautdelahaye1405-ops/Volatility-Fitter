@@ -45,12 +45,20 @@ const POLL_HIDDEN_MS = 15000;
  *  (epoch/spot/activity → view refetches), so the timer only refreshes the
  *  scheduler countdowns and acts as a backstop. (ROADMAP perf #4.) */
 const POLL_SSE_MS = 5000;
+/** Client timeout of a Fetch / Calibrate action: the bar the status bar's
+ *  elapsed gauge is drawn against. A backend fetch has its own per-download
+ *  cap (the exchange venues: 120 s); this is the last line. */
+export const ACTION_TIMEOUT_MS = 600_000;
 
 export interface UseWorkflowResult {
   calib: CalibrationStatus | null;
   sched: SchedulerStatus | null;
   /** The in-flight manual action, or null. (`busy` = pending !== null.) */
   pending: WorkflowAction | null;
+  /** When the in-flight action was sent and the client timeout it runs under
+   *  (the status bar's elapsed-vs-timeout gauge); null when idle. */
+  pendingSince: number | null;
+  pendingTimeoutMs: number | null;
   busy: boolean;
   /** Last completed action (explicit verb, or a background refit landing). */
   lastAction: LastAction | null;
@@ -91,6 +99,8 @@ export function useWorkflow(
   const [calib, setCalib] = useState<CalibrationStatus | null>(null);
   const [sched, setSched] = useState<SchedulerStatus | null>(null);
   const [pending, setPending] = useState<WorkflowAction | null>(null);
+  const [pendingSince, setPendingSince] = useState<number | null>(null);
+  const [pendingTimeoutMs, setPendingTimeoutMs] = useState<number | null>(null);
   const [priors, setPriors] = useState<PriorStatus | null>(null);
   const [lastAction, setLastAction] = useState<LastAction | null>(null);
   // Mirror of `pending` readable inside the status callback (no re-subscribe).
@@ -271,6 +281,8 @@ export function useWorkflow(
     async (key: WorkflowAction, path: string, withBody: boolean, awaitJob = false) => {
       setPending(key);
       pendingRef.current = key;
+      setPendingSince(Date.now());
+      setPendingTimeoutMs(ACTION_TIMEOUT_MS);
       try {
         // fit_mode targets the mode the smile is VIEWED in, so Calibrate / the
         // auto-fetch re-point the same per-mode calibrated pointer (otherwise a
@@ -279,7 +291,7 @@ export function useWorkflow(
         // on a large universe; the status poll below is the responsive layer.
         await api.post(path, {
           params: { fit_mode: fitMode },
-          timeoutMs: 600_000,
+          timeoutMs: ACTION_TIMEOUT_MS,
           ...(withBody ? { body: {} } : {}),
         });
         if (awaitJob) await awaitCalibration(); // block until the fit completes
@@ -292,6 +304,8 @@ export function useWorkflow(
       } finally {
         pendingRef.current = null;
         setPending(null);
+        setPendingSince(null);
+        setPendingTimeoutMs(null);
       }
     },
     [refreshViews, poll, awaitCalibration, fitMode, noteAction],
@@ -356,7 +370,7 @@ export function useWorkflow(
   }, [refreshPriors, refreshViews, noteAction]);
 
   return {
-    calib, sched, pending, busy: pending !== null, lastAction, noteAction,
+    calib, sched, pending, pendingSince, pendingTimeoutMs, busy: pending !== null, lastAction, noteAction,
     fetchSpots, fetchOptions, fetchSnapshot, calibrate, calibrateParametric, calibrateLv,
     priors, savePriors, fetchPriors,
   };

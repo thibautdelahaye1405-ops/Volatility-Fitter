@@ -31,6 +31,9 @@ interface QuoteLayerProps {
   onQuoteSelect?: (index: number | null) => void;
   /** Strike keys (4 dp) whose band moved in the last live frame (market only). */
   flash?: Set<string>;
+  /** The quotes are MARKS (bid = ask closes, no spread): draw a hollow diamond
+   *  per contract instead of a zero-length beam that reads as "no bid/ask". */
+  marks?: boolean;
 }
 
 const STYLE = {
@@ -60,10 +63,10 @@ const STYLE = {
 const pathAt = (x: number, y: number): string => `M${x.toFixed(2)},${y.toFixed(2)}`;
 
 export default function QuoteLayer({
-  quotes, variant, toX, toY, plotW, fitMode, showTarget, selectedIndex, onQuoteSelect, flash,
+  quotes, variant, toX, toY, plotW, fitMode, showTarget, selectedIndex, onQuoteSelect, flash, marks = false,
 }: QuoteLayerProps) {
   const st = STYLE[variant];
-  const bidAsk = showTarget ? ribbonPath(quotes, (q) => q.bid, (q) => q.ask, toX, toY) : "";
+  const bidAsk = showTarget && !marks ? ribbonPath(quotes, (q) => q.bid, (q) => q.ask, toX, toY) : "";
   const haircut =
     showTarget && fitMode === "haircut"
       ? ribbonPath(quotes, (q) => q.targetLo, (q) => q.targetHi, toX, toY)
@@ -107,13 +110,23 @@ export default function QuoteLayer({
         // in Chrome while live ticks streamed (until the next tick rebuilt them).
         const beamD = `${pathAt(x, yb)}V${ya.toFixed(2)}M${(x - cap).toFixed(2)},${ya.toFixed(2)}H${(x + cap).toFixed(2)}M${(x - cap).toFixed(2)},${yb.toFixed(2)}H${(x + cap).toFixed(2)}`;
         const midD = `${pathAt(x - midHalf, ym)}H${(x + midHalf).toFixed(2)}`;
+        // A mark (bid = ask close): a hollow diamond, so it never reads as a
+        // collapsed bid/ask beam.
+        const d = 3.2;
+        const markD = `${pathAt(x, ym - d)}L${(x + d).toFixed(2)},${ym.toFixed(2)}L${x.toFixed(2)},${(ym + d).toFixed(2)}L${(x - d).toFixed(2)},${ym.toFixed(2)}Z`;
         return (
           <g key={key}>
             {selected && <circle cx={x} cy={ym} r={7} fill="var(--color-accent-400)" opacity={0.18} />}
             <g opacity={q.excluded ? 0.25 : 1}>
-              <path d={beamD} fill="none" stroke={beamStroke} strokeWidth={st.width}
-                strokeDasharray={variant === "calib" ? "2 2" : undefined} />
-              <path d={midD} fill="none" stroke={midStroke} strokeWidth={2.2} />
+              {marks ? (
+                <path d={markD} fill="var(--color-surface-900)" stroke={midStroke} strokeWidth={1.4} data-mark="1" />
+              ) : (
+                <>
+                  <path d={beamD} fill="none" stroke={beamStroke} strokeWidth={st.width}
+                    strokeDasharray={variant === "calib" ? "2 2" : undefined} />
+                  <path d={midD} fill="none" stroke={midStroke} strokeWidth={2.2} />
+                </>
+              )}
             </g>
             {q.excluded && (
               <path

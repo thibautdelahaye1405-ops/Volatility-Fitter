@@ -1105,6 +1105,10 @@ class SmileData(BaseModel):
     #: keeps serving the dotted transported prior and labels the condition
     #: instead of the misleading "no fit yet" cue. None = plain not-calibrated.
     degraded: str | None = None
+    #: What the calibration quotes ARE: "quotes" (a two-sided market) or
+    #: "marks" (bid = ask aggregate closes — a Massive historical chain): the
+    #: chart draws marks instead of an invisible zero-width band and says so.
+    quoteKind: Literal["quotes", "marks"] = "quotes"
     #: The two comparable frames of the Smile Viewer (optional additions to the
     #: frozen contract): ``market`` = prevailing quotes + target and the fit
     #: rolled to the prevailing spot; ``calib`` = the fit on its calibration
@@ -1139,6 +1143,9 @@ class UniverseResponse(BaseModel):
     asOf: str
     tickers: list[str]
     expiries: dict[str, list[ExpiryInfo]]
+    #: ticker -> why it has no ladder on the active source ("Cboe lists no
+    #: options for 'SX5E INDEX'", "throttled"); absent when it resolves.
+    errors: dict[str, str] = {}
 
 
 class PriorSavedResponse(BaseModel):
@@ -2120,6 +2127,11 @@ class ActivityInfo(BaseModel):
     detail: str = ""  # secondary line, e.g. "de-americanizing"
     done: int = 0  # progress numerator (0 with total 0 => indeterminate)
     total: int = 0  # progress denominator
+    #: Caption for done/total when they are not plain counts ("3.2 / 13.0 MB"
+    #: for a chain download); "" = show "done/total".
+    label: str = ""
+    #: Milliseconds since the in-flight activity started (the elapsed gauge).
+    elapsedMs: int = 0
     seq: int = 0  # monotonic; advances on every change
 
 

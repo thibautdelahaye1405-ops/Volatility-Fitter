@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Callable, Protocol, Sequence
 
+from volfit.data import progress
+from volfit.data.expiry_time import default_settlement, session_close_utc
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
 from volfit.data.types import ChainSnapshot, OptionQuote
 
@@ -40,6 +42,8 @@ _HEADERS = {
 }
 #: Seconds a fetched raw chain is reused before re-downloading (venue refresh ~1 min).
 DEFAULT_CACHE_SECONDS = 60.0
+#: Wall-clock cap on ONE venue download (seconds) — see ``_default_fetch_json``.
+DOWNLOAD_BUDGET_SECONDS = 120.0
 #: Seconds a reachability verdict is reused (the UI polls status every 30 s).
 _STATUS_TTL = 60.0
 
@@ -55,6 +59,11 @@ class RawChain:
     exercise_style: str = "american"  # "american" | "european"
     spot_bid: float | None = None
     spot_ask: float | None = None
+    #: expiry -> the OCC root that lists it, for the settlement convention: a
+    #: cash-index file mixes the AM-settled parent (SPX, 3rd Fridays) with its
+    #: PM-settled weekly sibling (SPXW) — one root per DATE, the parent winning
+    #: when both list it. Empty = every expiry settles per the ticker's root.
+    roots: dict = field(default_factory=dict)
     security_type: str = ""  # venue's own tag ("stock" / "index" / …), informational
 
 
@@ -113,7 +122,12 @@ class ExchangeChainProvider(OptionChainProvider):
         self._cache: dict[str, tuple[float, RawChain]] = {}
         self._lock = threading.Lock()
         self._status: tuple[float, tuple[str, str]] | None = None
-        self._last_error: str | None = None
+        #: Per-TICKER outcomes of the last fetch: a transport/parse error (the
+        #: source is in trouble) vs "the venue lists no options for this symbol"
+        #: (a fact about the ticker — never a source outage). One bad symbol in
+        #: the universe (a Eurex name on Cboe) used to red-light the whole feed.
+        self._errors: dict[str, str] = {}
+        self._unlisted: dict[str, str] = {}
 
     # ---------------------------------------------------------------- http
     def _http(self):
@@ -125,12 +139,34 @@ class ExchangeChainProvider(OptionChainProvider):
         return self._client
 
     def _default_fetch_json(self, url: str) -> dict:
-        response = self._http().get(url)
-        if response.status_code in (403, 404):  # the venue CDNs refuse unknown symbols this way
-            raise ValueError(f"not found: {url}")
-        response.raise_for_status()
+        """Download a venue JSON document, STREAMED: bytes vs Content-Length go
+        to volfit.data.progress (the status bar's gauge — a 13 MB Cboe index
+        chain is a visible download, not a frozen bar) and a wall-clock budget
+        (``DOWNLOAD_BUDGET_SECONDS``) caps a trickling transfer — httpx's
+        ``timeout`` is per socket operation, so without it a slow CDN could
+        hold a fetch (and the UI) for minutes."""
+        import json
+        import time as _time
+
+        with self._http().stream("GET", url) as response:
+            if response.status_code in (403, 404):  # the venue CDNs refuse unknown symbols this way
+                raise ValueError(f"not found: {url}")
+            response.raise_for_status()
+            total = int(response.headers.get("content-length") or 0)
+            deadline = _time.monotonic() + DOWNLOAD_BUDGET_SECONDS
+            chunks: list[bytes] = []
+            for chunk in response.iter_bytes():
+                chunks.append(chunk)
+                # Raw (compressed) bytes, like Content-Length; a mocked transport
+                # counts none, so fall back to the decoded bytes.
+                got = response.num_bytes_downloaded or sum(len(c) for c in chunks)
+                progress.report(got, total, progress.bytes_label(got, total))
+                if _time.monotonic() > deadline:
+                    raise TimeoutError(
+                        f"{self.adapter.label} download exceeded {DOWNLOAD_BUDGET_SECONDS:.0f}s: {url}"
+                    )
         try:
-            return response.json()
+            return json.loads(b"".join(chunks))
         except ValueError:
             raise ValueError(f"not JSON: {url}") from None
 
@@ -157,12 +193,39 @@ class ExchangeChainProvider(OptionChainProvider):
         try:
             raw = self.adapter.fetch_chain(key, self._fetch_json)
         except Exception as exc:
-            self._last_error = str(exc).strip().splitlines()[-1][:80] if str(exc) else "fetch failed"
+            text = str(exc).strip()
+            short = text.splitlines()[-1][:80] if text else "fetch failed"
+            if "not found" in text or "lists no" in text:  # the venue has no listing for this symbol
+                self._unlisted[key] = short  # the adapter's own wording ("Cboe lists no options for …")
+                self._errors.pop(key, None)
+            else:
+                self._errors[key] = short
             raise
-        self._last_error = None
+        self._errors.pop(key, None)
+        self._unlisted.pop(key, None)
         with self._lock:
             self._cache[key] = (time.monotonic(), raw)
         return raw
+
+    def ticker_error(self, ticker: str) -> str | None:
+        """Why the last fetch of ``ticker`` yielded nothing (an unlisted symbol
+        or a transport error), for the universe payload; None when fine."""
+        key = ticker.upper()
+        return self._unlisted.get(key) or self._errors.get(key)
+
+    def _keep_expiry(self, expiry: date, today: date) -> bool:
+        """Listed-ladder rule: inside ``max_days``, and TODAY's expiry only while
+        its session is still open (a 0DTE is a live node until the close, dead
+        after it)."""
+        days = (expiry - today).days
+        if days > self.max_days:
+            return False
+        if days > 0:
+            return True
+        return days == 0 and self._now() < session_close_utc(today)
+
+    def _now(self) -> datetime:
+        return datetime.now(timezone.utc).replace(tzinfo=None)
 
     def list_tickers(self) -> list[str]:
         return list(self._tickers)
@@ -171,7 +234,7 @@ class ExchangeChainProvider(OptionChainProvider):
         """All listed expiries inside (0, max_days] (one cached download)."""
         today = self._today()
         raw = self._raw(ticker)
-        return sorted({q.expiry for q in raw.quotes if 0 < (q.expiry - today).days <= self.max_days})
+        return sorted({q.expiry for q in raw.quotes if self._keep_expiry(q.expiry, today)})
 
     def spot(self, ticker: str, expiries: list[date] | None = None) -> float:
         """Lightweight underlying read for the real-time spot poll (never the
@@ -193,14 +256,12 @@ class ExchangeChainProvider(OptionChainProvider):
         raw = self._raw(ticker)
         today = self._today()
         if expiries is None:
-            wanted = {q.expiry for q in raw.quotes if 0 < (q.expiry - today).days <= self.max_days}
+            wanted = {q.expiry for q in raw.quotes if self._keep_expiry(q.expiry, today)}
         else:
             wanted = set(expiries)
         quotes = [q for q in raw.quotes if q.expiry in wanted]
         if not quotes:
             raise ValueError(f"{self.adapter.label} lists no options for {ticker!r} in the requested expiries")
-        from volfit.data.expiry_time import settlement_map
-
         return ChainSnapshot(
             ticker=ticker.upper(),
             spot=float(raw.spot),
@@ -208,7 +269,10 @@ class ExchangeChainProvider(OptionChainProvider):
             quotes=quotes,
             exercise_style=raw.exercise_style,
             tick_size=self.adapter.tick_size,
-            settlement=settlement_map({q.expiry for q in quotes}, root=ticker.upper()),
+            settlement={  # per expiry: the listing root's convention (SPX AM vs SPXW PM)
+                e: default_settlement(e, raw.roots.get(e, ticker.upper()))
+                for e in sorted({q.expiry for q in quotes})
+            },
         )
 
     # -------------------------------------------------------------- status
@@ -228,11 +292,15 @@ class ExchangeChainProvider(OptionChainProvider):
             ok = False
         if not ok:
             verdict = ("red", f"{self.adapter.label} unreachable")
-        elif self._last_error:
-            verdict = ("red", f"{self.adapter.label}: {self._last_error}")
+        elif self._errors:  # a real transport / parse failure on some ticker
+            worst = next(iter(self._errors.values()))
+            verdict = ("red", f"{self.adapter.label}: {worst}")
         else:  # an adapter may word its own amber text (Eurex: which tier it served)
             text = getattr(self.adapter, "status_text", None)
-            verdict = ("amber", text() if callable(text) else f"{self.adapter.label} ~{self.adapter.delay_minutes}-min delayed")
+            detail = text() if callable(text) else f"{self.adapter.label} ~{self.adapter.delay_minutes}-min delayed"
+            if self._unlisted:  # a fact about those symbols, not about the feed
+                detail = f"{detail} · not listed: {', '.join(sorted(self._unlisted))}"
+            verdict = ("amber", detail)
         self._status = (now, verdict)
         return verdict
 

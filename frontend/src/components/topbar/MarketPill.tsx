@@ -2,18 +2,21 @@
 // the active source (Yahoo / Bloomberg / Massive / Synthetic, with a status
 // light) and the as-of timestamp (Live / Prev close / historical moment),
 // plus a quote-age staleness cue. Face reads "● Massive · Live" and turns
-// amber whenever the view is historical or the live quotes are ageing, rose
-// when the "live" chain is really the previous session. No dropdown: the
+// yellow whenever the view is historical or the live quotes are ageing, rose
+// when the "live" chain is really the previous session (the "amber" level
+// keeps its backend name but is drawn yellow — amber sat too close to red at
+// a glance). No dropdown: the
 // click hands off to the shell (the Universe dialog's Data-sources card);
 // the as-of picker lives under Fetch ▾ (AsOfRows).
 import type { SourceStatus, UseDataSourcesResult } from "../../state/useDataSources";
 import type { UseAsOfResult } from "../../state/useAsOf";
 import { asofLabel } from "./AsOfRows";
 
-/** Tailwind dot colour for each status level. */
+/** Tailwind dot colour for each status level ("amber" = a degraded-but-usable
+ *  source, drawn YELLOW so it is never mistaken for the red "unavailable"). */
 export const STATUS_DOT: Record<SourceStatus, string> = {
   green: "bg-emerald-500",
-  amber: "bg-amber-400",
+  amber: "bg-yellow-400",
   red: "bg-rose-500",
 };
 
@@ -52,7 +55,7 @@ export default function MarketPill({
         redStale
           ? "border-rose-500/40 bg-rose-500/10 text-rose-300"
           : historical || staleLive
-            ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+            ? "border-yellow-500/40 bg-yellow-500/10 text-yellow-300"
             : "border-slate-700 bg-surface-800 text-slate-200",
       ].join(" ")}
     >
@@ -68,7 +71,7 @@ export default function MarketPill({
         </span>
       )}
       {staleLive && (
-        <span className={redStale ? "text-rose-300" : "text-amber-300"}>
+        <span className={redStale ? "text-rose-300" : "text-yellow-300"}>
           · quotes {dataAge!.label}
         </span>
       )}

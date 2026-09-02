@@ -112,6 +112,11 @@
   --color-amber-200: #92400e;
   --color-amber-300: #b45309;
   --color-amber-400: #d97706;
+  /* The yellow status level (source light / quote-age tint): a deep gold on
+   * paper so it stays readable AND clearly not red. */
+  --color-yellow-300: #a16207;
+  --color-yellow-400: #ca8a04;
+  --color-yellow-500: #b45309;
 
   color-scheme: light;
 }

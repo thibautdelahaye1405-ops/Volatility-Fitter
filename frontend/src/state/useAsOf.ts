@@ -14,7 +14,12 @@ export interface AsOfDay {
   isToday: boolean;
   hasClose: boolean; // official close available
   hasCaptures: boolean; // captured intraday snapshots exist
-  intraday: boolean; // provider can fetch an arbitrary instant this day
+  intraday: boolean; // provider can fetch an arbitrary PAST instant this day
+  /** What a historical chain of this day carries: "quotes" (two-sided) or
+   *  "marks" (bid = ask aggregate closes — Massive's flat files). */
+  spread?: "quotes" | "marks";
+  /** Why nothing can be picked on this day (today = Live), else null. */
+  reason?: string | null;
 }
 
 /** A within-day moment. */
