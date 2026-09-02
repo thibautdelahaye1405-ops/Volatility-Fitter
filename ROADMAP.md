@@ -976,8 +976,11 @@ below) — every recorded rider is closed except the ones listed here:
    (FIXED in 3086d3a — tabs now reload after a refresh, worth a manual look).
 4. HELP CENTER riders (wrap 2026-08-31c below; none are gates): surface the
    API-only Options fields in the dialog (gridXMinPerExpiry,
-   streamRefitSeconds, filterAdaptiveSigma, filterClock, filterSessionShare,
-   filterNonTradingWeight) and align the useOptions.ts mirror; lazy-load the
+   filterAdaptiveSigma, filterClock, filterSessionShare,
+   filterNonTradingWeight — streamRefitSeconds DONE 2026-09-02f: shown under
+   Spot prices while Stream live book is on + Real-time; the same commit dims
+   the options-quotes timer while streaming, user request) and align the
+   useOptions.ts mirror; lazy-load the
    help corpus if the 1.30 MB bundle matters; try Ask's Claude tier against a
    real key once ($env:VOLFIT_ANTHROPIC_KEY on the server); fix the stale
    `mixed` dividend sentence in Docs/handoff/SETTINGS_REFERENCE.md §3.

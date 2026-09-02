@@ -7,6 +7,14 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-02",
+    title: "Options dialog: Workflow & data knows when the book is streaming",
+    items: [
+      "With **Stream live book** on, the **Options quotes** timer (On-demand / Auto) is dimmed: a streaming source serves every Fetch from the live book and the streaming refit replaces the timer. Turn streaming off to use it; a source without a stream (Yahoo, Cboe) still follows the saved value.",
+      "**Spot prices** stays live because it keeps a meaning while streaming: *Real-time* re-prices the surface from the book and runs the streaming refit loop, whose cadence now shows in the dialog as *Stream refit every (s)*; *On-demand* keeps the fit at its calibration spot while market-following tickers still track the book.",
+    ],
+  },
+  {
+    date: "2026-09-02",
     title: "Market data, second pass: Bloomberg index chains, real past bid/ask from Massive, captures that belong to their source",
     items: [
       "Bloomberg chains are complete again, verified on a live Terminal. The ladder is OPT_CHAIN (the monthlies and LEAPS, both sides) plus one CHAIN_TICKERS request per series (weeklies and dailies, quarterlies) with the expiry override set to ALL — without it that field answers a single expiry (the \"SPY has one expiry\" symptom) and calls only, without the yellow key (\"SX5E 09/18/26 C4650\": the quote request refused every row, and a call-only chain has no put-call parity to imply a forward — the \"no usable option expiries\" symptom). Each call now gets its put mirrored and the underlying's asset class appended (\"… C4650 Index\").",

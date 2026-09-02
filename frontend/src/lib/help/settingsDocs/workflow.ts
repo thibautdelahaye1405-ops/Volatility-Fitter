@@ -56,7 +56,7 @@ export const WORKFLOW_DOCS: SettingDoc[] = [
     summary: "Choose whether spots refresh only on demand or the scheduler polls them and transports the surface live.",
     details:
       "`static` (On-demand, the default): spots refresh only with Fetch ▸ Snapshot or the legacy palette command 'Fetch spots only'. `realtime`: the backend scheduler polls the active source's spot every `spotPollSeconds` and transports the surface under `dynamicsRegime` — no recalibration, since a spot move is a read-time view of the cached fit.\n\n" +
-      "Real-time spot is also the gate for live re-pricing and for the streaming refit loop (`streamRefitSeconds`); `autoStream` opens the book regardless. Default static because a polled spot on a delayed or metered feed spends quota on a number that moves every 15 minutes. Workflow gate.",
+      "Real-time spot is also the gate for live re-pricing and for the streaming refit loop (`streamRefitSeconds`); `autoStream` opens the book regardless. While a book streams the selector keeps its meaning — the book supplies spots either way; `realtime` additionally re-prices the surface live and runs the streaming refit, `static` keeps the fit at its calibration spot while market-following tickers track the book spot at the poll cadence — so the dialog leaves it enabled (unlike the options-quotes timer). Default static because a polled spot on a delayed or metered feed spends quota on a number that moves every 15 minutes. Workflow gate.",
     example:
       "Real-time at 5 s on Massive Live: the SPY smile slides along the strike axis every 5 s as spot ticks, the ATM marker tracks, and no node turns STALE — nothing was recalibrated.",
     cacheEffect: "workflow-gate",
@@ -89,7 +89,7 @@ export const WORKFLOW_DOCS: SettingDoc[] = [
     summary: "Choose whether option chains refresh only on demand or on the scheduler's timer.",
     details:
       "`on_demand` (the default): chains refresh only with Fetch ▸ Snapshot or the legacy palette command 'Fetch option quotes only'. `auto`: the scheduler refetches every `optionsFetchMinutes` — the bare chain refetch, or the full Snapshot sequence when `schedulerUnifiedFetch` is on — then auto-calibrates when `autoCalibrate` is on, otherwise marks the lit nodes STALE.\n\n" +
-      "Default on-demand so the chain pull — the expensive, metered call on most sources — happens when you ask for it. Distinct from the streaming refit loop, which rebuilds the chain from the in-memory book at a seconds cadence. Workflow gate.",
+      "Default on-demand so the chain pull — the expensive, metered call on most sources — happens when you ask for it. Distinct from the streaming refit loop, which rebuilds the chain from the in-memory book at a seconds cadence. With `autoStream` on the dialog dims this selector: a streaming source serves every Fetch from the book and the streaming refit replaces the timer (a source without a stream, such as Yahoo or Cboe, still follows the saved value). Workflow gate.",
     example:
       "Auto every 5 min with Auto-calibrate on: at 14:30, 14:35 and 14:40 the 12 SPY nodes refetch and refit unattended, and the fit-history strip gains one entry per tick.",
     cacheEffect: "workflow-gate",
@@ -139,12 +139,12 @@ export const WORKFLOW_DOCS: SettingDoc[] = [
     summary: "Set how often the streaming loop rebuilds the chain from the live book and recalibrates the lit nodes.",
     details:
       "While a real-time push book is open (Massive WebSocket or Bloomberg //blp/mktdata, with `autoStream` on and `spotMode` realtime), the scheduler rebuilds the chain from the in-memory book and refits every lit node at this cadence — a seconds-scale loop distinct from the minutes-scale REST refetch of `optionsFetchMinutes`. It obeys `autoCalibrate`.\n\n" +
-      "5 s default: an LQD slice fits in tens of milliseconds and the process pool clears a 12-node universe well inside the interval. Lengthen it on a large universe or with Local Vol fits on, or the next tick queues behind the last. No control in the Options dialog — set it through the API or a saved settings blob. No effect on Yahoo / Synthetic.",
+      "5 s default: an LQD slice fits in tens of milliseconds and the process pool clears a 12-node universe well inside the interval. Lengthen it on a large universe or with Local Vol fits on, or the next tick queues behind the last. The dialog shows it as 'Stream refit every (s)' under Spot prices once Stream live book is on and spot is Real-time. No effect on Yahoo / Synthetic.",
     example:
       "2 on Massive Live with 12 SPY/QQQ nodes: the smile and the fit-history strip refresh every 2 s; with 40 nodes and Local Vol on, use 15 or the ticks pile up.",
     activation: "Read only while a real-time book is streaming and spotMode is realtime",
     cacheEffect: "workflow-gate",
-    surfaced: false,
+    surfaced: true,
     related: ["autoStream", "spotMode", "autoCalibrate", "optionsFetchMinutes", "localVolEnabled"],
   },
   {
@@ -155,7 +155,7 @@ export const WORKFLOW_DOCS: SettingDoc[] = [
     summary: "Auto-open the real-time push feed on a streaming-capable source so fetches serve from the in-memory book.",
     details:
       "ON (the default): when the active source can stream — Massive's WebSocket options book, or Bloomberg's //blp/mktdata subscriptions (quota-free, unlike the metered bdp path) — the backend opens the feed, and chain Fetch, Calibrate and spot read from the fast in-memory book instead of a slow, paginated or metered snapshot pull. OFF forces the request path — useful when a delayed-tier key's WS URL is unset or the socket misbehaves.\n\n" +
-      "Independent of `spotMode`: the book only feeds fetches; live re-pricing and the streaming refit loop still need real-time spot. No effect on Yahoo / Synthetic. Workflow gate.",
+      "Independent of `spotMode`: the book only feeds fetches; live re-pricing and the streaming refit loop still need real-time spot. ON dims the options-quotes timer in the dialog (the book replaces it) and reveals the stream refit cadence under Spot prices once spot is Real-time. No effect on Yahoo / Synthetic. Workflow gate.",
     example:
       "ON with a Massive key and VOLFIT_MASSIVE_WS_URL set: the Data Source pill shows the streaming badge and Fetch ▸ Snapshot returns in well under a second; OFF, the same fetch pages the REST chain and takes several seconds.",
     cacheEffect: "workflow-gate",

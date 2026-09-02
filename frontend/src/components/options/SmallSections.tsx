@@ -111,6 +111,12 @@ export function GraphSection({ draft, patch, live }: SectionProps) {
 /** Workflow & data: calibration/fetch triggers and streaming. Feature switches
  *  (Events, Var-swaps, Local-Vol) live in their thematic sections. */
 export function WorkflowSection({ draft, patch, live }: SectionProps) {
+  // With the live book streaming, chains and spots are read from the book:
+  // the options-quotes timer has nothing to fetch (dimmed), while the spot
+  // selector keeps a meaning — Real-time is what turns on live re-pricing
+  // and the streaming refit loop, On-demand keeps the fit at its
+  // calibration spot (market-following tickers still track the book).
+  const streaming = draft.autoStream;
   return (
     <>
       <h3 className={sectionTitle}>Workflow &amp; data</h3>
@@ -133,36 +139,66 @@ export function WorkflowSection({ draft, patch, live }: SectionProps) {
           checked={draft.autoStream} disabled={!live}
           onChange={(v) => patch({ autoStream: v })}
         />
-        <div>
+        <div data-testid="spot-prices">
           <span className={`${rowLabel} mb-1 block`}>Spot prices</span>
           <Segmented
             options={[
-              { id: "static", label: "On-demand", title: "Spots refresh only with Fetch ▸ Snapshot (or the legacy palette command)" },
-              { id: "realtime", label: "Real-time", title: "The scheduler polls live spots and transports the surface" },
+              {
+                id: "static", label: "On-demand",
+                title: streaming
+                  ? "The fit stays at its calibration spot; market-following tickers still take the book spot at the poll cadence"
+                  : "Spots refresh only with Fetch ▸ Snapshot (or the legacy palette command)",
+              },
+              {
+                id: "realtime", label: "Real-time",
+                title: streaming
+                  ? "The book spot re-prices the surface live and runs the streaming refit loop"
+                  : "The scheduler polls live spots and transports the surface",
+              },
             ]}
             value={draft.spotMode} disabled={!live}
             onChange={(v) => patch({ spotMode: v })}
           />
+          {streaming && (
+            <p className="mt-1 text-[10px] text-slate-500" data-testid="spot-streaming-note">
+              Streaming: the book supplies spots either way — Real-time also re-prices the
+              surface live and runs the streaming refit; On-demand keeps the fit at its
+              calibration spot.
+            </p>
+          )}
           {draft.spotMode === "realtime" && (
-            <div className="mt-2">
+            <div className="mt-2 space-y-2">
               <NumberRow
                 label="Poll every (s)" value={draft.spotPollSeconds} step={1}
                 disabled={!live} onChange={(v) => patch({ spotPollSeconds: v })}
               />
+              {streaming && (
+                <NumberRow
+                  label="Stream refit every (s)" value={draft.streamRefitSeconds} step={1}
+                  disabled={!live} onChange={(v) => patch({ streamRefitSeconds: v })}
+                />
+              )}
             </div>
           )}
         </div>
-        <div>
+        <div data-testid="options-quotes">
           <span className={`${rowLabel} mb-1 block`}>Options quotes</span>
           <Segmented
             options={[
               { id: "on_demand", label: "On-demand", title: "Chains refresh only with Fetch ▸ Snapshot (or the legacy palette command)" },
               { id: "auto", label: "Auto", title: "The scheduler refetches chains on a timer (then auto-calibrates if enabled)" },
             ]}
-            value={draft.optionsFetchMode} disabled={!live}
+            value={draft.optionsFetchMode} disabled={!live || streaming}
             onChange={(v) => patch({ optionsFetchMode: v })}
           />
-          {draft.optionsFetchMode === "auto" && (
+          {streaming && (
+            <p className="mt-1 text-[10px] text-slate-500" data-testid="quotes-streaming-note">
+              Streaming: chains come from the live book — Fetch reads it and the streaming
+              refit replaces this timer. Turn Stream live book off to use it (a source
+              without a stream, such as Yahoo or Cboe, still follows it).
+            </p>
+          )}
+          {!streaming && draft.optionsFetchMode === "auto" && (
             <div className="mt-2 space-y-2">
               <NumberRow
                 label="Fetch every (min)" value={draft.optionsFetchMinutes} step={1}
