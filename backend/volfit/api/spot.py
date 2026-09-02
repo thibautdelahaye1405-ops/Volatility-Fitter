@@ -16,8 +16,8 @@ volfit.api.service.fit_or_get transports the cached anchor fit by:
   * ``recalibrate`` — the top-bar Calibrate for ONE ticker (same scope, same
     snapshot rule; volfit.api.workflow_ticker) — the frozen fit stays on
     screen until the background job lands;
-  * ``live_spot``   — re-probe the provider's spot for real-time polling
-    (spotMode='realtime'); the frontend turns the implied return into a shift.
+  * ``live_spot``   — re-probe the provider's spot (the Auto-update "spot"
+    probe by hand); the frontend turns the implied return into a shift.
 
 Everything is a thin pure function over AppState, like the rest of volfit.api.
 """
@@ -75,7 +75,7 @@ def spot_state(state: AppState, ticker: str) -> SpotState:
         regime=_regime_label(regime),
         regimeSsr=float(ssr_of_regime(regime)),
         follow=state.spot_follow(ticker),
-        followForced=state.options().spotMode == "realtime",
+        followForced=False,  # the selector is the user's — never overridden
         liveSpot=live,
         liveReturn=ret,
         liveAt=at,

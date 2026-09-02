@@ -46,7 +46,7 @@ const card = `${cardClass} p-4`;
 
 export default function SmileAside() {
   const {
-    smile, source, spotReturn, spotState, spotMode, setSpotReturn, setFollow, recalibrate,
+    smile, source, spotReturn, spotState, setSpotReturn, setFollow, recalibrate,
     probeLive, spotNote, applyVarSwap, undoVarSwap, redoVarSwap,
   } = useSmileSession();
   const { workflow } = useWorkflowContext(); // the background job (Re-anchor progress)
@@ -88,7 +88,6 @@ export default function SmileAside() {
         <SpotPanel
           spotReturn={spotReturn}
           spotState={spotState}
-          spotMode={spotMode}
           onSpotReturn={setSpotReturn}
           onFollow={(f) => void setFollow(f)}
           onCalibrate={(scope) => void recalibrate(scope)}

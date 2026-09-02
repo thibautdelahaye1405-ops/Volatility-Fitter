@@ -130,9 +130,9 @@ describe("settings docs — schema formatters", () => {
   });
 
   it("formats an exclusive lower bound with interval notation", () => {
-    const f = schemaField("options", "spotPollSeconds");
+    const f = schemaField("options", "autoUpdateSeconds");
     expect(f).toBeDefined();
-    expect(formatRange(f!)).toBe("(0, 3600]");
+    expect(formatRange(f!)).toBe("(0, 86400]");
   });
 
   it("formats a lower-bound-only field and an unbounded one", () => {
@@ -147,6 +147,6 @@ describe("settings docs — schema formatters", () => {
     expect(formatDefault(schemaField("fit", "midAnchorTauRef")!)).toBe("—");
     expect(formatDefault(schemaField("options", "priorOperatorSet")!)).toBe("ATM, RR25, BF25, VarSwap");
     expect(formatDefault(schemaField("fit", "model")!)).toBe("lqd");
-    expect(formatDefault(schemaField("options", "spotPollSeconds")!)).toBe("5");
+    expect(formatDefault(schemaField("options", "autoUpdateSeconds")!)).toBe("5");
   });
 });

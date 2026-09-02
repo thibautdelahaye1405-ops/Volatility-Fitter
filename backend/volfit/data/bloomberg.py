@@ -484,7 +484,7 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         """Cheap underlying spot — ONE PX_LAST reference hit on the underlying.
 
         Overrides the base contract, whose default re-fetches the WHOLE option
-        chain just to read its spot. Real-time spot polling (spotMode="realtime")
+        chain just to read its spot. The Auto-update spot probe (autoUpdate="spot")
         probes this every few seconds, so the default would have re-``bdp``ed
         hundreds–thousands of option contracts per poll and torched the Bloomberg
         daily reference-data quota. One underlying price per poll instead — and

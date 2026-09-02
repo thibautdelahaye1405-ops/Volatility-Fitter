@@ -7,10 +7,13 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-02",
-    title: "Options dialog: Workflow & data knows when the book is streaming",
+    title: "One Auto-update setting: spot only or spot + quotes, and a stream that just flows",
     items: [
-      "With **Stream live book** on, the **Options quotes** timer (On-demand / Auto) is dimmed: a streaming source serves every Fetch from the live book and the streaming refit replaces the timer. Turn streaming off to use it; a source without a stream (Yahoo, Cboe) still follows the saved value.",
-      "**Spot prices** stays live because it keeps a meaning while streaming: *Real-time* re-prices the surface from the book and runs the streaming refit loop, whose cadence now shows in the dialog as *Stream refit every (s)*; *On-demand* keeps the fit at its calibration spot while market-following tickers still track the book.",
+      "A calibration always prices spot and option quotes from the same snapshot — a Fetch, or a synchronous read of the streaming book. Calibration is on-demand (the default) or continuous with **Auto-calibrate**, which refits whenever a quotes + spot snapshot arrives and on your edits.",
+      "With a live stream (**Stream live book** on a Massive or Bloomberg source) spot and quotes flow continuously: the surface transports live and, in continuous mode, refits every *Stream refit every (s)*. Auto-update is not used while a book streams (the dialog dims it). **Freeze fit while streaming** holds the fit at its calibration spot instead — the live quotes still show against it.",
+      "Without a stream, option quotes have to be fetched. A manual Fetch ▸ Snapshot gets both. The new **Auto-update** control (Options ▸ Workflow & data) replaces the separate Spot prices and Options quotes selectors: *Off*, *Spot only* every x s, or *Spot + quotes* every x s (15 s minimum — every tick downloads a full chain).",
+      "A spot update — from the stream, a timer or a Fetch — only transports the surface, never recalibrates, even in continuous mode; only fresh quotes trigger a refit. The status bar's scheduler chip reads *Next update* with the countdown, or *Stream · live / refit / frozen* while a book streams; the Spot card's Follow selector is never forced any more.",
+      "Saved settings migrate on load: an automatic chain timer becomes *Spot + quotes* at its old minutes cadence, a real-time spot poll becomes *Spot only*, everything else *Off*.",
     ],
   },
   {

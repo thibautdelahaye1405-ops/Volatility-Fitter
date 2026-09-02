@@ -58,7 +58,7 @@ export default function LocalVolAside({
   // Spot move is session-wide (one shift per ticker, transported by the
   // backend across every lens) — same source as the Parametric aside.
   const {
-    spotReturn, spotState, spotMode, setSpotReturn, setFollow, recalibrate, probeLive, spotNote,
+    spotReturn, spotState, setSpotReturn, setFollow, recalibrate, probeLive, spotNote,
   } = useSmileSession();
   const { workflow } = useWorkflowContext(); // the background job (Re-anchor progress)
   // Fit replay (V3.5 item 13): the ⏵ toggle + an epoch that advances whenever a
@@ -78,7 +78,6 @@ export default function LocalVolAside({
         <SpotPanel
           spotReturn={spotReturn}
           spotState={spotState}
-          spotMode={spotMode}
           onSpotReturn={setSpotReturn}
           onFollow={(f) => void setFollow(f)}
           onCalibrate={(scope) => void recalibrate(scope)}

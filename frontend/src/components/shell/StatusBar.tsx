@@ -128,9 +128,11 @@ function TimeBar({ elapsedMs, timeoutMs }: { elapsedMs: number; timeoutMs: numbe
 }
 
 /** One muted summary chip in the right cluster. */
-function Chip({ label, value, tone, title }: { label: string; value: string; tone?: string; title?: string }) {
+function Chip({ label, value, tone, title, testId }: {
+  label: string; value: string; tone?: string; title?: string; testId?: string;
+}) {
   return (
-    <span className="flex items-center gap-1.5" title={title}>
+    <span className="flex items-center gap-1.5" title={title} data-testid={testId}>
       <span className="text-[10px] uppercase tracking-wider text-slate-600">{label}</span>
       <span className={tone ?? "text-slate-300"}>{value}</span>
     </span>
@@ -185,7 +187,10 @@ export default function StatusBar() {
   const lit = calib?.litNodes ?? 0;
   const stale = calib?.staleNodes ?? 0;
   const activeSource = dataSources.sources.find((s) => s.id === dataSources.active);
-  const autoOptions = sched?.optionsFetchMode === "auto";
+  // The scheduler chip: a streaming book (live / frozen / refit countdown) or
+  // the Auto-update countdown without a stream; nothing when off.
+  const streaming = sched?.streaming ?? false;
+  const autoUpdate = !streaming && (sched?.autoUpdate ?? "off") !== "off";
   const lastError = calib?.error ?? "";
   const dataAge = dataSources.dataAge;
   const lens = ACTIVITIES.find((a) => a.id === activity)?.label ?? activity;
@@ -267,13 +272,31 @@ export default function StatusBar() {
               value={stale > 0 ? `${lit} lit · ${stale} stale` : `${lit} lit`}
               tone={stale > 0 ? "text-amber-300" : "text-slate-300"}
             />
-            {autoOptions && (
+            {streaming && sched && (
               <Chip
-                label={sched?.unifiedFetch ? "Next snapshot" : "Next fetch"}
-                value={fmtCountdown(sched?.secondsToNextOptions ?? 0)}
-                title={sched?.unifiedFetch
-                  ? "Scheduler runs the unified snapshot (quotes + spot, optional prior roll / auto-calibrate) on this timer; the spot poll is absorbed"
-                  : "Scheduler refetches the option chains on this timer"}
+                label="Stream"
+                value={sched.streamFreezeFit
+                  ? "frozen"
+                  : sched.autoCalibrate
+                    ? `refit ${fmtCountdown(sched.secondsToNextRefit)}`
+                    : "live"}
+                tone={sched.streamFreezeFit ? "text-amber-300" : "text-emerald-300"}
+                title={sched.streamFreezeFit
+                  ? "The live book streams but the fit is held at its calibration spot (Options ▸ Freeze fit while streaming)"
+                  : sched.autoCalibrate
+                    ? `Spot and quotes flow from the live book; lit nodes refit every ${Math.round(sched.streamRefitSeconds)} s`
+                    : "Spot and quotes flow from the live book; the surface transports live, nodes refit on Calibrate"}
+                testId="sched-stream-chip"
+              />
+            )}
+            {autoUpdate && sched && (
+              <Chip
+                label="Next update"
+                value={fmtCountdown(sched.secondsToNextUpdate)}
+                title={sched.autoUpdate === "snapshot"
+                  ? `Auto-update: quotes + spot (the Snapshot sequence) every ${Math.round(sched.autoUpdateSeconds)} s, then auto-calibrate if it is on`
+                  : `Auto-update: spot only every ${Math.round(sched.autoUpdateSeconds)} s — transport, never a refit`}
+                testId="sched-update-chip"
               />
             )}
             {asof.asof && (

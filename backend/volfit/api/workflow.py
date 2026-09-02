@@ -135,13 +135,15 @@ def scheduler_status(state: AppState) -> SchedulerStatus:
     sched = getattr(state, "scheduler", None)
     return SchedulerStatus(
         running=bool(sched is not None and sched.is_running()),
-        spotMode=opts.spotMode,
-        optionsFetchMode=opts.optionsFetchMode,
+        autoUpdate=opts.autoUpdate,
+        autoUpdateSeconds=float(opts.autoUpdateSeconds),
         autoCalibrate=opts.autoCalibrate,
         localVolEnabled=opts.localVolEnabled,
-        secondsToNextOptions=sched.seconds_to_next_options() if sched is not None else -1.0,
-        secondsToNextSpot=sched.seconds_to_next_spot() if sched is not None else -1.0,
-        unifiedFetch=bool(opts.schedulerUnifiedFetch),
+        secondsToNextUpdate=sched.seconds_to_next_update() if sched is not None else -1.0,
+        streaming=bool(state.is_streaming()),
+        streamFreezeFit=bool(opts.streamFreezeFit),
+        streamRefitSeconds=float(opts.streamRefitSeconds),
+        secondsToNextRefit=sched.seconds_to_next_refit() if sched is not None else -1.0,
     )
 
 

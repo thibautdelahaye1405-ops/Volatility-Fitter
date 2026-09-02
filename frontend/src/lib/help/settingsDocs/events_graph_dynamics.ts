@@ -220,7 +220,7 @@ export const DYNAMICS_DOCS: SettingDoc[] = [
       "SPY 1Y with ATM skew −0.35 per unit log-moneyness and a −5% move: sticky-strike lifts ATM vol by about 1.8 vol pts, sticky-moneyness leaves it unchanged, sticky-local-vol lifts it by about 3.5.",
     cacheEffect: "display-only",
     surfaced: true,
-    related: ["ssr", "spotMode", "help:guides:parametric"],
+    related: ["ssr", "streamFreezeFit", "help:guides:parametric"],
     docs: ["12_spotvol_missing_derivative"],
   },
   {

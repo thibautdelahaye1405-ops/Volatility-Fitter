@@ -38,7 +38,6 @@ function renderPanel(over: Partial<Parameters<typeof SpotPanel>[0]> = {}) {
     <SpotPanel
       spotReturn={0}
       spotState={state()}
-      spotMode="static"
       onSpotReturn={onSpotReturn}
       onFollow={onFollow}
       onCalibrate={onCalibrate}
@@ -65,7 +64,7 @@ describe("SpotPanel", () => {
     expect(screen.getByText(/6162\.30\s+\+0\.20%/)).toBeTruthy(); // market + return vs anchor
     expect(screen.getByText(/Bloomberg · streaming/)).toBeTruthy();
     expect(screen.getByText(/6334\.50\s+\+3\.0%/)).toBeTruthy(); // scenario = anchor × 1.03
-    expect(screen.getByText("STREAM")).toBeTruthy();
+    expect(screen.getByText("STREAMING")).toBeTruthy();
     expect(screen.queryByLabelText("Probe market spot")).toBeNull(); // no probe while streaming
   });
 
@@ -130,10 +129,14 @@ describe("SpotPanel", () => {
     expect((screen.getByText(/Reset to 0\.0%/).closest("button") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("pins the market spot in real-time spot mode", () => {
-    renderPanel({ spotMode: "realtime", spotState: state({ follow: "market", followForced: true }) });
-    expect((screen.getByLabelText("Spot return") as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getByText("LIVE")).toBeTruthy();
+  it("shows the STREAMING badge while the book streams and keeps the dial free in scenario mode", () => {
+    renderPanel({ spotState: state({ streaming: true, follow: "scenario" }) });
+    expect(screen.getByText("STREAMING")).toBeTruthy();
+    expect((screen.getByLabelText("Spot return") as HTMLInputElement).disabled).toBe(false);
+    cleanup();
+    renderPanel({ spotState: state({ streaming: false, follow: "market" }) });
+    expect(screen.queryByText("STREAMING")).toBeNull();
+    expect(screen.queryByText("LIVE")).toBeNull(); // the real-time spot mode badge is gone
     expect(emphasisOf("Market")).toBe("on");
   });
 

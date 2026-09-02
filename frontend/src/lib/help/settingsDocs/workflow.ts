@@ -3,7 +3,7 @@
 // the data-freshness policy (data-age thresholds + the as-of mismatch gate).
 // Prose only: type / default / range / enum come from settingsSchema.json.
 //
-// Cache discipline (SETTINGS_REFERENCE §4): the nine trigger / scheduler
+// Cache discipline (SETTINGS_REFERENCE §4): the eight trigger / scheduler
 // fields are pure workflow gates — they decide WHEN a fit runs, never what it
 // computes — and the three freshness fields are display / report policy:
 // dataAgeRedMin and asOfMismatchGate fail publish readiness in Quality without
@@ -23,13 +23,13 @@ export const WORKFLOW_DOCS: SettingDoc[] = [
     label: "Auto-calibrate",
     summary: "Decide whether lit nodes refit by themselves after a fetch or a change, or wait for Calibrate.",
     details:
-      "ON: after option chains are fetched, every lit node calibrates in the background, and a quote edit or parameter change refits at once. OFF: those events only mark nodes STALE until you press Calibrate (top bar, or the palette's Calibrate commands), so expensive fitting happens on your trigger. It is also the master switch for unattended refits — the automatic chain refetch and the streaming refit loop both obey it.\n\n" +
+      "ON (continuous calibration): every lit node refits in the background whenever a quotes + spot snapshot arrives — a Fetch, the Auto-update snapshot tick, the streaming refit — and a quote edit or parameter change refits at once. A spot-only update (the stream, a spot-only timer, a spot probe) only transports the surface, never recalibrates. OFF (on-demand): those events only mark nodes STALE until you press Calibrate (top bar, or the palette's Calibrate commands), so expensive fitting happens on your trigger. It is also the master switch for unattended refits — the Auto-update snapshot tick and the streaming refit loop both obey it.\n\n" +
       "The code default is ON for the ungated dev/test app; the gated live server (restart.ps1 / serve.py) boots OFF when no saved preference exists, so a Fetch on a real feed never launches a fit you did not ask for. Pure workflow gate: a fit computed after OFF is the same fit, and no cache is invalidated.",
     example:
       "OFF: you fetch SPY at 14:30, the Nodes pane shows 12 STALE badges and the smile keeps the 14:00 fit until you press Calibrate; ON: the badges clear on their own within seconds.",
     cacheEffect: "workflow-gate",
     surfaced: true,
-    related: ["optionsFetchMode", "streamRefitSeconds", "autoRollPriorOnFetch", "localVolEnabled", "help:guides:workflow"],
+    related: ["autoUpdate", "streamRefitSeconds", "autoRollPriorOnFetch", "localVolEnabled", "help:guides:workflow"],
     docs: ["00_system_overview"],
   },
   {
@@ -45,122 +45,89 @@ export const WORKFLOW_DOCS: SettingDoc[] = [
       "You saved a prior at 10:00 and fetch a Snapshot at 14:30 with this ON: the 14:30 calibration anchors on the 10:00 prior instead of yesterday's close, and the Prior Evidence tab's prior age reads hours, not a day.",
     cacheEffect: "workflow-gate",
     surfaced: true,
-    related: ["autoCalibrate", "schedulerUnifiedFetch", "autoLoadPrior", "priorPersistenceMode", "help:guides:priors"],
+    related: ["autoCalibrate", "autoUpdate", "autoLoadPrior", "priorPersistenceMode", "help:guides:priors"],
   },
-  // ------------------------------------------------------------ spot
+  // ------------------------------------------------------------ auto-update
   {
-    key: "spotMode",
+    key: "autoUpdate",
     model: "options",
     section: "opt-workflow",
-    label: "Spot prices",
-    summary: "Choose whether spots refresh only on demand or the scheduler polls them and transports the surface live.",
+    label: "Auto-update",
+    summary: "Without a live stream: keep data manual, refresh the spot alone on a timer, or refresh quotes + spot on a timer.",
     details:
-      "`static` (On-demand, the default): spots refresh only with Fetch ▸ Snapshot or the legacy palette command 'Fetch spots only'. `realtime`: the backend scheduler polls the active source's spot every `spotPollSeconds` and transports the surface under `dynamicsRegime` — no recalibration, since a spot move is a read-time view of the cached fit.\n\n" +
-      "Real-time spot is also the gate for live re-pricing and for the streaming refit loop (`streamRefitSeconds`); `autoStream` opens the book regardless. While a book streams the selector keeps its meaning — the book supplies spots either way; `realtime` additionally re-prices the surface live and runs the streaming refit, `static` keeps the fit at its calibration spot while market-following tickers track the book spot at the poll cadence — so the dialog leaves it enabled (unlike the options-quotes timer). Default static because a polled spot on a delayed or metered feed spends quota on a number that moves every 15 minutes. Workflow gate.",
+      "`off` (the default): quotes and spot refresh only with Fetch ▸ Snapshot (a manual fetch gets both). `spot`: every `autoUpdateSeconds` the scheduler probes the active source's spot and transports the surface under `dynamicsRegime` — never a refit, since a spot move is a read-time view of the cached fit. `snapshot`: every `autoUpdateSeconds` (15 s floor) the scheduler runs the Snapshot sequence — quotes + spot in one pull, an optional prior roll (`autoRollPriorOnFetch`), then a calibration when `autoCalibrate` is on, otherwise the lit nodes go STALE.\n\n" +
+      "A calibration always prices spot and quotes from ONE snapshot (a fetch, or a synchronous read of the streaming book); a spot-only update, whatever its origin, only transports. Inert while a live book streams (`autoStream` on a streaming source): spot and quotes then flow continuously and the dialog dims this control — `streamFreezeFit` is the streaming-side switch. Workflow gate.",
     example:
-      "Real-time at 5 s on Massive Live: the SPY smile slides along the strike axis every 5 s as spot ticks, the ATM marker tracks, and no node turns STALE — nothing was recalibrated.",
+      "Spot only at 5 s on Cboe: the SPY smile slides along the strike axis every 5 s as spot ticks and no node turns STALE; Spot + quotes at 60 s with Auto-calibrate on: once a minute the chains refetch and the 12 nodes refit unattended.",
     cacheEffect: "workflow-gate",
     surfaced: true,
-    related: ["spotPollSeconds", "dynamicsRegime", "autoStream", "streamRefitSeconds", "help:guides:workflow"],
+    related: ["autoUpdateSeconds", "autoCalibrate", "autoStream", "streamFreezeFit", "dynamicsRegime", "help:guides:workflow"],
   },
   {
-    key: "spotPollSeconds",
+    key: "autoUpdateSeconds",
     model: "options",
     section: "opt-workflow",
-    label: "Poll every (s)",
+    label: "Every (s)",
     unit: "seconds",
-    summary: "Set how often the scheduler polls the spot in real-time spot mode.",
+    summary: "Set the Auto-update cadence — spot alone, or quotes + spot (15 s floor).",
     details:
-      "Each tick pulls one spot per selected ticker and transports the surface. 5 s suits a streaming book (Massive WebSocket, Bloomberg mktdata), where the read is in-memory and free. On a REST or delayed source lengthen it to 30–60 s: each poll is a metered call and the number is stale anyway.\n\n" +
-      "Under `schedulerUnifiedFetch` a snapshot tick re-arms this timer, so a spot poll due on the same tick is absorbed rather than fired twice.",
+      "Seconds between two Auto-update ticks. For `spot` a tick is one spot probe per selected ticker: 5 s is fine on a book that answers in memory, 30–60 s on a REST or delayed source where each probe is a metered call and the number is stale anyway. For `snapshot` a tick downloads a full chain per ticker (a 14 MB Cboe index file, a paginated Massive pull), so the backend floors the value at 15 s and the dialog clamps it; 60 s matches a 15-min-delayed tier with headroom, 300+ s for a desk that wants the book to age quietly.\n\n" +
+      "Keep the snapshot cadence below `dataAgeAmberMin`, or the market pill turns amber between ticks.",
     example:
-      "60 on Yahoo: spots and the transported surface update once a minute, and the market pill's spot age stays under a minute without burning a request every 5 s.",
-    activation: "Read only while spotMode is realtime",
+      "Spot + quotes at 60 with dataAgeAmberMin 20: the pill stays green through every cycle; at 1800 it turns amber for the last 10 minutes of each cycle.",
+    activation: "Read only while autoUpdate is spot or snapshot, and no book is streaming",
     cacheEffect: "workflow-gate",
     surfaced: true,
-    related: ["spotMode", "schedulerUnifiedFetch", "optionsFetchMinutes"],
-  },
-  // ------------------------------------------------------------ chains
-  {
-    key: "optionsFetchMode",
-    model: "options",
-    section: "opt-workflow",
-    label: "Options quotes",
-    summary: "Choose whether option chains refresh only on demand or on the scheduler's timer.",
-    details:
-      "`on_demand` (the default): chains refresh only with Fetch ▸ Snapshot or the legacy palette command 'Fetch option quotes only'. `auto`: the scheduler refetches every `optionsFetchMinutes` — the bare chain refetch, or the full Snapshot sequence when `schedulerUnifiedFetch` is on — then auto-calibrates when `autoCalibrate` is on, otherwise marks the lit nodes STALE.\n\n" +
-      "Default on-demand so the chain pull — the expensive, metered call on most sources — happens when you ask for it. Distinct from the streaming refit loop, which rebuilds the chain from the in-memory book at a seconds cadence. With `autoStream` on the dialog dims this selector: a streaming source serves every Fetch from the book and the streaming refit replaces the timer (a source without a stream, such as Yahoo or Cboe, still follows the saved value). Workflow gate.",
-    example:
-      "Auto every 5 min with Auto-calibrate on: at 14:30, 14:35 and 14:40 the 12 SPY nodes refetch and refit unattended, and the fit-history strip gains one entry per tick.",
-    cacheEffect: "workflow-gate",
-    surfaced: true,
-    related: ["optionsFetchMinutes", "schedulerUnifiedFetch", "autoCalibrate", "streamRefitSeconds", "help:guides:workflow"],
-  },
-  {
-    key: "optionsFetchMinutes",
-    model: "options",
-    section: "opt-workflow",
-    label: "Fetch every (min)",
-    unit: "minutes",
-    summary: "Set the chain refetch cadence of the automatic options fetch.",
-    details:
-      "How often the scheduler pulls fresh chains for the selected universe. Each tick is a full chain call per ticker (paginated REST on Massive, one bulk call on Yahoo), so this is the quota lever. 5 min matches a 15-min-delayed tier's update rhythm with headroom; use 1 min on a real-time REST tier, 60+ min for an end-of-day desk that wants the book to age quietly.\n\n" +
-      "Keep it below `dataAgeAmberMin`, or the market pill will turn amber between ticks.",
-    example:
-      "15 with dataAgeAmberMin 20: the pill stays green through every cycle; set 30 and it turns amber for the last 10 minutes of each cycle.",
-    activation: "Read only while optionsFetchMode is auto",
-    cacheEffect: "workflow-gate",
-    surfaced: true,
-    related: ["optionsFetchMode", "dataAgeAmberMin", "spotPollSeconds"],
-  },
-  {
-    key: "schedulerUnifiedFetch",
-    model: "options",
-    section: "opt-workflow",
-    label: "Scheduler uses unified snapshot fetch",
-    summary: "Make each automatic fetch tick run the full Snapshot sequence instead of the bare chain refetch.",
-    details:
-      "ON: every auto tick runs exactly `POST /fetch/snapshot` — chains → spot transport → optional prior roll (`autoRollPriorOnFetch`) → optional auto-calibrate — so the scheduled path and the Fetch ▸ Snapshot button leave the same state behind. The double-fire guard re-arms the real-time spot timer on each snapshot tick, so a spot poll due on the same tick is absorbed, never fired twice.\n\n" +
-      "OFF (the default): the legacy split timers — chains and spots on independent clocks — byte-identical to the product before the V3.7 rider. Workflow gate.",
-    example:
-      "ON with Auto every 5 min, Real-time spot at 5 s and Auto-roll prior on: each 5-minute tick refetches chains, transports spot, rolls the saved prior and refits in one sequence, and the spot timer skips the poll that would have coincided with it.",
-    activation: "Read only while optionsFetchMode is auto",
-    cacheEffect: "workflow-gate",
-    surfaced: true,
-    related: ["optionsFetchMode", "autoRollPriorOnFetch", "spotPollSeconds", "autoCalibrate"],
+    related: ["autoUpdate", "dataAgeAmberMin", "streamRefitSeconds"],
   },
   // ------------------------------------------------------------ streaming
   {
     key: "streamRefitSeconds",
     model: "options",
     section: "opt-workflow",
-    label: "Stream refit cadence",
+    label: "Stream refit every (s)",
     unit: "seconds",
     summary: "Set how often the streaming loop rebuilds the chain from the live book and recalibrates the lit nodes.",
     details:
-      "While a real-time push book is open (Massive WebSocket or Bloomberg //blp/mktdata, with `autoStream` on and `spotMode` realtime), the scheduler rebuilds the chain from the in-memory book and refits every lit node at this cadence — a seconds-scale loop distinct from the minutes-scale REST refetch of `optionsFetchMinutes`. It obeys `autoCalibrate`.\n\n" +
-      "5 s default: an LQD slice fits in tens of milliseconds and the process pool clears a 12-node universe well inside the interval. Lengthen it on a large universe or with Local Vol fits on, or the next tick queues behind the last. The dialog shows it as 'Stream refit every (s)' under Spot prices once Stream live book is on and spot is Real-time. No effect on Yahoo / Synthetic.",
+      "While a real-time push book is open (Massive WebSocket or Bloomberg //blp/mktdata, `autoStream` on) and the fit is not frozen (`streamFreezeFit` off), the scheduler rebuilds the chain from the in-memory book and refits every lit node at this cadence — the stream's own quotes + spot tick, seconds-scale, distinct from the `autoUpdate` timer that only exists without a stream. It obeys `autoCalibrate`: with continuous calibration off the surface still transports to the book spot and nodes refit only on Calibrate.\n\n" +
+      "5 s default: an LQD slice fits in tens of milliseconds and the process pool clears a 12-node universe well inside the interval. Lengthen it on a large universe or with Local Vol fits on, or the next tick queues behind the last. The dialog shows it under Stream live book while streaming is on and the fit is not frozen. No effect on Yahoo / Synthetic.",
     example:
       "2 on Massive Live with 12 SPY/QQQ nodes: the smile and the fit-history strip refresh every 2 s; with 40 nodes and Local Vol on, use 15 or the ticks pile up.",
-    activation: "Read only while a real-time book is streaming and spotMode is realtime",
+    activation: "Read only while a real-time book is streaming, the fit is not frozen and Auto-calibrate is on",
     cacheEffect: "workflow-gate",
     surfaced: true,
-    related: ["autoStream", "spotMode", "autoCalibrate", "optionsFetchMinutes", "localVolEnabled"],
+    related: ["autoStream", "streamFreezeFit", "autoCalibrate", "autoUpdateSeconds", "localVolEnabled"],
+  },
+  {
+    key: "streamFreezeFit",
+    model: "options",
+    section: "opt-workflow",
+    label: "Freeze fit while streaming",
+    summary: "Hold the fit at its calibration spot while the live book streams.",
+    details:
+      "OFF (the default): while a book streams, spot and quotes flow continuously — the book spot transports the surface live for every market-following ticker (a scenario ticker keeps its dial) and, with `autoCalibrate` on, the streaming refit rebuilds the chain and refits the lit nodes every `streamRefitSeconds`. ON: the fit stays where it was calibrated — no live transport, no streaming refit — while Fetch, Calibrate and the live quote layer still read the book, so the chart shows live quotes against a still surface and Calibrate takes a synchronous quotes + spot snapshot when you press it. The Spot card's dial stays free.\n\n" +
+      "Only meaningful with `autoStream` on a streaming source (the dialog shows it then); without a stream the `autoUpdate` timer decides what moves. Workflow gate.",
+    example:
+      "Frozen on Bloomberg while the index sells off: the quotes ribbon drifts away from the fit on screen, the status bar reads 'Stream · frozen', and one Recalibrate re-anchors at the current book.",
+    activation: "Read only while a real-time book is streaming",
+    cacheEffect: "workflow-gate",
+    surfaced: true,
+    related: ["autoStream", "streamRefitSeconds", "autoUpdate", "autoCalibrate"],
   },
   {
     key: "autoStream",
     model: "options",
     section: "opt-workflow",
     label: "Stream live book (Massive / Bloomberg)",
-    summary: "Auto-open the real-time push feed on a streaming-capable source so fetches serve from the in-memory book.",
+    summary: "Auto-open the real-time push feed on a streaming-capable source so spot and quotes flow continuously from the in-memory book.",
     details:
-      "ON (the default): when the active source can stream — Massive's WebSocket options book, or Bloomberg's //blp/mktdata subscriptions (quota-free, unlike the metered bdp path) — the backend opens the feed, and chain Fetch, Calibrate and spot read from the fast in-memory book instead of a slow, paginated or metered snapshot pull. OFF forces the request path — useful when a delayed-tier key's WS URL is unset or the socket misbehaves.\n\n" +
-      "Independent of `spotMode`: the book only feeds fetches; live re-pricing and the streaming refit loop still need real-time spot. ON dims the options-quotes timer in the dialog (the book replaces it) and reveals the stream refit cadence under Spot prices once spot is Real-time. No effect on Yahoo / Synthetic. Workflow gate.",
+      "ON (the default): when the active source can stream — Massive's WebSocket options book, or Bloomberg's //blp/mktdata subscriptions (quota-free, unlike the metered bdp path) — the backend opens the feed, and chain Fetch, Calibrate and spot read from the fast in-memory book instead of a slow, paginated or metered snapshot pull. It is the one switch that opens the book: live transport of the surface and the streaming refit (`streamRefitSeconds`, with `autoCalibrate`) follow from the book being open, unless `streamFreezeFit` holds the fit. The `autoUpdate` timer is inert while a book streams, and the dialog dims it.\n\n" +
+      "OFF forces the request path — useful when a delayed-tier key's WS URL is unset or the socket misbehaves; `autoUpdate` then decides what refreshes. No effect on Yahoo / Synthetic. Workflow gate.",
     example:
       "ON with a Massive key and VOLFIT_MASSIVE_WS_URL set: the Data Source pill shows the streaming badge and Fetch ▸ Snapshot returns in well under a second; OFF, the same fetch pages the REST chain and takes several seconds.",
     cacheEffect: "workflow-gate",
     surfaced: true,
-    related: ["spotMode", "streamRefitSeconds", "optionsFetchMode", "help:guides:data-sources"],
+    related: ["streamFreezeFit", "streamRefitSeconds", "autoUpdate", "help:guides:data-sources"],
   },
   // ------------------------------------------------------------ freshness policy
   {
@@ -172,12 +139,12 @@ export const WORKFLOW_DOCS: SettingDoc[] = [
     summary: "Set the live-chain age past which the market pill turns amber.",
     details:
       "The data-age slice measures how old the loaded LIVE chain is (its snapshot timestamp against now) on real feeds; synthetic and as-of close chains are exempt. Past this threshold the market pill turns amber — advisory only: a 15-min delayed tier lands here on every fetch, which is why the default 20 leaves it headroom. Nothing else changes: no readiness issue, no refit, no cache bump.\n\n" +
-      "Pair it with `optionsFetchMinutes` so the pill stays green between scheduled ticks.",
+      "Pair it with `autoUpdateSeconds` (Spot + quotes) so the pill stays green between scheduled ticks.",
     example:
       "10 on a 15-min delayed feed: every fresh fetch is already amber; 20 keeps the pill green for 5 minutes after each fetch.",
     cacheEffect: "display-only",
     surfaced: true,
-    related: ["dataAgeRedMin", "optionsFetchMinutes", "asOfMismatchGate", "help:guides:quality"],
+    related: ["dataAgeRedMin", "autoUpdateSeconds", "asOfMismatchGate", "help:guides:quality"],
   },
   {
     key: "dataAgeRedMin",

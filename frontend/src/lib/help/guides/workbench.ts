@@ -152,7 +152,7 @@ export const WORKBENCH: GuidePage = {
     "",
     "## Related settings",
     "",
-    "The shell has no backend settings of its own; the scheduler chips read [spotMode](help:settings:spotMode), [optionsFetchMode](help:settings:optionsFetchMode) and [schedulerUnifiedFetch](help:settings:schedulerUnifiedFetch).",
+    "The shell has no backend settings of its own; the scheduler chips read [autoUpdate](help:settings:autoUpdate), [autoStream](help:settings:autoStream) and [streamFreezeFit](help:settings:streamFreezeFit).",
     "",
     "## Read more",
     "",

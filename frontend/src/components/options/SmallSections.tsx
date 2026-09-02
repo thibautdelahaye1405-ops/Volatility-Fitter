@@ -2,8 +2,11 @@
 // and Spot-vol dynamics. Grouped in one file (each is a screenful of controls
 // at most); every feature-dependent knob renders only while its feature is on.
 import { NumberRow, Segmented, Toggle } from "../OptionsControls";
-import type { DynamicsRegime, OptionsSettings } from "../../state/useOptions";
+import type { AutoUpdate, DynamicsRegime, OptionsSettings } from "../../state/useOptions";
 import { numInput, rowLabel, sectionTitle } from "./shared";
+
+/** Floor of the "Spot + quotes" cadence (mirrors the backend): a full chain per tick. */
+const SNAPSHOT_FLOOR_SECONDS = 15;
 
 interface SectionProps {
   draft: OptionsSettings;
@@ -108,22 +111,32 @@ export function GraphSection({ draft, patch, live }: SectionProps) {
   );
 }
 
-/** Workflow & data: calibration/fetch triggers and streaming. Feature switches
- *  (Events, Var-swaps, Local-Vol) live in their thematic sections. */
+/** Workflow & data: the trigger model (calibration on demand or continuous),
+ *  Auto-update without a live stream, streaming, and the freshness policy.
+ *  Feature switches (Events, Var-swaps, Local-Vol) live in their thematic
+ *  sections. */
 export function WorkflowSection({ draft, patch, live }: SectionProps) {
-  // With the live book streaming, chains and spots are read from the book:
-  // the options-quotes timer has nothing to fetch (dimmed), while the spot
-  // selector keeps a meaning — Real-time is what turns on live re-pricing
-  // and the streaming refit loop, On-demand keeps the fit at its
-  // calibration spot (market-following tickers still track the book).
+  // The model: a calibration always prices spot and quotes from ONE snapshot
+  // (a fetch, or a synchronous read of the streaming book); a spot-only update
+  // only transports the surface. With the book streaming, spot and quotes flow
+  // continuously and the Auto-update timer is not used (dimmed); "Freeze fit
+  // while streaming" holds the fit at its calibration spot instead.
   const streaming = draft.autoStream;
+  const setAutoUpdate = (v: AutoUpdate) =>
+    patch(
+      v === "snapshot" && draft.autoUpdateSeconds < SNAPSHOT_FLOOR_SECONDS
+        ? { autoUpdate: v, autoUpdateSeconds: SNAPSHOT_FLOOR_SECONDS }
+        : { autoUpdate: v },
+    );
+  const setSeconds = (v: number) =>
+    patch({ autoUpdateSeconds: draft.autoUpdate === "snapshot" ? Math.max(SNAPSHOT_FLOOR_SECONDS, v) : v });
   return (
     <>
       <h3 className={sectionTitle}>Workflow &amp; data</h3>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Toggle
           label="Auto-calibrate"
-          hint="On: lit nodes refit automatically after a fetch / on any change. Off: nodes go STALE until you press Calibrate (top bar)."
+          hint="On: continuous calibration — lit nodes refit whenever a quotes + spot snapshot arrives (a fetch, the Auto-update snapshot tick, the streaming refit) and on any edit; a spot-only update only transports. Off: on-demand — nodes go STALE until you press Calibrate."
           checked={draft.autoCalibrate} disabled={!live}
           onChange={(v) => patch({ autoCalibrate: v })}
         />
@@ -133,85 +146,58 @@ export function WorkflowSection({ draft, patch, live }: SectionProps) {
           checked={draft.autoRollPriorOnFetch} disabled={!live}
           onChange={(v) => patch({ autoRollPriorOnFetch: v })}
         />
-        <Toggle
-          label="Stream live book (Massive / Bloomberg)"
-          hint="On: a streaming source auto-opens its real-time push feed — Massive's WebSocket book, or Bloomberg's //blp/mktdata subscriptions (quota-free: no metered bdp while streaming) — so Fetch / Calibrate / spot serve from the fast in-memory book instead of a metered / slow snapshot pull. Off: force the request path. No effect on Yahoo / Synthetic."
-          checked={draft.autoStream} disabled={!live}
-          onChange={(v) => patch({ autoStream: v })}
-        />
-        <div data-testid="spot-prices">
-          <span className={`${rowLabel} mb-1 block`}>Spot prices</span>
+        <div data-testid="auto-update">
+          <span className={`${rowLabel} mb-1 block`}>Auto-update (without a live stream)</span>
           <Segmented
             options={[
-              {
-                id: "static", label: "On-demand",
-                title: streaming
-                  ? "The fit stays at its calibration spot; market-following tickers still take the book spot at the poll cadence"
-                  : "Spots refresh only with Fetch ▸ Snapshot (or the legacy palette command)",
-              },
-              {
-                id: "realtime", label: "Real-time",
-                title: streaming
-                  ? "The book spot re-prices the surface live and runs the streaming refit loop"
-                  : "The scheduler polls live spots and transports the surface",
-              },
+              { id: "off", label: "Off", title: "Manual Fetch only" },
+              { id: "spot", label: "Spot only", title: "Probe the spot every interval and transport the surface — never a refit" },
+              { id: "snapshot", label: "Spot + quotes", title: "Fetch quotes + spot every interval (the Snapshot sequence), then auto-calibrate if it is on" },
             ]}
-            value={draft.spotMode} disabled={!live}
-            onChange={(v) => patch({ spotMode: v })}
+            value={draft.autoUpdate} disabled={!live || streaming}
+            onChange={setAutoUpdate}
+          />
+          {streaming ? (
+            <p className="mt-1 text-[10px] text-slate-500" data-testid="update-streaming-note">
+              Stream live book is on: on a streaming source spot and quotes flow continuously
+              and this timer is not used; a source without a stream (Yahoo, Cboe) still
+              follows it.
+            </p>
+          ) : draft.autoUpdate !== "off" && (
+            <div className="mt-2">
+              <NumberRow
+                label="Every (s)" value={draft.autoUpdateSeconds} step={1}
+                disabled={!live} onChange={setSeconds}
+              />
+              {draft.autoUpdate === "snapshot" && (
+                <p className="mt-1 text-[10px] text-slate-500">
+                  {SNAPSHOT_FLOOR_SECONDS} s minimum: every tick downloads a full chain.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        <div>
+          <Toggle
+            label="Stream live book (Massive / Bloomberg)"
+            hint="On: a streaming source auto-opens its real-time push feed — Massive's WebSocket book, or Bloomberg's //blp/mktdata subscriptions (quota-free: no metered bdp while streaming) — and spot + quotes flow continuously: the surface transports live and, with Auto-calibrate on, refits every N s. Off: force the request path (Auto-update applies). No effect on Yahoo / Synthetic."
+            checked={draft.autoStream} disabled={!live}
+            onChange={(v) => patch({ autoStream: v })}
           />
           {streaming && (
-            <p className="mt-1 text-[10px] text-slate-500" data-testid="spot-streaming-note">
-              Streaming: the book supplies spots either way — Real-time also re-prices the
-              surface live and runs the streaming refit; On-demand keeps the fit at its
-              calibration spot.
-            </p>
-          )}
-          {draft.spotMode === "realtime" && (
-            <div className="mt-2 space-y-2">
-              <NumberRow
-                label="Poll every (s)" value={draft.spotPollSeconds} step={1}
-                disabled={!live} onChange={(v) => patch({ spotPollSeconds: v })}
+            <div className="mt-1 space-y-2">
+              <Toggle
+                label="Freeze fit while streaming"
+                hint="On: while the book streams the fit stays at its calibration spot — no live transport, no streaming refit (Fetch, Calibrate and the live quotes still read the book; the Spot card's dial stays free). Off: the book spot re-prices the surface live and, with Auto-calibrate on, refits every N s."
+                checked={draft.streamFreezeFit} disabled={!live}
+                onChange={(v) => patch({ streamFreezeFit: v })}
               />
-              {streaming && (
+              {!draft.streamFreezeFit && (
                 <NumberRow
                   label="Stream refit every (s)" value={draft.streamRefitSeconds} step={1}
                   disabled={!live} onChange={(v) => patch({ streamRefitSeconds: v })}
                 />
               )}
-            </div>
-          )}
-        </div>
-        <div data-testid="options-quotes">
-          <span className={`${rowLabel} mb-1 block`}>Options quotes</span>
-          <Segmented
-            options={[
-              { id: "on_demand", label: "On-demand", title: "Chains refresh only with Fetch ▸ Snapshot (or the legacy palette command)" },
-              { id: "auto", label: "Auto", title: "The scheduler refetches chains on a timer (then auto-calibrates if enabled)" },
-            ]}
-            value={draft.optionsFetchMode} disabled={!live || streaming}
-            onChange={(v) => patch({ optionsFetchMode: v })}
-          />
-          {streaming && (
-            <p className="mt-1 text-[10px] text-slate-500" data-testid="quotes-streaming-note">
-              Streaming: chains come from the live book — Fetch reads it and the streaming
-              refit replaces this timer. Turn Stream live book off to use it (a source
-              without a stream, such as Yahoo or Cboe, still follows it).
-            </p>
-          )}
-          {!streaming && draft.optionsFetchMode === "auto" && (
-            <div className="mt-2 space-y-2">
-              <NumberRow
-                label="Fetch every (min)" value={draft.optionsFetchMinutes} step={1}
-                disabled={!live} onChange={(v) => patch({ optionsFetchMinutes: v })}
-              />
-              {/* V3.7 rider: the timer runs the unified Snapshot sequence
-                  instead of the bare chain refetch. Off = legacy split timers. */}
-              <Toggle
-                label="Scheduler uses unified snapshot fetch"
-                hint="On: each auto tick runs the same sequence as Fetch ▸ Snapshot (chains → spot transport → optional prior roll → auto-calibrate) instead of the bare chain refetch. Double-fire guard: a snapshot tick re-arms the real-time spot timer, so a spot poll due on the same tick is absorbed, never fired twice. Off: the legacy split timers (byte-identical)."
-                checked={draft.schedulerUnifiedFetch} disabled={!live}
-                onChange={(v) => patch({ schedulerUnifiedFetch: v })}
-              />
             </div>
           )}
         </div>
@@ -236,12 +222,13 @@ export function WorkflowSection({ draft, patch, live }: SectionProps) {
         onChange={(v) => patch({ asOfMismatchGate: v })}
       />
       <p className="mt-3 text-[11px] text-slate-500">
-        A spot move transports the surface (no recalibration); fetching fresh option
-        quotes (or any change with Auto-calibrate off) marks lit nodes STALE until Calibrate.
-        Data-age alerts watch how old the loaded LIVE quotes are (a stale delayed-feed
-        book, a premarket fetch): past amber the market pill warns; past red the quality
-        report fails publish-readiness and Calibrate shows a stale-data warning. The
-        as-of mismatch gate does the same for a chain served off the selected as-of.
+        A spot move — from the stream, a timer or a Fetch — transports the surface and never
+        recalibrates. Option quotes arrive by fetch or stream; a calibration always prices spot
+        and quotes from the same snapshot, and fresh quotes with Auto-calibrate off mark lit
+        nodes STALE until Calibrate. Data-age alerts watch how old the loaded LIVE quotes are
+        (a stale delayed-feed book, a premarket fetch): past amber the market pill warns; past
+        red the quality report fails publish-readiness and Calibrate shows a stale-data
+        warning. The as-of mismatch gate does the same for a chain served off the selected as-of.
       </p>
     </>
   );

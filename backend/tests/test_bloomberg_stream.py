@@ -613,6 +613,6 @@ def test_app_state_sync_streaming_drives_bloomberg():
     assert _wait(lambda: session.subscribed) and session.subscribed[0][0][0] == "SPY US Equity"
     state.sync_streaming()  # unchanged universe -> no restart
     assert len(session.subscribed) == 1 or len(session.subscribed) == 2
-    state.set_options(state.options().model_copy(update={"autoStream": False, "spotMode": "static"}))
+    state.set_options(state.options().model_copy(update={"autoStream": False}))
     state.sync_streaming()
     assert not prov.is_streaming()

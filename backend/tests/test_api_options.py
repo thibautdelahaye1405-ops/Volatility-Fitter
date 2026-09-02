@@ -115,12 +115,10 @@ def test_defaults(client):
         "autoCalibrate": True,
         "autoRollPriorOnFetch": False,
         "localVolEnabled": True,
-        "spotMode": "static",
-        "spotPollSeconds": 5.0,
-        "optionsFetchMode": "on_demand",
-        "optionsFetchMinutes": 5.0,
-        "schedulerUnifiedFetch": False,
+        "autoUpdate": "off",
+        "autoUpdateSeconds": 5.0,
         "streamRefitSeconds": 5.0,
+        "streamFreezeFit": False,
         "autoStream": True,
     }
 
@@ -210,12 +208,10 @@ def test_put_round_trip(client):
         "autoCalibrate": False,
         "autoRollPriorOnFetch": True,
         "localVolEnabled": False,
-        "spotMode": "realtime",
-        "spotPollSeconds": 10.0,
-        "optionsFetchMode": "auto",
-        "optionsFetchMinutes": 15.0,
-        "schedulerUnifiedFetch": True,
+        "autoUpdate": "snapshot",
+        "autoUpdateSeconds": 900.0,
         "streamRefitSeconds": 3.0,
+        "streamFreezeFit": True,
         "autoStream": False,
     }
     assert client.put("/settings/options", json=body).status_code == 200
@@ -231,7 +227,7 @@ def test_validation_bounds(client):
         {"calendarWeight": -1.0},  # >= 0
         {"ssr": -0.1},  # >= 0
         {"dynamicsRegime": "sticky_gamma"},  # not a known regime
-        {"spotMode": "delayed"},  # only realtime | static
+        {"autoUpdate": "sometimes"},  # only off | spot | snapshot
     ):
         assert client.put("/settings/options", json=bad).status_code == 422
 
@@ -242,8 +238,8 @@ def test_only_calendar_weight_bumps_version():
     state = AppState(reference_date=REF_DATE)
     v0 = state.options_version
 
-    # A pure-UI change (spot mode + auto-calibrate) leaves the version untouched.
-    state.set_options(OptionsSettings(spotMode="realtime", autoCalibrate=False))
+    # A pure-UI change (the Auto-update timer + auto-calibrate) leaves the version untouched.
+    state.set_options(OptionsSettings(autoUpdate="spot", autoCalibrate=False))
     assert state.options_version == v0
 
     # Changing the calendar penalty weight bumps it (and changes the fit key).

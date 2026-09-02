@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Market-settings / forward-mode and fit-history schemas live in their own
 # modules (file-size policy) and are re-exported here so the API keeps one
@@ -196,6 +196,18 @@ class FitSettings(BaseModel):
 
 
 # ----------------------------------------------------- options (meta) settings
+#: The pre-2026-09-02g trigger fields folded into ``OptionsSettings.autoUpdate``
+#: (see ``_migrate_auto_update``); accepted and dropped on input so a saved
+#: workspace or an older client keeps loading.
+_LEGACY_UPDATE_KEYS = (
+    "spotMode", "spotPollSeconds", "optionsFetchMode", "optionsFetchMinutes", "schedulerUnifiedFetch",
+)
+#: Floor of the "snapshot" Auto-update cadence: every tick downloads a full
+#: chain on a request-path source (a 14 MB Cboe index file), so the model
+#: refuses to run it faster than this.
+SNAPSHOT_FLOOR_SECONDS = 15.0
+
+
 class OptionsSettings(BaseModel):
     """Global meta / UX settings and engine defaults — the Options workspace
     (ROADMAP Phase 10). Distinct from FitSettings (the live per-fit knobs): these
@@ -224,8 +236,8 @@ class OptionsSettings(BaseModel):
     Stubbed this phase (persisted UI state only; behaviour is a documented TODO):
       * ``autoCalibrate`` — auto-refit on every quote edit (True, today's
         behaviour) vs a manual "Calibrate" trigger gating refits.
-      * ``spotMode`` — stream live spot and re-price ("realtime") vs freeze spot
-        at load ("static"); pairs with the existing As-of selector.
+      * ``autoUpdate`` — the request-path timer without a stream ("off" | "spot"
+        | "snapshot"); ``streamFreezeFit`` holds the fit while a book streams.
     """
 
     #: Default fit target (Mid / Bid-Ask band / Haircut band). The live fit target
@@ -716,38 +728,72 @@ class OptionsSettings(BaseModel):
     #: cycles are fast) AND the Local Vol workspace tab is disabled. Pure
     #: workflow/UI gate — does not affect parametric fits, so it never busts caches.
     localVolEnabled: bool = True
-    #: Spot updates: "realtime" = the backend scheduler polls the provider spot
-    #: every ``spotPollSeconds`` and transports the surface; "static" = on-demand
-    #: only (the "Fetch spots" button).
-    spotMode: Literal["realtime", "static"] = "static"
-    spotPollSeconds: float = Field(5.0, gt=0.0, le=3600.0)
-    #: Options chains: "auto" = the scheduler refetches every
-    #: ``optionsFetchMinutes``; "on_demand" = only the "Fetch Options Quotes" button.
-    optionsFetchMode: Literal["auto", "on_demand"] = "on_demand"
-    optionsFetchMinutes: float = Field(5.0, gt=0.0, le=1440.0)
-    #: Scheduler consolidation onto the unified snapshot verb (V3.7 rider):
-    #: ON = the ``optionsFetchMode == "auto"`` timer runs the SAME sequence as
-    #: POST /fetch/snapshot (chains → spot transport → optional prior roll →
-    #: optional autoCalibrate) instead of the bare chain refetch, and the
-    #: double-fire guard re-arms the spot timer on every snapshot tick (a
-    #: realtime spot poll due on the same tick is absorbed, never fired twice).
-    #: OFF (default) = the legacy split timers, byte-identical. Pure workflow
-    #: gate — never bumps the options version.
-    schedulerUnifiedFetch: bool = False
-    #: While a real-time book is streaming (Massive WS / Bloomberg //blp/mktdata,
-    #: realtime spot mode), the scheduler
-    #: refetches the chain from the book and recalibrates all lit nodes every
-    #: ``streamRefitSeconds`` — a faster, book-driven loop distinct from the
-    #: minutes-cadence ``optionsFetchMode == "auto"`` REST refetch.
+    #: Auto-update WITHOUT a live stream (inert while a book streams — spot and
+    #: quotes then flow continuously): "off" = manual Fetch only; "spot" = the
+    #: scheduler probes the provider spot every ``autoUpdateSeconds`` and
+    #: transports the surface (a spot-only update never refits); "snapshot" =
+    #: the unified Snapshot sequence (quotes + spot → optional prior roll →
+    #: auto-calibrate when on) every ``autoUpdateSeconds``, floored at
+    #: ``SNAPSHOT_FLOOR_SECONDS`` (a full chain per tick). A calibration always
+    #: prices spot and quotes from ONE snapshot (a fetch, or a synchronous read
+    #: of the streaming book). Pure workflow gate.
+    autoUpdate: Literal["off", "spot", "snapshot"] = "off"
+    autoUpdateSeconds: float = Field(5.0, gt=0.0, le=86400.0)
+    #: While a real-time book is streaming (Massive WS / Bloomberg //blp/mktdata)
+    #: and ``autoCalibrate`` is on, the scheduler refetches the chain from the book
+    #: and recalibrates all lit nodes every ``streamRefitSeconds`` — the stream's
+    #: own quotes + spot tick, seconds-cadence and book-driven (Auto-update is
+    #: inert while streaming). Held by ``streamFreezeFit``.
     streamRefitSeconds: float = Field(5.0, gt=0.0, le=600.0)
+    #: While a book streams, HOLD the fit where it was calibrated: the book still
+    #: feeds Fetch / Calibrate and the live quote layer, but the surface is not
+    #: transported to the book spot and the streaming refit does not run (the
+    #: Spot card's dial stays free). OFF (default) = live transport + refit.
+    streamFreezeFit: bool = False
     #: Auto-open the real-time push feed on a streaming-capable active source (the
     #: Massive WebSocket book, or Bloomberg's //blp/mktdata subscription book —
     #: quota-free vs the metered bdp path) so chain Fetch / Calibrate / spot serve
     #: from the fast in-memory book instead of the slow / metered snapshot pull.
-    #: Independent of ``spotMode`` — the book just feeds fetches; live re-pricing /
-    #: auto-refit stay gated on ``spotMode=="realtime"``. ON by default; OFF forces
-    #: the request path. No effect on sources without a stream (Yahoo / Synthetic).
+    #: The one switch that opens the book; live transport and the streaming refit
+    #: follow from the book being open (see ``streamFreezeFit``). ON by default;
+    #: OFF forces the request path. No effect on sources without a stream.
     autoStream: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_auto_update(cls, data):
+        """Pre-2026-09-02g trigger fields (``_LEGACY_UPDATE_KEYS``) fold into the
+        one Auto-update choice: an auto chain timer → "snapshot" at its minutes
+        cadence, else a realtime spot poll → "spot" at its seconds cadence, else
+        "off". The legacy keys are dropped either way, so a saved workspace, a
+        settings blob or an older client keeps loading (an explicit
+        ``autoUpdate`` wins over any legacy key sent alongside)."""
+        if not isinstance(data, dict):
+            return data
+        if not any(k in data for k in _LEGACY_UPDATE_KEYS):
+            return data
+        data = dict(data)
+        legacy = {k: data.pop(k) for k in _LEGACY_UPDATE_KEYS if k in data}
+        if "autoUpdate" in data:
+            return data
+        if legacy.get("optionsFetchMode") == "auto":
+            data["autoUpdate"] = "snapshot"
+            data.setdefault("autoUpdateSeconds", float(legacy.get("optionsFetchMinutes", 5.0)) * 60.0)
+        elif legacy.get("spotMode") == "realtime":
+            data["autoUpdate"] = "spot"
+            data.setdefault("autoUpdateSeconds", float(legacy.get("spotPollSeconds", 5.0)))
+        else:
+            data["autoUpdate"] = "off"
+            data.setdefault("autoUpdateSeconds", float(legacy.get("spotPollSeconds", 5.0)))
+        return data
+
+    @model_validator(mode="after")
+    def _floor_snapshot_cadence(self):
+        """A full quotes + spot snapshot per tick never runs faster than
+        ``SNAPSHOT_FLOOR_SECONDS`` on the request path."""
+        if self.autoUpdate == "snapshot" and self.autoUpdateSeconds < SNAPSHOT_FLOOR_SECONDS:
+            self.autoUpdateSeconds = SNAPSHOT_FLOOR_SECONDS
+        return self
 
 
 # --------------------------------------------------- persisted settings defaults
@@ -2061,8 +2107,8 @@ class SpotState(BaseModel):
     #: What the spot follows (the panel selector): "market" = the prevailing
     #: market spot (the shift is synced to it; the tick stream frames at the
     #: book) | "scenario" = the dial (the whole app, tick stream included, lives
-    #: at that hypothetical spot). ``followForced``: realtime spotMode pins
-    #: "market" (the scheduler owns the shift).
+    #: at that hypothetical spot). ``followForced``: always False since
+    #: 2026-09-02g — the selector is never overridden (kept for the client).
     follow: Literal["market", "scenario"] = "market"
     followForced: bool = False
     #: The prevailing market spot, its return vs the anchor, its UTC stamp and
@@ -2108,7 +2154,7 @@ class RecalibrateResult(SpotState):
 
 
 class LiveSpot(BaseModel):
-    """A real-time spot probe versus the anchor (for spotMode='realtime')."""
+    """A spot probe versus the anchor (the Auto-update "spot" tick, or by hand)."""
 
     ticker: str
     anchorSpot: float
@@ -2178,23 +2224,28 @@ class FetchResult(BaseModel):
 
 
 class SchedulerStatus(BaseModel):
-    """Backend scheduler state for the TopBar fetch controls."""
+    """Backend scheduler state for the TopBar fetch controls / status bar."""
 
     running: bool  # the scheduler thread is alive
-    spotMode: str  # "realtime" | "static"
-    optionsFetchMode: str  # "auto" | "on_demand"
+    #: The Auto-update choice WITHOUT a live stream (``OptionsSettings.autoUpdate``
+    #: echoed): "off" (manual Fetch only), "spot" (a spot probe + transport every
+    #: ``autoUpdateSeconds``), "snapshot" (the unified quotes + spot snapshot
+    #: every ``autoUpdateSeconds``, 15 s floor).
+    autoUpdate: str
+    autoUpdateSeconds: float
     autoCalibrate: bool
     localVolEnabled: bool  # whether LV is calibrated + the Local Vol tab is usable
-    #: Seconds to the next auto options fetch / spot poll, or -1 when that mode
-    #: is on-demand/static (so the UI shows a button instead of a countdown).
-    secondsToNextOptions: float
-    secondsToNextSpot: float
-    #: ``OptionsSettings.schedulerUnifiedFetch`` echoed: the auto chain timer runs
-    #: the unified snapshot sequence (chains -> spot -> optional prior roll ->
-    #: optional auto-calibrate) and absorbs the spot poll — so the status bar can
-    #: label the countdown "Next snapshot" and the Snapshot verb can say it also
-    #: rides the timer. False = the legacy split timers.
-    unifiedFetch: bool = False
+    #: Seconds to the next Auto-update tick, or -1 when off — or while a book
+    #: streams (Auto-update is inert then; the UI shows a button, not a countdown).
+    secondsToNextUpdate: float
+    #: A live book is streaming: spot and quotes flow continuously.
+    streaming: bool
+    #: ``streamFreezeFit`` / ``streamRefitSeconds`` echoed for the streaming chip.
+    streamFreezeFit: bool
+    streamRefitSeconds: float
+    #: Seconds to the next streaming refit, or -1 (not streaming, frozen, or
+    #: autoCalibrate off).
+    secondsToNextRefit: float
 
 
 # ------------------------------------------------------------------ local vol

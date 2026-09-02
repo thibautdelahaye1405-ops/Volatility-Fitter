@@ -51,8 +51,8 @@ def test_simplification_is_faithful():
     assert opt["priorAnchorDeltas"]["type"] == "list"
     assert fit["tailAlphaByTicker"]["type"] == "dict"
     # Exclusive bounds survive.
-    ssr = opt["spotPollSeconds"]
-    assert ssr["max"] == 3600 and ssr.get("exclusiveMin") is True
+    ssr = opt["autoUpdateSeconds"]
+    assert ssr["max"] == 86400 and ssr.get("exclusiveMin") is True
     # Market model.
     assert mkt["dividendMode"]["type"] == "enum" and "continuous" in mkt["dividendMode"]["enum"]
     # The document round-trips through JSON unchanged.

@@ -48,15 +48,23 @@ export interface CalibrationStatus {
 /** Response of GET /scheduler. */
 export interface SchedulerStatus {
   running: boolean;
-  spotMode: "realtime" | "static";
-  optionsFetchMode: "auto" | "on_demand";
+  /** Auto-update WITHOUT a live stream (OptionsSettings.autoUpdate echoed):
+   *  off = manual Fetch only; spot = spot probe + transport every
+   *  autoUpdateSeconds; snapshot = quotes + spot Snapshot every autoUpdateSeconds. */
+  autoUpdate: "off" | "spot" | "snapshot";
+  autoUpdateSeconds: number;
   autoCalibrate: boolean;
   localVolEnabled: boolean; // gates the Local Vol tab + LV calibration
-  secondsToNextOptions: number; // -1 when on-demand
-  secondsToNextSpot: number; // -1 when static
-  /** The auto chain timer runs the unified snapshot sequence and absorbs the
-   *  spot poll (OptionsSettings.schedulerUnifiedFetch echoed). */
-  unifiedFetch?: boolean;
+  /** Seconds to the next Auto-update tick; -1 when off or while a book streams. */
+  secondsToNextUpdate: number;
+  /** A live book is streaming: spot and quotes flow continuously. */
+  streaming: boolean;
+  /** The fit is held at its calibration spot while streaming (streamFreezeFit). */
+  streamFreezeFit: boolean;
+  streamRefitSeconds: number;
+  /** Seconds to the next streaming refit; -1 unless streaming, not frozen and
+   *  Auto-calibrate on. */
+  secondsToNextRefit: number;
 }
 
 /** Per-ticker saved-prior availability (GET /priors). */

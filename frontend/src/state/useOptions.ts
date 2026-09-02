@@ -17,9 +17,11 @@ export type DynamicsRegime =
   | "sticky_local_vol_grid"
   | "custom";
 /** Spot price mode: "realtime" = backend polls live spots; "static" = on-demand. */
-export type SpotMode = "realtime" | "static";
-/** Options-chain fetch mode: "auto" = scheduler timer; "on_demand" = button only. */
-export type OptionsFetchMode = "auto" | "on_demand";
+/** Auto-update WITHOUT a live stream: "off" = manual Fetch only; "spot" = the
+ *  scheduler probes the spot every `autoUpdateSeconds` and transports the
+ *  surface (never a refit); "snapshot" = the unified quotes + spot Snapshot
+ *  every `autoUpdateSeconds` (15 s floor), then auto-calibrate if it is on. */
+export type AutoUpdate = "off" | "spot" | "snapshot";
 
 /** Prior-persistence mode (design note §10): how a fetched prior is persisted into
  *  the calibration. off/overlay add no penalty; strike_gap = legacy data-gap
@@ -193,17 +195,18 @@ export interface OptionsSettings {
   autoRollPriorOnFetch: boolean;
   /** Master switch for Local-Vol (affine) calibration + the Local Vol tab. */
   localVolEnabled: boolean;
-  spotMode: SpotMode;
-  spotPollSeconds: number;
-  optionsFetchMode: OptionsFetchMode;
-  optionsFetchMinutes: number;
-  /** Scheduler consolidation: the auto chain-refetch timer runs the unified
-   *  snapshot sequence (chains → spot → optional prior roll → auto-calibrate)
-   *  and absorbs a spot poll due on the same tick. Off = legacy split timers. */
-  schedulerUnifiedFetch: boolean;
+  /** Auto-update without a live stream (inert while a book streams): off /
+   *  spot only / spot + quotes, every `autoUpdateSeconds` (15 s floor for
+   *  spot + quotes — a full chain per tick). */
+  autoUpdate: AutoUpdate;
+  autoUpdateSeconds: number;
   /** Seconds between full refits while a live book streams (Massive WS / Bloomberg
-   *  //blp/mktdata, realtime spot mode). */
+   *  //blp/mktdata) with Auto-calibrate on and the fit not frozen. */
   streamRefitSeconds: number;
+  /** While a book streams, hold the fit at its calibration spot: no live
+   *  transport, no streaming refit (Fetch / Calibrate / the live quote layer
+   *  still read the book; the Spot card's dial stays free). */
+  streamFreezeFit: boolean;
   /** Auto-open the live book on a streaming source (Massive WebSocket, Bloomberg
    *  subscriptions) so Fetch/Calibrate serve from the fast in-memory book instead
    *  of the slow / metered snapshot pull. */
@@ -296,12 +299,10 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   autoCalibrate: true,
   autoRollPriorOnFetch: false,
   localVolEnabled: true,
-  spotMode: "static",
-  spotPollSeconds: 5.0,
-  optionsFetchMode: "on_demand",
-  optionsFetchMinutes: 5.0,
-  schedulerUnifiedFetch: false,
+  autoUpdate: "off",
+  autoUpdateSeconds: 5.0,
   streamRefitSeconds: 5.0,
+  streamFreezeFit: false,
   autoStream: true,
   dataAgeAmberMin: 20.0,
   dataAgeRedMin: 120.0,

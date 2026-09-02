@@ -43,8 +43,6 @@ interface SpotPanelProps {
   spotReturn: number;
   /** Backend spot state (anchor / market / scenario spot, follow, regime). */
   spotState: SpotState | null;
-  /** Options spot mode: "static" or "realtime" (scheduler-driven, pins Market). */
-  spotMode: "static" | "realtime";
   onSpotReturn: (r: number) => void;
   onFollow: (follow: SpotFollow) => void;
   /** Recalibrate this ticker with the given scope (the top bar's current one). */
@@ -107,12 +105,11 @@ const smallButton =
 const linkButton = "text-[10px] font-medium text-slate-500 transition enabled:hover:text-accent-300 disabled:opacity-40";
 
 export default function SpotPanel({
-  spotReturn, spotState, spotMode, onSpotReturn, onFollow, onCalibrate, onProbeLive,
+  spotReturn, spotState, onSpotReturn, onFollow, onCalibrate, onProbeLive,
   calib, note, disabled, disabledReason,
 }: SpotPanelProps) {
   const scope = useCalibScope(); // the top bar's current Calibrate scope
   const pct = snapDialPct(spotReturn * 100);
-  const realtime = spotMode === "realtime";
   const moved = Math.abs(pct) > 1e-9;
   const s = spotState;
   const follow: SpotFollow = s?.follow ?? "market";
@@ -143,15 +140,12 @@ export default function SpotPanel({
       <div className="mb-1 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-100">Spot move</h3>
         <span className="flex items-center gap-1.5">
+          {/* The book streams: spot and quotes flow continuously (a market-
+              following ticker tracks the book; a scenario keeps its dial). */}
           {s?.streaming && (
-            <span className="flex items-center gap-1 text-[10px] font-semibold tracking-wider text-emerald-300" title={`${s.sourceLabel} live book streaming`}>
+            <span className="flex items-center gap-1 text-[10px] font-semibold tracking-wider text-emerald-300" title={`${s.sourceLabel} live book streaming — spot and quotes flow continuously`}>
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-              STREAM
-            </span>
-          )}
-          {realtime && (
-            <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-emerald-300" title="Real-time spot mode: the scheduler drives the spot (Options ▸ spotMode)">
-              LIVE
+              STREAMING
             </span>
           )}
         </span>
@@ -163,7 +157,7 @@ export default function SpotPanel({
       {/* What the spot follows */}
       <div
         className="mb-2 flex items-center justify-between gap-2"
-        title={s?.followForced ? "Real-time spot mode pins the market spot (Options ▸ spotMode)" : "Follow the prevailing market spot, or the scenario dial"}
+        title={s?.followForced ? "The market spot is pinned by the backend" : "Follow the prevailing market spot, or the scenario dial"}
       >
         <span className="text-[11px] text-slate-400">Follow</span>
         <div className={s?.followForced || disabled ? "pointer-events-none opacity-50" : ""}>

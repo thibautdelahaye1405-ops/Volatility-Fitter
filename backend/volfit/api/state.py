@@ -399,8 +399,9 @@ class AppState(UniverseMixin):
         #: (default) = the prevailing market spot — the shift is synced to the
         #: streaming book / last probe / fetched chain and the live tick stream
         #: frames at the book; "scenario" = the dial — a hypothetical spot the
-        #: whole app, tick stream included, lives at. Realtime spotMode forces
-        #: "market". Workspace-scoped (user intent).
+        #: whole app, tick stream included, lives at. Never forced: a streaming
+        #: book or an Auto-update timer moves the market followers only.
+        #: Workspace-scoped (user intent).
         self._spot_follow: dict[str, str] = {}
         self._spot_version = 0
         self._spot_version_by_ticker: dict[str, int] = {}
@@ -944,27 +945,28 @@ class AppState(UniverseMixin):
     # ------------------------------------------------ real-time streaming (WS)
     def sync_streaming(self) -> None:
         """Start/stop/resubscribe each provider's real-time stream to match the
-        active source, spot mode AND the current universe. Idempotent and cheap (a
-        no-op once in the right state, thanks to the provider's contract-listing
-        cache), so the scheduler can call it every tick. A provider streams iff it
-        is the active source, exposes ``start_streaming`` (Massive), and spotMode is
-        ``realtime``; any other streaming provider (e.g. after a source switch) is
+        active source, ``autoStream`` AND the current universe. Idempotent and
+        cheap (a no-op once in the right state, thanks to the provider's
+        contract-listing cache), so the scheduler can call it every tick. A
+        provider streams iff it is the active source, exposes ``start_streaming``
+        (Massive / Bloomberg) and ``autoStream`` is on — the one switch that opens
+        the book; any other streaming provider (e.g. after a source switch) is
         stopped so it does not leak a background socket. When the desired contract
         set changes (a ticker added/removed or its expiry selection edited) the
         stream is restarted on the new subscription (``start_streaming`` tears the
         old one down first)."""
         with self._lock:
-            active, mode = self._active_source, self._options.spotMode
+            active = self._active_source
             auto = self._options.autoStream
             providers = dict(self._providers)
         for sid, prov in providers.items():
             if not hasattr(prov, "start_streaming"):
                 continue
             streaming = prov.is_streaming()
-            # Stream the active source's WS book when spotMode is realtime (live
-            # re-pricing) OR autoStream is on (just feed fast Fetch/Calibrate from the
-            # book; re-pricing/refit stay gated on realtime in the scheduler).
-            want = sid == active and (mode == "realtime" or auto)
+            # Stream the active source's book iff autoStream is on: the book then
+            # feeds Fetch / Calibrate / the tick stream, and the scheduler's
+            # streaming branch does the live transport + refit (unless frozen).
+            want = sid == active and auto
             if not want:
                 if streaming:
                     prov.stop_streaming()  # source/mode no longer wants it
@@ -1212,12 +1214,10 @@ class AppState(UniverseMixin):
 
     def spot_follow(self, ticker: str) -> str:
         """"market" | "scenario" — what the ticker's spot follows (the Spot panel
-        selector): the prevailing market spot (default; FORCED while Options
-        ``spotMode`` is realtime — the scheduler owns the shift then) or the
-        dial (a hypothetical spot the whole app, tick stream included, lives at)."""
+        selector): the prevailing market spot (default) or the dial (a
+        hypothetical spot the whole app, tick stream included, lives at). Never
+        forced: the scheduler and the streaming book move market followers only."""
         with self._lock:
-            if self._options.spotMode == "realtime":
-                return "market"
             return self._spot_follow.get(ticker, "market")
 
     def set_spot_follow(self, ticker: str, mode: str) -> None:

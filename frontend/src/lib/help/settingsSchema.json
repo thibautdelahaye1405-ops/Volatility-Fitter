@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31",
+  "generatedAt": "2026-09-02",
   "models": {
     "fit": {
       "title": "FitSettings",
@@ -779,43 +779,22 @@
           "default": true
         },
         {
-          "name": "spotMode",
+          "name": "autoUpdate",
           "type": "enum",
           "enum": [
-            "realtime",
-            "static"
+            "off",
+            "spot",
+            "snapshot"
           ],
-          "default": "static"
+          "default": "off"
         },
         {
-          "name": "spotPollSeconds",
+          "name": "autoUpdateSeconds",
           "type": "float",
           "default": 5.0,
-          "max": 3600.0,
+          "max": 86400.0,
           "min": 0.0,
           "exclusiveMin": true
-        },
-        {
-          "name": "optionsFetchMode",
-          "type": "enum",
-          "enum": [
-            "auto",
-            "on_demand"
-          ],
-          "default": "on_demand"
-        },
-        {
-          "name": "optionsFetchMinutes",
-          "type": "float",
-          "default": 5.0,
-          "max": 1440.0,
-          "min": 0.0,
-          "exclusiveMin": true
-        },
-        {
-          "name": "schedulerUnifiedFetch",
-          "type": "bool",
-          "default": false
         },
         {
           "name": "streamRefitSeconds",
@@ -824,6 +803,11 @@
           "max": 600.0,
           "min": 0.0,
           "exclusiveMin": true
+        },
+        {
+          "name": "streamFreezeFit",
+          "type": "bool",
+          "default": false
         },
         {
           "name": "autoStream",

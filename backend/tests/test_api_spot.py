@@ -219,13 +219,16 @@ def test_follow_market_versus_scenario(client, monkeypatch):
     assert client.put(f"/spot/{TICKER}/follow", json={"follow": "nope"}).status_code == 422
 
 
-def test_realtime_spot_mode_forces_market_follow(client):
+def test_follow_is_never_forced(client):
+    """The Spot card selector is the user's: neither an Auto-update timer nor a
+    streaming book overrides a Scenario ticker (the scheduler and the book
+    move the market followers only — 2026-09-02g)."""
     state = client.app.state.volfit
     client.put(f"/spot/{TICKER}", json={"spotReturn": 0.02})  # scenario
-    state.set_options(state.options().model_copy(update={"spotMode": "realtime"}))
+    state.set_options(state.options().model_copy(update={"autoUpdate": "spot"}))
     st = client.get(f"/spot/{TICKER}").json()
-    assert st["follow"] == "market" and st["followForced"] is True
-    state.set_options(state.options().model_copy(update={"spotMode": "static"}))
+    assert st["follow"] == "scenario" and st["followForced"] is False
+    state.is_streaming = lambda: True
     assert client.get(f"/spot/{TICKER}").json()["follow"] == "scenario"
 
 

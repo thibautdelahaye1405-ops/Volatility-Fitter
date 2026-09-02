@@ -111,12 +111,12 @@ export default function WorkflowControls({
           {/* The unified verb (V3.7 item 15) — the ONLY fetch verb here:
               quotes + spot in one pull; rolls the active priors to their latest
               saved snapshots when the Options toggle (Auto-roll prior on fetch)
-              is on, then auto-calibrates. The timed variants (real-time spots,
-              auto options) are set in Options and narrated by the status bar. */}
+              is on, then auto-calibrates. The timed variant (Options ▸ Auto-update:
+              spot only / spot + quotes) is narrated by the status bar. */}
           <MenuItem
             label="Snapshot (quotes + spot)"
-            detail={sched?.unifiedFetch && sched.optionsFetchMode === "auto"
-              ? "chains + live spots in one pull · also on the auto timer"
+            detail={sched?.autoUpdate === "snapshot" && !sched.streaming
+              ? "chains + live spots in one pull · also on the Auto-update timer"
               : "chains + live spots in one pull"}
             disabled={busy}
             onClick={() => { setFetchOpen(false); void fetchSnapshot(); }}

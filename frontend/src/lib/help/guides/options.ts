@@ -26,7 +26,7 @@ export const OPTIONS: GuidePage = {
     "| **Kalman filter** | the observation-filter panel — see [Observation filter](help:guides:filter) |",
     "| **Events** | [eventsEnabled](help:settings:eventsEnabled) · [normalizeEvents](help:settings:normalizeEvents) · [intradayClock](help:settings:intradayClock) · [sessionVarShare](help:settings:sessionVarShare); the per-ticker event calendar |",
     "| **Graph** | [graphPropagationMode](help:settings:graphPropagationMode) · [graphKappaScale](help:settings:graphKappaScale) · [graphEtaScale](help:settings:graphEtaScale) · [graphLambdaScale](help:settings:graphLambdaScale) · [graphNu](help:settings:graphNu) |",
-    "| **Workflow** | [autoCalibrate](help:settings:autoCalibrate) · [autoRollPriorOnFetch](help:settings:autoRollPriorOnFetch) · [spotMode](help:settings:spotMode) · [optionsFetchMode](help:settings:optionsFetchMode) · [schedulerUnifiedFetch](help:settings:schedulerUnifiedFetch) · [autoStream](help:settings:autoStream) · data-age thresholds |",
+    "| **Workflow** | [autoCalibrate](help:settings:autoCalibrate) · [autoRollPriorOnFetch](help:settings:autoRollPriorOnFetch) · [autoUpdate](help:settings:autoUpdate) · [autoStream](help:settings:autoStream) · [streamFreezeFit](help:settings:streamFreezeFit) · data-age thresholds |",
     "| **Dynamics** | [dynamicsRegime](help:settings:dynamicsRegime) · [ssr](help:settings:ssr) |",
     "",
     "Feature-dependent knobs render only while their feature or model is active (SVI knobs under `model = svi`, LV knobs while LV is enabled).",

@@ -157,26 +157,29 @@ def test_sync_streaming_starts_and_stops_with_mode():
     ref = date(2026, 6, 15)
     prov = FakeStreaming(reference_date=ref, tickers=("ALPHA",))
     state = AppState(ref, providers={"massive": prov}, active_source="massive")
-    # isolate the spotMode coupling from the autoStream auto-enable (tested separately)
+    # autoStream is the ONE switch that opens the book (2026-09-02g: the old
+    # realtime-spot coupling is gone — Auto-update is inert while streaming).
     state.set_options(state.options().model_copy(update={"autoStream": False}))
     opts = state.options()
 
-    state.sync_streaming()  # static + autoStream off -> no stream
+    state.sync_streaming()  # autoStream off -> no stream, whatever Auto-update says
+    state.set_options(opts.model_copy(update={"autoUpdate": "spot"}))
+    state.sync_streaming()
     assert prov.streaming is False
 
-    state.set_options(opts.model_copy(update={"spotMode": "realtime"}))
-    state.sync_streaming()  # realtime + active -> stream starts
+    state.set_options(opts.model_copy(update={"autoStream": True}))
+    state.sync_streaming()  # on + active -> stream starts on the selected contracts
     assert prov.streaming is True and prov.started == ["O:ALPHA1", "O:ALPHA2"]
 
-    state.set_options(opts.model_copy(update={"spotMode": "static"}))
-    state.sync_streaming()  # mode off -> stream stops (no leaked socket)
+    state.set_options(opts.model_copy(update={"autoStream": False}))
+    state.sync_streaming()  # off -> stream stops (no leaked socket)
     assert prov.streaming is False
 
 
 def test_sync_streaming_auto_enables_for_streaming_source():
-    """autoStream (default ON) opens the WS book on the active streaming source even in
-    static spotMode — so Fetch/Calibrate serve from the fast in-memory book. Turning it
-    OFF forces REST (no stream) unless spotMode is realtime."""
+    """autoStream (default ON) opens the WS book on the active streaming source —
+    so Fetch/Calibrate serve from the fast in-memory book. Turning it OFF forces
+    REST (no stream); no other setting opens the book."""
     from datetime import date
 
     from volfit.api.state import AppState
@@ -207,12 +210,12 @@ def test_sync_streaming_auto_enables_for_streaming_source():
     assert prov.streaming is True
 
     state.set_options(state.options().model_copy(update={"autoStream": False}))
-    state.sync_streaming()  # autoStream off + static -> stops (REST path)
+    state.sync_streaming()  # autoStream off -> stops (REST path)
     assert prov.streaming is False
 
-    state.set_options(state.options().model_copy(update={"spotMode": "realtime"}))
-    state.sync_streaming()  # realtime still streams regardless of autoStream
-    assert prov.streaming is True
+    state.set_options(state.options().model_copy(update={"autoUpdate": "spot"}))
+    state.sync_streaming()  # an Auto-update timer never opens the book
+    assert prov.streaming is False
 
 
 def test_sync_streaming_resubscribes_on_universe_change():
@@ -251,9 +254,8 @@ def test_sync_streaming_resubscribes_on_universe_change():
     ref = date(2026, 6, 15)
     prov = FakeStreaming(reference_date=ref, tickers=("ALPHA", "BETA"))
     state = AppState(ref, providers={"massive": prov}, active_source="massive")
-    state.set_options(state.options().model_copy(update={"spotMode": "realtime"}))
 
-    state.sync_streaming()  # initial start over ALPHA + BETA
+    state.sync_streaming()  # initial start over ALPHA + BETA (autoStream default on)
     assert prov.streaming is True and prov.starts == 1
     assert set(prov.subscribed) == {"O:ALPHA1", "O:ALPHA2", "O:BETA1", "O:BETA2"}
 

@@ -133,7 +133,7 @@ export const COMMAND_DOCS_FILE: CommandDoc[] = [
     example: "Pick Previous close in Fetch ▾, then Snapshot. SPY 18-Dec-26 shows yesterday's close chain with the HH:MM stamp in the nodes pane; with auto-calibrate on, the fit lands a few seconds later.",
     enabledWhen: "Live backend, workflow idle",
     guide: "workflow",
-    related: ["calibrate.both", "help:settings:schedulerUnifiedFetch", "fetch.spots", "fetch.options"],
+    related: ["calibrate.both", "help:settings:autoUpdate", "fetch.spots", "fetch.options"],
   },
   {
     id: "fetch.spots",

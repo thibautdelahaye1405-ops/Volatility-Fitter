@@ -83,8 +83,6 @@ export interface UseSmileResult extends NodeSmileResult {
    *  into their fetch deps so one bump re-pulls every workspace's views. */
   spotVersion: number;
   refreshViews: () => void;
-  /** Options spot mode: "static" (manual slider) or "realtime" (backend poll). */
-  spotMode: "static" | "realtime";
   /** Advances on reload() — node scopes refetch on it. */
   reloadSignal: number;
   /** The dynamics regime from Options (node scopes seed their scenario from it). */
@@ -103,7 +101,6 @@ export function useSmile(): UseSmileResult {
   const [universeError, setUniverseError] = useState<string | null>(null);
   const [reloadSignal, setReloadSignal] = useState(0);
   const [regime, setRegime] = useState<Regime | number>("sticky_moneyness");
-  const [spotMode, setSpotMode] = useState<"static" | "realtime">("static");
   const [viewVersion, setViewVersion] = useState(0);
   const refreshViews = useCallback(() => setViewVersion((n) => n + 1), []);
   const reload = useCallback(() => setReloadSignal((n) => n + 1), []);
@@ -150,14 +147,13 @@ export function useSmile(): UseSmileResult {
     return () => { cancelled = true; controller.abort(); if (timer !== undefined) window.clearTimeout(timer); };
   }, [fallBackToMock]);
 
-  // Options → dynamics regime, spot mode, and the fit-target seed (once).
+  // Options → dynamics regime and the fit-target seed (once).
   useEffect(() => {
     if (source !== "live") return;
     const controller = new AbortController();
-    api.get<{ dynamicsRegime: string; ssr: number; spotMode: "static" | "realtime"; fitMode: FitMode }>("/settings/options", { signal: controller.signal })
+    api.get<{ dynamicsRegime: string; ssr: number; fitMode: FitMode }>("/settings/options", { signal: controller.signal })
       .then((o) => {
         setRegime(o.dynamicsRegime === "custom" ? o.ssr : (o.dynamicsRegime as Regime));
-        setSpotMode(o.spotMode);
         if (!fitModeSeeded.current && o.fitMode) { fitModeSeeded.current = true; setFitMode(o.fitMode); }
       })
       .catch(() => { /* keep the current regime if Options is unreachable */ });
@@ -195,6 +191,6 @@ export function useSmile(): UseSmileResult {
     reload,
     universe, source, ticker, expiry, fitMode,
     setTicker, setExpiry: setExpiryState, setFitMode, refreshUniverse,
-    spotVersion: viewVersion, refreshViews, spotMode, reloadSignal, regime,
+    spotVersion: viewVersion, refreshViews, reloadSignal, regime,
   };
 }

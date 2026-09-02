@@ -998,8 +998,11 @@ below) — every recorded rider is closed except the ones listed here:
    look at the yellow "no data" pill on a non-US name; captures made before
    store schema v10 are unattributed and no longer offered by the picker
    (they still replay from a saved selection).
-USER-side: restart the long-running :8000 (new OptionsSettings fields,
-endpoints, the eSSVI compare family, the midnight roll, the /help router, and
+USER-side: restart the long-running :8000 (new OptionsSettings fields —
+wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
+replace the five scheduler fields, migrated on load; the `/scheduler` payload
+changed shape —, endpoints, the eSSVI compare family, the midnight roll, the
+/help router, and
 — wraps 2026-09-02c/d — the new payload fields `UniverseResponse.errors`,
 `SmileData.quoteKind`, `ActivityInfo.label/elapsedMs`,
 `AsOfDay.spread/reason/captures`, the long-lived probe pool and the Massive
@@ -1008,6 +1011,82 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-02g) — THE DATA MODEL: ONE AUTO-UPDATE SETTING, A STREAM THAT JUST FLOWS, A SPOT UPDATE ONLY TRANSPORTS
+
+The user's six-point model (user message 2026-09-02, ratified with four
+decisions via AskUserQuestion: ONE backend setting with migration; seconds
+with a 15 s floor for a full snapshot; streaming ignores Auto-update but keeps
+a FREEZE switch; refit-on-edit kept). Supersedes 2026-09-02f (the
+streaming-aware dim of the two old selectors) the same day.
+
+- **The model** (scheduler.py docstring, the authoritative statement):
+  1. a calibration always prices spot and quotes from ONE snapshot — a fetch,
+     or a synchronous read of the streaming book (`workflow.calibration_chains`
+     already did this); 2. calibration is on-demand (default) or continuous
+     (`autoCalibrate`, which also refits on edits); 3. with a live book spot
+     and quotes flow continuously; 4. without one, quotes must be fetched — a
+     manual Fetch gets both, `autoUpdate` = "spot" (probe + transport every
+     `autoUpdateSeconds`) or "snapshot" (the unified quotes + spot sequence,
+     15 s floor); 5./6. a spot update — stream, timer or Fetch — only
+     TRANSPORTS the surface, never recalibrates, in either mode.
+- **Settings** (`OptionsSettings`): `autoUpdate` off|spot|snapshot,
+  `autoUpdateSeconds` (0, 86400], `streamFreezeFit` REPLACE `spotMode`,
+  `spotPollSeconds`, `optionsFetchMode`, `optionsFetchMinutes`,
+  `schedulerUnifiedFetch`. A `model_validator(mode="before")` migrates the
+  legacy keys (an auto chain timer → snapshot at its minutes cadence; a
+  realtime spot poll → spot; else off; an explicit `autoUpdate` wins; the
+  keys are dropped) so saved workspaces / settings blobs / older clients keep
+  loading; an after-validator floors the snapshot cadence at
+  `SNAPSHOT_FLOOR_SECONDS` = 15. `streamRefitSeconds` / `autoStream` stay;
+  `autoStream` is now the ONE switch that opens the book (`sync_streaming`
+  no longer streams on "realtime spot"). `gen_help_schema.py` regenerated
+  (118 fields); SETTINGS_REFERENCE §2.12 rewritten.
+- **Scheduler** (`Scheduler.tick`): while `state.is_streaming()` → Auto-update
+  inert; unless `streamFreezeFit`: `sync_market_shifts` every
+  `STREAM_SYNC_SECONDS` = 5 (the market followers take the book spot — pure
+  transport) and, with `autoCalibrate`, `stream_refit` every
+  `streamRefitSeconds` (the stream's own quotes + spot tick); else ONE
+  request-path timer (`_last_update`): "snapshot" → `workflow_fetch.
+  fetch_snapshot`, "spot" → `workflow.fetch_spots`. Status:
+  `seconds_to_next_update` (-1 off / streaming) + `seconds_to_next_refit`
+  (-1 unless streaming ∧ autoCalibrate ∧ ¬frozen); `SchedulerStatus` =
+  {autoUpdate, autoUpdateSeconds, secondsToNextUpdate, streaming,
+  streamFreezeFit, streamRefitSeconds, secondsToNextRefit, …}. The legacy
+  split timers + the V3.7 double-fire guard are gone (the unified snapshot
+  IS the timer's verb).
+- **Spot follow is never forced**: `AppState.spot_follow` no longer pins
+  "market" (the old realtime rule); `SpotState.followForced` is always False
+  (kept for the client) — a Scenario ticker keeps its dial while the book
+  streams; the scheduler / book move market followers only.
+- **Frontend** (fork): `useOptions` mirror (+`AutoUpdate` type);
+  Options ▸ Workflow & data = ONE **Auto-update (without a live stream)**
+  control Off / Spot only / Spot + quotes + **Every (s)** (the 15 s floor
+  clamped on the switch and on input, with a caption), dimmed with a note
+  while Stream live book is on; **Freeze fit while streaming** toggle +
+  **Stream refit every (s)** (hidden when frozen) under Stream live book;
+  Auto-calibrate hint = continuous vs on-demand. Status bar chip: `Stream ·
+  frozen / live / refit m:ss` while streaming, else `Next update m:ss` (the
+  mode in the title), nothing when off; the Snapshot verb's detail names the
+  Auto-update timer. SpotPanel: no `spotMode` prop, a STREAMING badge off
+  `spotState.streaming`, the dial free in scenario mode. Help: settings
+  docs (5 removed, 3 added, autoCalibrate / autoStream / streamRefitSeconds
+  rewritten, every `related` repointed), guides (universe scheduler bullets,
+  workbench, options table), What's new (the model in user language + the
+  migration note).
+- Locks: tests/test_scheduler.py rewritten (13: snapshot / spot / off ticks,
+  the unmocked chain + no-refit checks, the floor, streaming inert + book
+  sync, the refit cadence, the freeze, legacy migration, the endpoint with a
+  legacy PUT), test_api_options (new field set + round trip + enum), test_api_
+  spot (`test_follow_is_never_forced`), test_massive_ws / test_bloomberg_
+  stream (autoStream is the only switch), test_help_schema
+  (`autoUpdateSeconds`); frontend SmallSections.test (6), SpotPanel.test
+  (STREAMING badge, free dial), settingsDocs.test. Regression: backend slice
+  650 passed / 7 skipped, frontend 421 green, tsc + build + headless smoke.
+- USER-side: restart :8000 — the saved Options blob migrates on load (check
+  Options ▸ Workflow & data once: a former auto chain timer now reads Spot +
+  quotes at its old cadence in seconds); the `/scheduler` payload changed
+  shape (older frontends must reload).
 
 ### 🧭 SESSION WRAP (2026-09-02e) — BLOOMBERG CHAINS, LIVE-VERIFIED: OPT_CHAIN + CHAIN_TICKERS PER SERIES (`CHAIN_EXP_DT_OVRD=ALL`)
 
