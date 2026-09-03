@@ -232,9 +232,138 @@ class AffineVarianceSurface:
         phi_base, phi_lin = self.basis_components(x, t)
         return phi_base + self.left_extrap_a * phi_lin
 
+    # ------------------------------------------------- row-sparse evaluation
+    def _sparse_clamped(self, xc: np.ndarray, t: float) -> tuple[np.ndarray, np.ndarray]:
+        """``(cols, vals)`` of the hat weights at ALREADY clamped coordinates:
+        the (<= 4) vertices of each point's containing simplex / cell, columns
+        ascending per row — the row-sparse twin of ``_basis_clamped`` with the
+        same float per entry (the dense matrix is these weights scattered)."""
+        tn, xn = self.t_nodes, self.x_nodes
+        xc = np.asarray(xc, dtype=float)
+        if self.interp == "delaunay":
+            tri = self._delaunay()
+            pts = np.column_stack([np.full(xc.size, t), xc])
+            simp = tri.find_simplex(pts, tol=1e-12)
+            if np.any(simp < 0):  # clamped points lie in the hull; fuzz only
+                raise RuntimeError("Delaunay point location failed inside the hull")
+            tm = tri.transform[simp]
+            b2 = np.einsum("nij,nj->ni", tm[:, :2], pts - tm[:, 2])
+            lam = np.column_stack([b2, 1.0 - b2.sum(axis=1)])
+            cols = tri.simplices[simp]
+            order = np.argsort(cols, axis=1, kind="stable")
+            return np.take_along_axis(cols, order, 1), np.take_along_axis(lam, order, 1)
+        it = min(int(np.searchsorted(tn, t, side="right")) - 1, tn.size - 2)
+        it = max(it, 0)
+        u = (t - tn[it]) / (tn[it + 1] - tn[it])
+        ix = np.clip(np.searchsorted(xn, xc, side="right") - 1, 0, xn.size - 2)
+        s = (xc - xn[ix]) / (xn[ix + 1] - xn[ix])
+        n_x = xn.size
+        c_aa = it * n_x + ix
+        cols = np.column_stack([c_aa, c_aa + 1, c_aa + n_x, c_aa + n_x + 1])  # ascending
+        if self.interp == "bilinear":
+            vals = np.column_stack([(1.0 - u) * (1.0 - s), (1.0 - u) * s, u * (1.0 - s), u * s])
+        elif self.interp == "tri_lower":
+            lower = s <= u
+            vals = np.column_stack([
+                np.where(lower, 1.0 - u, 1.0 - s), np.where(lower, 0.0, s - u),
+                np.where(lower, u - s, 0.0), np.where(lower, s, u),
+            ])
+        else:  # tri_upper
+            lower = u + s <= 1.0
+            vals = np.column_stack([
+                np.where(lower, 1.0 - u - s, 0.0), np.where(lower, s, 1.0 - u),
+                np.where(lower, u, 1.0 - s), np.where(lower, 0.0, u + s - 1.0),
+            ])
+        return cols, vals
+
+    def _sparse_weights(self, x: np.ndarray, t: float) -> tuple[np.ndarray, np.ndarray]:
+        """Row-sparse ``(cols, vals)`` of the FULL basis (left-wing linear
+        continuation included), entries equal to the dense ``basis`` rows.
+
+        Below x_nodes[0] the dense row is ``pb + a·(d·(b1 − pb))`` per column
+        (basis_components), so each such point's entries are formed with
+        exactly those operations over the union of its own simplex and the
+        x_nodes[1] simplex; a vertex missing from one side enters as 0.0.
+        Unused slots are (col 0, 0.0): they contribute exactly nothing."""
+        tn, xn = self.t_nodes, self.x_nodes
+        x = np.asarray(x, dtype=float)
+        t = float(min(max(t, tn[0]), tn[-1]))
+        cols, vals = self._sparse_clamped(np.clip(x, xn[0], xn[-1]), t)
+        a = self.left_extrap_a
+        below = x < xn[0]
+        if a == 0.0 or not np.any(below):
+            return cols, vals
+        c1, v1 = self._sparse_clamped(np.array([xn[1]]), t)  # basis at x_nodes[1]
+        c1, v1 = c1[0], v1[0]
+        cb, vb = cols[below], vals[below]  # (n_b, k) base rows (all clamped to x0)
+        d = (x[below] - xn[0]) / (xn[1] - xn[0])  # < 0
+        # b1 looked up at the base columns (0.0 where the x1 simplex lacks them).
+        b1_at_base = np.zeros_like(vb)
+        for q in range(c1.size):
+            b1_at_base += np.where(cb == c1[q], v1[q], 0.0)
+        w_base = vb + a * (d[:, None] * (b1_at_base - vb))
+        # x1-simplex columns absent from the base row: pb = 0.0 there.
+        new = np.ones((cb.shape[0], c1.size), dtype=bool)
+        for p in range(cb.shape[1]):
+            new &= cb[:, [p]] != c1[None, :]
+        w_new = np.where(new, 0.0 + a * (d[:, None] * (v1[None, :] - 0.0)), 0.0)
+        c_new = np.where(new, c1[None, :], 0)
+        cols_b = np.concatenate([cb, c_new], axis=1)
+        vals_b = np.concatenate([w_base, w_new], axis=1)
+        order = np.argsort(cols_b, axis=1, kind="stable")
+        cols_b = np.take_along_axis(cols_b, order, 1)
+        vals_b = np.take_along_axis(vals_b, order, 1)
+        k = cols_b.shape[1]
+        out_c = np.zeros((x.size, k), dtype=cols_b.dtype)
+        out_v = np.zeros((x.size, k))
+        out_c[:, : cols.shape[1]] = cols
+        out_v[:, : cols.shape[1]] = vals
+        out_c[below] = cols_b
+        out_v[below] = vals_b
+        return out_c, out_v
+
     def variance(self, x: np.ndarray, t: float) -> np.ndarray:
-        """Local variance nu_theta(t, x), vectorized in x for scalar t."""
-        return self.basis(x, t) @ self.theta.ravel()
+        """Local variance nu_theta(t, x), vectorized in x for scalar t.
+
+        Row-sparse: the (<= 8) nonzero hat weights per point, accumulated in
+        ASCENDING column order from 0.0 — the summation the Numba march kernels
+        perform (a sequential ``s += phi[j]·theta[j]`` over all columns, where
+        the zeros add exactly nothing), so a value-only reprice reproduces the
+        calibrated march's local variance bit-for-bit without materializing
+        the (n_x × m) dense basis every step (the pre-2026-09-03 cost driver of
+        the display / converged-operator reprices: ~40 % of an LV fit)."""
+        cols, vals = self._sparse_weights(x, t)
+        return sparse_dot(cols, vals, self.theta.ravel())
+
+
+def _sequential_nu(phi: np.ndarray, theta: np.ndarray) -> np.ndarray:
+    """``phi @ theta`` accumulated over each row's nonzeros in ascending column
+    order from 0.0 (``sparse_dot`` on the row-sparse view of the dense basis)
+    — the sequential sum the Numba kernels and ``variance`` perform, so a
+    value-only banded march and a reprice agree bit-for-bit."""
+    r, c = np.nonzero(phi)  # row-major: ascending column within each row
+    n = phi.shape[0]
+    counts = np.bincount(r, minlength=n)
+    nnz = int(counts.max(initial=0))
+    if nnz == 0:
+        return np.zeros(n)
+    starts = np.concatenate(([0], np.cumsum(counts)[:-1]))
+    slot = np.arange(r.size) - starts[r]
+    vals = np.zeros((n, nnz))
+    cols = np.zeros((n, nnz), dtype=np.int64)
+    vals[r, slot] = phi[r, c]
+    cols[r, slot] = c
+    return sparse_dot(cols, vals, theta)
+
+
+def sparse_dot(cols: np.ndarray, vals: np.ndarray, theta: np.ndarray) -> np.ndarray:
+    """``sum_slot vals[:, slot] * theta[cols[:, slot]]`` accumulated slot by slot
+    from 0.0 — with columns ascending per row this is exactly the sequential
+    dense dot the march kernels compute (zero entries add nothing)."""
+    out = np.zeros(cols.shape[0])
+    for slot in range(cols.shape[1]):
+        out += vals[:, slot] * theta[cols[:, slot]]
+    return out
 
 
 @dataclass(frozen=True)
@@ -529,7 +658,12 @@ def solve_affine_dupire(
         else:
             phi_base = steps.surface.basis(steps.interior_x, float(t[n + 1]))
         phi = phi_base + a * phi_lin_n if use_lin else phi_base
-        nu = phi @ theta
+        # Sensitivity marches keep the BLAS dot (their own historical bits, and
+        # the multi-RHS solve dwarfs it); a value-only march sums each row's
+        # nonzeros sequentially in column order — the Numba kernels' and
+        # AffineVarianceSurface.variance's summation — so a value-only solve and
+        # a reprice of the same surface agree bit-for-bit (test-locked).
+        nu = phi @ theta if sensitivities else _sequential_nu(phi, theta)
         # LEFT-WING POSITIVITY: the linear continuation below x_nodes[0] is
         # "linear until it hits zero, then flat at zero". A bottom cell whose
         # variance INCREASES with x (short-dated rows whose lowest vertices sit

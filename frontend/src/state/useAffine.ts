@@ -212,6 +212,10 @@ export function useAffine(): UseAffineResult {
         // instead of the bid-ask/haircut surface they actually fit.
         body: { fitMode },
         signal: controller.signal,
+        // A cold LV fit of a wide ladder (a 1-day front rung forces the finest
+        // lattice for every expiry) legitimately runs past the 60 s default —
+        // the server keeps computing while the view would report "timed out".
+        timeoutMs: 300_000,
       })
       .then((res) => {
         setData(res);

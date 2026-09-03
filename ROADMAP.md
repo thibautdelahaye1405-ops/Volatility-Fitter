@@ -1000,6 +1000,12 @@ below) — every recorded rider is closed except the ones listed here:
    captures made before
    store schema v10 are unattributed and no longer offered by the picker
    (they still replay from a saved selection).
+8. LV WALL-TIME rider (wrap 2026-09-03c below): a wide ladder with a 0–2-day
+   front rung still costs ~25 s on SPY (the shortest rung sets the uniform
+   lattice step for every expiry). Structural fix = a graded strike lattice
+   (fine near x = 1, coarse in the wings; the march supports nonuniform
+   grids, `_pde_grids` / varswap_weights / the lattice density assume
+   uniform dx) — a perf item, benchmark-pack adjudicated.
 7. LV DENSITY-SMOOTHNESS PENALTY — BUILT 2026-09-03b (`densitySmoothWeight`,
    user-ratified DEFAULT 1; 0 = the pre-penalty fit byte-identical). Rider:
    a benchmark-pack regression run in the USER'S window to record the
@@ -1023,6 +1029,55 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-03c) — THE "SPY LV STALLS AT 1 MIN": A 1-DAY RUNG SETS THE WHOLE LATTICE, THE REPRICES WERE 40 % OF THE WALL, THE VIEW TIMED OUT AT 60 s
+
+User report: NVDA LV fits with a few expiries; SPY "even with just 2
+expiries" (Sep/Dec, yesterday's Massive as-of snapshot) stalls and times
+out after 1 min — suspected absolute vol levels. Replayed the user's stored
+snapshot (volfit.sqlite `snapshots`/`quotes`, id 270, 2026-09-02 14:24) with
+the user's saved `options_settings` (scratchpad replay_spy.py):
+
+- **Not the density penalty, not the vol level as such.** Sep-18 + Dec-18
+  alone fit in 5–6 s at μ = 0 and μ = 1. With EVERY expiry of the snapshot
+  (a 2-day 09-04 rung, 09-09, 09-18, 12-18, 2028-06) the same fit took 52 s
+  at both weights (μ = 1: 75 evals vs 123). The live universe (`/universe`)
+  carries the Massive as-of expiries from 09-04 (1 day) onward whatever is
+  lit, and the LV surface fits every expiry of the ticker's universe
+  (`surface_inputs`). The shortest rung's ATM std σ√τ sets the UNIFORM
+  lattice step for the whole surface (`_pde_dx`: SPY 1-day → dx = 1/800,
+  ~2000 nodes; NVDA's higher vol keeps dx = 0.01, ~250 nodes) and the short
+  intervals add 32 steps each (272 t-nodes with a 1.8-year back rung) — with
+  352 vertices each sensitivity eval is ~0.13 s (Numba), the TRF SVD of the
+  (3000 × 352) band-mode Jacobian ~0.1 s more. That is why SPY, not NVDA.
+- **Profile (5 rungs, μ = 1, 40.7 s)**: calibrate_affine 23.8 s (Numba
+  sensitivity march 9.4 s, TRF outer/SVD ~10 s, assembly 1.5 s, density
+  block 0.6 s); the THREE post-fit value-only reprices (converged-operator
+  `conv_sol`, the put twin, the display-lattice call march) 16.1 s — all of
+  it `AffineVarianceSurface.variance` materializing the dense (n_x × m) hat
+  basis every time step (1088 steps × 3310 nodes × 352 vertices).
+- **Fix 1 — row-sparse local variance (affine.py)**: `_sparse_clamped` /
+  `_sparse_weights` gather each point's ≤ 8 hat weights (same floats as the
+  dense entries — locked over all four interpolation modes ± the left-wing
+  continuation) and `variance` accumulates them in ascending column order
+  from 0.0 (`sparse_dot`), the sequential sum the Numba kernels perform;
+  the value-only banded march sums the same way (`_sequential_nu`) so a
+  value-only solve and a reprice stay bit-for-bit equal (the
+  test_lv_wing_inversion lock, kept). Sensitivity marches keep their BLAS
+  dot (their bits and hot path untouched; the calibration never calls
+  `variance`). The 5-rung SPY fit: 40.7 → 25.6 s, identical numbers; the
+  affine test subset 122 → 105 s. Locks: tests/test_affine_sparse_variance.py
+  (41).
+- **Fix 2 — the LV view's request timeout**: `/fit/affine` (and the graph LV
+  projection) now allow 300 s instead of the 60 s default (useAffine.ts) —
+  the server kept computing while the view reported a timeout.
+- **What the user can do about the remaining cost**: drop the 0–2-day
+  dailies from the SPY universe when they are not the object of study (the
+  1-day rung alone forces the finest lattice for every expiry), or use
+  `timeScheme = rannacher` (3× coarser time steps at equal accuracy). Rider:
+  a non-uniform (graded) strike lattice is the structural answer — the
+  march already supports nonuniform grids; `_pde_grids` insists on uniform
+  dx for the var-swap anchor and the lattice density (roadmap perf item).
 
 ### 🧭 SESSION WRAP (2026-09-03b) — DENSITY-SMOOTHNESS PENALTY BUILT: `densitySmoothWeight`, DEFAULT 1, ZERO CALIBRATION COST
 
