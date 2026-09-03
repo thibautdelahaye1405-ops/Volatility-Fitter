@@ -141,7 +141,7 @@ export const LOCALVOL: GuidePage = {
     "",
     "## Related settings",
     "",
-    "[localVolEnabled](help:settings:localVolEnabled) · [gridStrikeMode](help:settings:gridStrikeMode) · [gridXNodes](help:settings:gridXNodes) · [gridXMinPerExpiry](help:settings:gridXMinPerExpiry) · [gridTNodes](help:settings:gridTNodes) · [gridRegLambda](help:settings:gridRegLambda) · [gridRegRho](help:settings:gridRegRho) · [convexWing](help:settings:convexWing) · [convexWingWeight](help:settings:convexWingWeight) · [frontTie](help:settings:frontTie) · [lvVolCapMult](help:settings:lvVolCapMult) · [leftWingSlopeMult](help:settings:leftWingSlopeMult) · [lvXMaxMin](help:settings:lvXMaxMin) · [timeScheme](help:settings:timeScheme) · [lvSolver](help:settings:lvSolver) · [lvEarlyStop](help:settings:lvEarlyStop) · [varSwapMethod](help:settings:varSwapMethod)",
+    "[localVolEnabled](help:settings:localVolEnabled) · [gridStrikeMode](help:settings:gridStrikeMode) · [gridXNodes](help:settings:gridXNodes) · [gridXMinPerExpiry](help:settings:gridXMinPerExpiry) · [gridTNodes](help:settings:gridTNodes) · [gridRegLambda](help:settings:gridRegLambda) · [gridRegRho](help:settings:gridRegRho) · [densitySmoothWeight](help:settings:densitySmoothWeight) · [convexWing](help:settings:convexWing) · [convexWingWeight](help:settings:convexWingWeight) · [frontTie](help:settings:frontTie) · [lvVolCapMult](help:settings:lvVolCapMult) · [leftWingSlopeMult](help:settings:leftWingSlopeMult) · [lvXMaxMin](help:settings:lvXMaxMin) · [timeScheme](help:settings:timeScheme) · [lvSolver](help:settings:lvSolver) · [lvEarlyStop](help:settings:lvEarlyStop) · [varSwapMethod](help:settings:varSwapMethod)",
     "",
     "## Read more",
     "",

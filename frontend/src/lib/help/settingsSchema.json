@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02",
+  "generatedAt": "2026-09-03",
   "models": {
     "fit": {
       "title": "FitSettings",
@@ -624,6 +624,13 @@
           "default": 1.0,
           "min": 0.0,
           "max": 10.0
+        },
+        {
+          "name": "densitySmoothWeight",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 1000.0
         },
         {
           "name": "convexWing",

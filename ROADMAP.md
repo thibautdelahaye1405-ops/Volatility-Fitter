@@ -1000,10 +1000,11 @@ below) — every recorded rider is closed except the ones listed here:
    captures made before
    store schema v10 are unattributed and no longer offered by the picker
    (they still replay from a saved selection).
-7. LV DENSITY-SMOOTHNESS PENALTY (wrap 2026-09-03a below; proposed, user
-   decision): build `densitySmoothWeight` as designed there (default 0 =
-   byte-identical; prototype μ = 1 improved the converged rms AND cut
-   nfev), then adjudicate the default on the benchmark pack.
+7. LV DENSITY-SMOOTHNESS PENALTY — BUILT 2026-09-03b (`densitySmoothWeight`,
+   user-ratified DEFAULT 1; 0 = the pre-penalty fit byte-identical). Rider:
+   a benchmark-pack regression run in the USER'S window to record the
+   full-universe effect (the fixture shows better converged rms, fewer
+   evals); the log-density (Gaussian-neutral) variant stays a refinement.
 6. LV RIGHT-EDGE rider (wrap 2026-09-02i below; not a gate): the calibration
    lattice's 1.4 × pad + Dirichlet zero still mispriced high-vol long-dated
    wings at the last quote — sizing it by the image estimate (or a
@@ -1022,6 +1023,47 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-03b) — DENSITY-SMOOTHNESS PENALTY BUILT: `densitySmoothWeight`, DEFAULT 1, ZERO CALIBRATION COST
+
+User go ("build it with default 1"). The design of wrap 2026-09-03a, in
+production:
+
+- **Rows** (`affine_calib.density_smoothness_rows` / `_density_block`): per
+  expiry, third differences of the lattice call prices at stride 2 inside
+  [x_lo − 2s, x_hi + 2s] around the quoted range (s = the rung's ATM std in
+  x, from the prepared rows' ATM total variance — `affine_fit` passes
+  `density_std`), scaled √(μ·stride)·s^{3/2}/dx^{5/2} so a Gaussian slice
+  costs O(μ) at any maturity / lattice step (locked at 1-week/dx 0.0025 and
+  6-month/dx 0.01). Jacobian = the same stencil on `sol.sens[i]` (carries
+  the da-column like the baskets; no padding). Stacked AFTER the data block
+  (options / var-swaps / baskets) and before the roughness rows, so the
+  stall criterion and the trace recorder never see them; on the GN
+  sparse-reg path the rows join the dense data block. `residual_count`
+  includes them. `calibrate_affine(density_weight=0)` (the function default)
+  is byte-identical (locked).
+- **Setting**: `OptionsSettings.densitySmoothWeight` float [0, 1000],
+  default 1.0 (the user's ratified flip — recorded as such, not
+  benchmark-adjudicated); folded into `affine_key`, no options-version
+  bump (locked); Options ▸ Local Vol row "Density smoothness (μ)",
+  settingsDocs entry, guides/lenses_b link, useOptions.ts mirror,
+  settingsSchema.json regenerated (119 fields), SETTINGS_REFERENCE row,
+  test_api_options defaults.
+- **Fixture, production rows (SPY weekly, haircut / 20 / convexWing)**:
+  μ = 0 → wall 19.7 s, nfev 62, converged rms 20.2 bp, density extrema
+  11/3/5/7/7/11/5; μ = 1 → wall 16.4 s, nfev 44, converged rms 19.7 bp
+  (surface rms 8.3 both), extrema 6/1/2/3/1/1/1; residual assembly 635 →
+  616 ms total — the rows cost nothing measurable, the better-posed problem
+  converges faster. On the clean synthetic universe μ = 1 costs 0.78 bp
+  (the linear stencil's mild Gaussian bias) and the bid-ask fit legitimately
+  returns the mid solution (already the smoothest point inside the band) —
+  `test_api_affine.test_affine_fit_band_modes` now exercises the band
+  objective with the penalty off.
+- **Locks**: tests/test_lv_density_penalty.py (8: byte-identity at 0,
+  stencil annihilates quadratic prices + Jacobian rides sens, O(1) Gaussian
+  cost at two maturities, roughness drops on the golden 3-expiry problem
+  under TRF and GN at < 0.5 % price rms, default 1 + LV-only key, wire fit
+  arb-free within 1 bp of the weight-0 fit).
 
 ### 🧭 SESSION WRAP (2026-09-03a) — LV DENSITY ROUGHNESS: THE DISPLAY WAS AN ARTEFACT, THE MODEL'S IS REAL, AND A DENSITY-SMOOTHNESS PENALTY THROUGH THE JACOBIAN IS FREE
 

@@ -596,6 +596,17 @@ class OptionsSettings(BaseModel):
     gridTNodes: int = Field(10, ge=0, le=120)
     gridRegLambda: float = Field(1e-2, ge=0.0, le=1e4)
     gridRegRho: float = Field(1.0, ge=0.0, le=10.0)  # affine time-vs-strike roughness
+    #: Density-smoothness penalty weight μ (2026-09-03): third differences of
+    #: the lattice call prices — the slope of the Breeden–Litzenberger density —
+    #: inside each expiry's quoted window ± 2 ATM stds, scaled so a Gaussian
+    #: slice contributes O(μ) whatever the maturity or lattice step. The rows
+    #: ride the marched sensitivities (no extra PDE work, ~1 ms/eval) and target
+    #: the vertex-scale ringing of the local variance that spikes the density —
+    #: where the global roughness weight could only trade fit for smoothness.
+    #: SPY weekly fixture at μ = 1: converged rms 20.2 → 18.5 bp, nfev 62 → 43,
+    #: 1-year-rung density extrema 5 → 1. 0 = off (the pre-2026-09-03 fit,
+    #: byte-identical). LV-only: folded into affine_key, no options-version bump.
+    densitySmoothWeight: float = Field(1.0, ge=0.0, le=1e3)
     #: Force the local VOL sigma(x, t) convex in x below the 5Δ-put strike (a soft
     #: hinge sqrt(W)·relu(-D²sigma) per time row at the deep-put vertices), to stop
     #: the sparse left wing from fitting too concave. Off ⇒ byte-identical.

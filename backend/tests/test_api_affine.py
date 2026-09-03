@@ -211,6 +211,10 @@ def test_affine_fit_band_modes(client, mode):
 
     ticker = _ticker(client)
     state = client.app.state.volfit
+    # Density-smoothness penalty OFF for this lock: at the default weight the
+    # mid solution is already the smoothest surface inside the band, so the
+    # band fit legitimately returns it unchanged (test_lv_density_penalty).
+    state.set_options(state.options().model_copy(update={"densitySmoothWeight": 0.0}))
     mid = calibrate_affine_surface(state, ticker, AffineFitRequest(fitMode="mid"))
     band = calibrate_affine_surface(state, ticker, AffineFitRequest(fitMode=mode))
     assert band.arbitrageFree is True and band.calendarViolations == 0

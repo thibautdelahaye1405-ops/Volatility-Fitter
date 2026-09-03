@@ -274,4 +274,33 @@ export const LV_WINGS_SOLVER_DOCS: SettingDoc[] = [
     related: ["gridXNodes", "help:guides:localvol"],
     docs: ["04_local_volatility_forward", "09_wings_last_quote"],
   },
+  {
+    key: "densitySmoothWeight",
+    model: "options",
+    section: "opt-localvol",
+    label: "Density smoothness (μ)",
+    unit: "weight (0 = off)",
+    summary: "Penalises the slope roughness of each expiry's risk-neutral density; the rows ride the marched sensitivities, so it costs no extra PDE work.",
+    details:
+      "The affine local-variance fit can ring at the vertex scale — local vol dipping to the floor " +
+      "between neighbouring strike vertices — and every dip is a spike in the Breeden–Litzenberger " +
+      "density d²C/dx². This penalty adds third differences of the lattice call prices (the density's " +
+      "slope) inside each expiry's quoted window ± 2 ATM standard deviations, scaled so a Gaussian " +
+      "slice contributes O(μ) whatever the maturity or lattice step. Because a lattice price is a " +
+      "linear functional the march already differentiates, the Jacobian is the same stencil on the " +
+      "sensitivity block: about a millisecond per evaluation, and the better-posed problem converges " +
+      "in fewer evaluations. Unlike the global roughness weight (which trades fit for smoothness " +
+      "uniformly), it prices only what shows up in the density.\n\n" +
+      "Measured on the SPY weekly fixture at μ = 1: converged RMS 20.2 → 18.5 bp, solver " +
+      "evaluations 62 → 43, density extrema on the 1-year rung 5 → 1. 0 reproduces the " +
+      "pre-2026-09-03 fit byte-for-byte; 10 starts to cost fit (21.5 bp).",
+    example:
+      "A 2-week SPY slice whose density shows several bumps between the quoted strikes while the " +
+      "local-vol profile saw-tooths between 5% and 13%: at μ = 1 the bumps merge into one mode and " +
+      "the fit error does not rise; at 0 the saw-tooth is back.",
+    cacheEffect: "lv-affine-key",
+    surfaced: true,
+    related: ["gridRegLambda", "gridXNodes", "help:guides:localvol"],
+    docs: ["04_local_volatility_forward"],
+  },
 ];

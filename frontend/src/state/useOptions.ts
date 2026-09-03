@@ -178,6 +178,10 @@ export interface OptionsSettings {
    *  long-dated names). 2.5 = the historical constant, byte-identical.
    *  LV-only (no parametric refit). */
   lvXMaxMin: number;
+  /** Density-smoothness penalty weight μ (LV): third differences of the lattice
+   *  call prices per expiry, Jacobian off the marched sensitivities (no extra PDE
+   *  work). 1 = default; 0 = off. Targets vertex-scale local-vol ringing. */
+  densitySmoothWeight: number;
   calendarWeight: number;
   /** Multi-Core SIV put-wing no-butterfly regularizer strength (% of base; 0 = off). */
   sivWingPenaltyPct: number;
@@ -287,6 +291,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   lvSolver: 'gn',
   leftWingSlopeMult: 1.5,
   lvXMaxMin: 2.5,
+  densitySmoothWeight: 1,
   calendarWeight: 1e6,
   sivWingPenaltyPct: 100,
   graphKappaScale: 1.0,

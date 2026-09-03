@@ -1363,6 +1363,14 @@ def _fit(
     # Calibrate thunk ships it to the fit process pool (volfit.api.fit_pool),
     # a sync/request-thread call runs it inline — byte-identical either way.
     # Gather (above) and response assembly (below) stay main-side.
+    # Density-smoothness rows (2026-09-03): each expiry's ATM standard deviation
+    # (in the tau clock; ≈ the x-space std near the forward) sizes its window
+    # and scale — affine_calib.density_smoothness_rows.
+    density_std = {}
+    for _, t, k, w, _, _ in rows:
+        order = np.argsort(k)
+        w_atm = float(np.interp(0.0, np.asarray(k)[order], np.asarray(w)[order]))
+        density_std[float(t)] = float(np.sqrt(max(w_atm, 1e-12)))
     cal = fit_pool.execute(AffineFitTask(calibrate=dict(
         surface0=surface0,
         options=options,
@@ -1376,6 +1384,8 @@ def _fit(
         reg_lambda=opts.gridRegLambda,
         reg_rho=opts.gridRegRho,
         reg_nodes=(t_nodes, x_nodes),  # spacing-aware roughness on the real grid
+        density_weight=opts.densitySmoothWeight,
+        density_std=density_std,
         convex_cols=convex_cols,
         convex_weight=opts.convexWingWeight if opts.convexWing else 0.0,
         front_tie_weight=opts.frontTieWeight if opts.frontTie else 0.0,
@@ -1639,6 +1649,7 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         state.active_prior_version(ticker),  # a fetched prior re-anchors the LV fit
         opts.gridXNodes, opts.gridXMinPerExpiry, opts.gridTNodes,
         opts.gridRegLambda, opts.gridRegRho,
+        opts.densitySmoothWeight,  # LV-only density-smoothness rows (no options_version bump)
         opts.gridStrikeMode, opts.convexWing, opts.convexWingWeight,
         opts.frontTie, opts.frontTieWeight, opts.lvVolCapMult, opts.leftWingSlopeMult,
         opts.varSwapMethod, opts.timeScheme, opts.lvEarlyStop, opts.lvFastKernel,

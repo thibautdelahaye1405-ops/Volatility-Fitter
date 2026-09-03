@@ -263,6 +263,86 @@ def wing_convexity_stencils(
     )
 
 
+#: Density-smoothness rows (2026-09-03): third differences of the lattice call
+#: prices — the slope of the Breeden–Litzenberger density d²C/dx² — sampled
+#: every ``_DENSITY_STRIDE`` nodes inside each expiry's quoted window widened by
+#: ``_DENSITY_WINDOW_SD`` ATM standard deviations. A linear functional of the
+#: prices, so (like a var-swap or operator-basket row) its Jacobian is the same
+#: stencil on the marched sensitivities: no extra PDE work, ~1 ms per eval.
+_DENSITY_STRIDE = 2
+_DENSITY_WINDOW_SD = 2.0
+
+
+def density_smoothness_rows(
+    x_grid: np.ndarray,
+    options: list[OptionQuote],
+    density_std: dict[float, float],
+    weight: float,
+    stride: int = _DENSITY_STRIDE,
+    window_sd: float = _DENSITY_WINDOW_SD,
+) -> list[tuple[float, np.ndarray, float]]:
+    """Per-expiry ``(t, start_nodes, scale)`` of the density-smoothness block.
+
+    Row j of expiry t is ``scale · (−C_j + 3C_{j+1} − 3C_{j+2} + C_{j+3})`` on
+    the uniform lattice, j stepping by ``stride`` through the window
+    [x_lo − window_sd·s, x_hi + window_sd·s] around the expiry's quoted range,
+    with s = its ATM standard deviation in x (``density_std[t]``; falls back to
+    a seventh of the quoted range). The scale ``√(weight·stride) · s^{3/2} /
+    dx^{5/2}`` makes a Gaussian slice of width s contribute O(weight) to ½‖r‖²
+    whatever the lattice step or the maturity — its density slope is O(1/s²)
+    over a width O(s) — so ``weight`` means the same thing on a 6-day and a
+    1-year rung. Vertex-scale ringing of the local variance shows up as extra
+    density slope and is what the rows price; a smooth density costs nothing.
+    Empty when ``weight`` is 0 or no window holds a full stencil. Measured on
+    the SPY weekly fixture at weight 1: converged rms 20.2 → 18.5 bp, nfev
+    62 → 43 — a better-posed problem converges faster.
+    """
+    if weight <= 0.0 or not options:
+        return []
+    x = np.asarray(x_grid, dtype=float)
+    dx = float(x[1] - x[0])
+    spec: list[tuple[float, np.ndarray, float]] = []
+    for t in sorted({float(o.t) for o in options}):
+        xs = np.array([o.x for o in options if float(o.t) == t])
+        s = float(density_std.get(t, 0.0))
+        if not np.isfinite(s) or s <= 0.0:
+            s = float(xs.max() - xs.min()) / 7.0  # a quoted range spans ~±3.5 s
+        if s <= 0.0:
+            continue
+        lo, hi = float(xs.min()) - window_sd * s, float(xs.max()) + window_sd * s
+        j0 = max(int(np.searchsorted(x, lo)), 1)  # never the x = 0 boundary node
+        j1 = int(np.searchsorted(x, hi)) - 3
+        if j1 <= j0:
+            continue
+        scale = float(np.sqrt(weight * stride) * s**1.5 / dx**2.5)
+        spec.append((t, np.arange(j0, j1, stride), scale))
+    return spec
+
+
+def _density_block(
+    solution: AffinePDESolution,
+    spec: list[tuple[float, np.ndarray, float]],
+    with_jac: bool,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Density-smoothness residuals (and Jacobian rows) from a PDE solve: the
+    third-difference stencil on each expiry's lattice prices, and on its
+    sensitivity block (which already carries the da-column when the left slope
+    is free — no padding, like the basket rows)."""
+    n_cols = solution.sens.shape[2] if solution.sens is not None else 0
+    if not spec:
+        return np.zeros(0), (np.zeros((0, n_cols)) if with_jac else None)
+    exp_index = {float(t): i for i, t in enumerate(solution.expiries)}
+    res, jac = [], []
+    for t, j, scale in spec:
+        i = exp_index[t]
+        c = solution.prices[i]
+        res.append(scale * (-c[j] + 3.0 * c[j + 1] - 3.0 * c[j + 2] + c[j + 3]))
+        if with_jac:
+            s_ = solution.sens[i]
+            jac.append(scale * (-s_[j] + 3.0 * s_[j + 1] - 3.0 * s_[j + 2] + s_[j + 3]))
+    return np.concatenate(res), (np.vstack(jac) if with_jac else None)
+
+
 @dataclass(frozen=True)
 class AffineFitDiagnostics:
     """Stage-0 perf/diagnostics for one ``calibrate_affine`` run (side metadata).
@@ -426,6 +506,8 @@ def calibrate_affine(
     convex_cols: np.ndarray | None = None,
     convex_weight: float = 0.0,
     front_tie_weight: float = 0.0,
+    density_weight: float = 0.0,
+    density_std: dict[float, float] | None = None,
     fit_left_a: bool = False,
     left_a_bounds: tuple[float, float] = (0.0, 20.0),
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
@@ -643,6 +725,10 @@ def calibrate_affine(
     # Operator-prior baskets (signed linear functionals; the RR/BF coupling).
     b_tol = np.array([b.tol for b in baskets])
     b_target = np.array([b.target for b in baskets])
+    # Density-smoothness rows (2026-09-03): third differences of the lattice
+    # prices per expiry — penalty rows AFTER the data block (options, var-swaps,
+    # baskets), so the stall criterion / trace never see them; empty at weight 0.
+    dens_spec = density_smoothness_rows(x_grid, options, density_std or {}, density_weight)
     # Band fit: present iff the quotes carry call-price band edges.
     band_mode = bool(options) and options[0].price_lo is not None
     p_lo = np.array([o.price_lo for o in options]) if band_mode else None
@@ -746,17 +832,22 @@ def calibrate_affine(
         # like the var-swap row); empty arrays when no baskets ⇒ byte-identical.
         bvals, bjac = _basket_values(sol, baskets, True)
         res_bask = (bvals - b_target) / b_tol
+        # Density-smoothness block (dense rows off the sensitivity block, like the
+        # baskets; empty arrays at weight 0 ⇒ byte-identical).
+        res_dens, jac_dens = _density_block(sol, dens_spec, True)
         res = np.concatenate(
-            [res_opt, res_vs, res_bask, sqrt_lam * (l_rows @ (theta - ref))]
+            [res_opt, res_vs, res_bask, res_dens, sqrt_lam * (l_rows @ (theta - ref))]
         )
         # GN-eligible case keeps the reg rows SPARSE; everything else builds the dense
         # Jacobian exactly as before (byte-identical golden / TRF path). bjac carries
-        # the da-column from sens_at (like jz), so it is not _pad_a'd.
+        # the da-column from sens_at (like jz), so it is not _pad_a'd; jac_dens too.
         if gn_op:
             reg_blocks: list = [l_csr]
+            if res_dens.size:  # dense penalty rows join the dense data block
+                jac_opt = np.vstack([jac_opt, jac_dens])
         else:
             jac = np.vstack(
-                [jac_opt, jac_vs, bjac / b_tol[:, None], _pad_a(sqrt_lam * l_rows)]
+                [jac_opt, jac_vs, bjac / b_tol[:, None], jac_dens, _pad_a(sqrt_lam * l_rows)]
             )
         if cvx_on:
             # Soft convexity of the VOL row sigma = sqrt(theta) in x at the wing
@@ -899,8 +990,9 @@ def calibrate_affine(
     n_opt_rows = (2 if band_mode else 1) * len(options)
     n_cvx_rows = int(cvx[0].size) if cvx_on else 0
     n_front_rows = int(front_rows.shape[0]) if front_on else 0
+    n_dens_rows = int(sum(j.size for _, j, _ in dens_spec))
     residual_count = (
-        n_opt_rows + len(varswaps) + len(baskets)
+        n_opt_rows + len(varswaps) + len(baskets) + n_dens_rows
         + int(l_rows.shape[0]) + n_cvx_rows + n_front_rows
     )
     diagnostics = AffineFitDiagnostics(

@@ -169,8 +169,24 @@ export default function LocalVolSection({
               <span className="font-mono text-slate-300">
                 {draft.lvXMaxMin > 0 ? `+${Math.log(draft.lvXMaxMin).toFixed(2)}` : "—"}
               </span>
-              {" "}— the right wing of every LV view is capped there; 2.72 reaches k = +1.0.
+              {" "}— where the calibration lattice ends (the displayed wing reaches k = +1.0 on its own).
             </p>
+          </div>
+          <div className="mt-2">
+            <div className="flex items-center justify-between">
+              <span
+                className={rowLabel}
+                title="Density-smoothness penalty weight μ: third differences of the lattice call prices (the slope of the risk-neutral density) inside each expiry's quoted window, scaled so a Gaussian slice costs O(μ) at any maturity. The rows ride the sensitivities the march already computes — no extra PDE work — and target the vertex-scale local-vol ringing that spikes the density. 1 = default (SPY weekly fixture: converged rms 20.2 → 18.5 bp, fewer solver evals); 0 = off. LV-only: no parametric refit."
+              >
+                Density smoothness (μ)
+              </span>
+              <input
+                type="number" min={0} max={1000} step={0.1} value={draft.densitySmoothWeight}
+                disabled={!live}
+                onChange={(e) => patch({ densitySmoothWeight: Number(e.target.value) })}
+                className={numInput}
+              />
+            </div>
           </div>
 
           <h4 className={subTitle}>Solver</h4>
