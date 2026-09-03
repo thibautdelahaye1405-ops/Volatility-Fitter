@@ -1073,8 +1073,15 @@ the user's saved `options_settings` (scratchpad replay_spy.py):
   the server kept computing while the view reported a timeout.
 - **What the user can do about the remaining cost**: drop the 0–2-day
   dailies from the SPY universe when they are not the object of study (the
-  1-day rung alone forces the finest lattice for every expiry), or use
-  `timeScheme = rannacher` (3× coarser time steps at equal accuracy). Rider:
+  1-day rung alone forces the finest lattice for every expiry). NOT
+  `timeScheme = rannacher`: measured on the same 5-rung SPY snapshot it took
+  268 s vs 29 s (t-nodes 272 → 156 as designed, but the compiled Numba
+  sensitivity kernel is implicit-only, so every eval runs the LAPACK
+  banded multi-RHS march: 222 s of sensitivity time), on top of the
+  documented non-monotone-CN caveat. Its one upside is real: the converged
+  rms per rung was 12.0/9.4/6.8/15.4/3.6 bp vs 27.3/12.1/9.0/20.4/4.0 —
+  the 2nd-order scheme leaves far less operator error for the fit to
+  absorb. A Rannacher-capable Numba kernel would make it a net win. Rider:
   a non-uniform (graded) strike lattice is the structural answer — the
   march already supports nonuniform grids; `_pde_grids` insists on uniform
   dx for the var-swap anchor and the lattice density (roadmap perf item).
