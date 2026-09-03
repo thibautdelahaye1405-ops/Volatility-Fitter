@@ -255,6 +255,17 @@ class OptionsSettings(BaseModel):
     #: version, never touches a fit.
     dataAgeAmberMin: float = Field(20.0, ge=1.0, le=1440.0)
     dataAgeRedMin: float = Field(120.0, ge=5.0, le=10080.0)
+    #: Stacked-IV display crop (2026-09-03, opt-in): draw each expiry's curve
+    #: (parametric and LV) only inside its realistic log-moneyness range — the
+    #: slice's own [Q(ε), Q(1 − ε)] widened to its quoted range, ε =
+    #: ``stackCropTailProb`` — because a pricer sampling the fitted
+    #: distribution never reads the smile beyond with probability 1 − O(ε):
+    #: arbitrage-freeness inside the crop is the computational statement.
+    #: Quotes are always drawn. Display-only: no cache invalidation
+    #: (volfit.api.crop; the payloads carry the range at fixed levels).
+    stackCrop: bool = False
+    #: Tail probability ε of the crop, per side; 1e-7 ≈ 5.3 Gaussian sd.
+    stackCropTailProb: float = Field(1e-7, ge=1e-12, le=1e-2)
     #: As-of mismatch gate (ROADMAP "As-of → Fetch ▾" proposal; the per-node
     #: effective as-of of volfit.api.node_asof). When on, a node whose served
     #: chain is NOT in the requested as-of session (``asOfExact == False`` —
@@ -1267,6 +1278,20 @@ class SurfaceFitResponse(BaseModel):
 
 
 # ---------------------------------------------------------------- 3D surface
+class CropRanges(BaseModel):
+    """One slice's display crop table (volfit.api.crop, 2026-09-03): at each
+    tail-probability level ``u[j]`` the realistic log-moneyness range
+    ``[lo[j], hi[j]]`` = the slice's own [Q(u), Q(1 − u)] widened to its
+    quoted range. The Stacked-IV views interpolate the Options
+    ``stackCropTailProb`` in log10(u) and, when ``stackCrop`` is on, draw the
+    curve only inside — a pricer sampling the fitted distribution never reads
+    the smile beyond with probability 1 − O(u). Quotes are always drawn."""
+
+    u: list[float]
+    lo: list[float]
+    hi: list[float]
+
+
 class SurfaceResponse(BaseModel):
     """sigma(k, T) mesh for the 3D vol-surface chart (volfit.api.surface).
 
@@ -1283,6 +1308,8 @@ class SurfaceResponse(BaseModel):
     vol: list[list[float]]  # one row per expiry, one column per k (sqrt(w / tau))
     atmVol: list[float]  # exact ATM handle per expiry (lqd.atm)
     forward: list[float]  # active forward per expiry
+    #: Per-expiry display crop tables (same order); empty until calibrated.
+    cropRanges: list[CropRanges] = []
 
 
 # --------------------------------------------------------------- quote table

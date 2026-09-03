@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from volfit.api.crop import crop_ranges_for_slice
 from volfit.api.displayed import displayed_atm_vol, displayed_slice
 from volfit.api.schemas import SurfaceResponse
 from volfit.api.service import K_DISPLAY_HI, K_DISPLAY_LO, K_PAD, fill_nonfinite, fit_or_get
@@ -85,14 +86,21 @@ def surface_payload(state: AppState, ticker: str, fit_mode: str) -> SurfaceRespo
 
     vol: list[list[float]] = []
     atm: list[float] = []
+    crops = []
     for record in records:
         # Quote the mesh in the event-variance clock (sqrt(w / tau)), exactly like
         # the Smile / Term views — NOT calendar t — so all Parametric views agree
         # when an event calendar dilates time (tau != t). Total variance w = sigma^2
         # * tau is recovered by the Stacked-IV chart via the tau exposed below.
-        w = np.maximum(displayed_slice(record).implied_w(grid), 0.0)
+        slice_ = displayed_slice(record)
+        w = np.maximum(slice_.implied_w(grid), 0.0)
         vol.append(fill_nonfinite(np.sqrt(w / record.prepared.tau)).tolist())
         atm.append(displayed_atm_vol(record))  # exact ATM (LQD) or numeric (overlay)
+        # Display crop table (volfit.api.crop): the slice's realistic k-range per
+        # tail level, widened to its quoted range — the Stacked-IV crop option.
+        crops.append(crop_ranges_for_slice(
+            slice_, float(record.prepared.k.min()), float(record.prepared.k.max())
+        ))
 
     return SurfaceResponse(
         ticker=ticker,
@@ -103,4 +111,5 @@ def surface_payload(state: AppState, ticker: str, fit_mode: str) -> SurfaceRespo
         vol=vol,
         atmVol=atm,
         forward=[record.prepared.forward for record in records],
+        cropRanges=crops,
     )

@@ -203,6 +203,34 @@ export function WorkflowSection({ draft, patch, live }: SectionProps) {
         </div>
       </div>
       <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <Toggle
+            label="Crop stacked IVs to the realistic range"
+            hint="On: in the Stacked IV views (Parametric and Local Vol) each expiry's curve is drawn only where its own fitted distribution keeps more than the tail probability of mass beyond — [Q(ε), Q(1−ε)], widened to the quoted range. A pricer sampling the fitted surface never reads the smile past that range (probability 1 − O(ε)), so arbitrage-freeness inside the crop is what matters computationally. Quotes are always drawn. Display-only."
+            checked={draft.stackCrop} disabled={!live}
+            onChange={(v) => patch({ stackCrop: v })}
+          />
+          {draft.stackCrop && (
+            <div className="mt-1 flex items-center justify-between">
+              <span
+                className="text-[11px] text-slate-400"
+                title="Tail probability ε per side; 1e-7 ≈ 5.3 Gaussian standard deviations."
+              >
+                Tail probability ε
+              </span>
+              <select
+                value={String(draft.stackCropTailProb)}
+                disabled={!live}
+                onChange={(e) => patch({ stackCropTailProb: Number(e.target.value) })}
+                className="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 font-mono text-[11px] text-slate-200"
+              >
+                {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((e) => (
+                  <option key={e} value={String(10 ** -e)}>{`1e-${e}`}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
         <NumberRow
           label="Data age · amber (min)" value={draft.dataAgeAmberMin} step={5}
           disabled={!live} onChange={(v) => patch({ dataAgeAmberMin: v })}

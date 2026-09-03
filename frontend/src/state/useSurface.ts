@@ -19,6 +19,8 @@ export interface SurfaceResponse {
   vol: number[][]; // one row per expiry, one column per k (= sqrt(w / tau))
   forward: number[]; // active forward per expiry (for strike / %ATM axes)
   atmVol: number[]; // ATM vol per expiry (for the normalized / delta axes)
+  /** Per-expiry Stacked-IV display crop tables (lib/stackCrop); empty until calibrated. */
+  cropRanges?: { u: number[]; lo: number[]; hi: number[] }[];
 }
 
 /** In-flight requests keyed by (ticker, fitMode, reloadKey); cleared on settle,

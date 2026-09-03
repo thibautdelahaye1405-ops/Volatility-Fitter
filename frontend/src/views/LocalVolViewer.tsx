@@ -41,6 +41,8 @@ import LocalVolAside from "../components/localvol/LocalVolAside";
 import { lvMeshFormatX, lvMeshXTransform } from "../components/localvol/lvMeshAxis";
 import AxisModeSelect, { AxisUnitSelect } from "../components/charts/AxisModeSelect";
 import { lvCalendarMarker } from "../lib/stackedVariance";
+import { cropPoints, cropRangeAt } from "../lib/stackCrop";
+import { useStackCrop } from "../state/useStackCrop";
 import { useSmileSession } from "../state/smileSession";
 import { useOptionalWorkbench } from "../state/workbench";
 import { useNodeScope } from "../state/nodeScope";
@@ -137,6 +139,10 @@ export default function LocalVolViewer() {
   // variance clock τ, so this is the price total variance — non-crossing across
   // expiries ⟺ no calendar arbitrage in the local-vol surface. Each expiry
   // re-coordinates k by its own forward / smile for the chosen axis mode.
+  // Opt-in display crop (Options ▸ stackCrop): each expiry's curve only inside
+  // its realistic k-range at the chosen tail probability (lib/stackCrop),
+  // read off the payload's crop table; the quote markers are untouched.
+  const crop = useStackCrop(spotVersion);
   const stackedIv = useMemo<OverlaySeries[] | null>(() => {
     if (!data || data.smiles.length === 0) return null;
     const n = data.smiles.length;
@@ -145,7 +151,10 @@ export default function LocalVolViewer() {
       const ctx = smileAxisContext(s);
       // Prefer the untruncated modelExt (shared display grid, V3.3 item 3) so
       // short expiries are no longer stubs — same pattern as densityExt below.
-      const pts = s.modelExt && s.modelExt.length > 1 ? s.modelExt : s.model;
+      const full = s.modelExt && s.modelExt.length > 1 ? s.modelExt : s.model;
+      const pts = crop.enabled
+        ? cropPoints(full, (p) => p.k, cropRangeAt(s.cropRanges, crop.eps))
+        : full;
       return {
         label: formatExpiry(s.expiry, s.t, format),
         t: s.t,
@@ -156,7 +165,7 @@ export default function LocalVolViewer() {
         color: maturityColor(n > 1 ? i / (n - 1) : 0),
       };
     });
-  }, [data, format, axisMode]);
+  }, [data, format, axisMode, crop]);
 
   // Worst calendar crossing on the PDE lattice (V3.3 item 10): a circle at
   // (k*, curve midpoint) on the stacked-IV axes; empty when arb-free.

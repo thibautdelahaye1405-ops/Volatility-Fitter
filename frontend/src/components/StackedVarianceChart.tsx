@@ -23,6 +23,8 @@ import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
 import { calendarMarkers, deltaRows } from "../lib/stackedVariance";
 import type { VarianceGrid } from "../lib/stackedVariance";
+import { cropRangeAt, cropRow, intersectRanges } from "../lib/stackCrop";
+import { useStackCrop } from "../state/useStackCrop";
 import {
   axisModeLabel,
   axisTickLabel,
@@ -58,6 +60,7 @@ export default function StackedVarianceChart({
 }: Props) {
   const { format } = useExpiryFormat();
   const { data, loading, error } = useSurface(ticker, fitMode, reloadKey);
+  const crop = useStackCrop(reloadKey);
   // Certificate evidence rides the quality report (a cached-state read, never
   // a fit); keyed on the same reload epoch as the curves themselves.
   const { report } = useQuality(reloadKey);
@@ -100,28 +103,40 @@ export default function StackedVarianceChart({
     label: m.label,
   }));
 
+  // Opt-in display crop (Options ▸ stackCrop): each expiry's curve only inside
+  // its realistic k-range at the chosen tail probability (lib/stackCrop); the
+  // Δ-pair rows where BOTH expiries are realistic. Quotes are never curves
+  // here, so nothing traded is ever hidden.
+  const rangeOf = (i: number) =>
+    crop.enabled ? cropRangeAt(data.cropRanges?.[i], crop.eps) : null;
   const series: OverlaySeries[] =
     mode === "levels"
-      ? data.t.map((ti, i) => ({
-          label: formatExpiry(data.expiries[i], ti, format),
-          t: ti,
-          xs: axisMode === "logmoneyness" ? data.k : data.k.map((k) => txAt(k, i)),
-          ys: grid.w[i],
-          color: maturityColor(n > 1 ? i / (n - 1) : 0),
-        }))
+      ? data.t.map((ti, i) => {
+          const row = cropRow(data.k, grid.w[i], rangeOf(i));
+          return {
+            label: formatExpiry(data.expiries[i], ti, format),
+            t: ti,
+            xs: axisMode === "logmoneyness" ? row.k : row.k.map((k) => txAt(k, i)),
+            ys: row.ys,
+            color: maturityColor(n > 1 ? i / (n - 1) : 0),
+          };
+        })
       : // Δ mode: adjacent-pair differences on the SHARED k grid (the
         // subtraction is only meaningful there, so the axis stays k).
-        deltaRows(grid).map((row, i) => ({
-          label: `${formatExpiry(data.expiries[i], data.t[i], format)}→${formatExpiry(
-            data.expiries[i + 1],
-            data.t[i + 1],
-            format,
-          )}`,
-          xs: data.k,
-          ys: row.ys,
-          color: maturityColor(n > 2 ? i / (n - 2) : 0),
-          fillNegative: true,
-        }));
+        deltaRows(grid).map((row, i) => {
+          const cropped = cropRow(data.k, row.ys, intersectRanges(rangeOf(i), rangeOf(i + 1)));
+          return {
+            label: `${formatExpiry(data.expiries[i], data.t[i], format)}→${formatExpiry(
+              data.expiries[i + 1],
+              data.t[i + 1],
+              format,
+            )}`,
+            xs: cropped.k,
+            ys: cropped.ys,
+            color: maturityColor(n > 2 ? i / (n - 2) : 0),
+            fillNegative: true,
+          };
+        });
 
   const deltaAxis = mode === "delta";
   return (

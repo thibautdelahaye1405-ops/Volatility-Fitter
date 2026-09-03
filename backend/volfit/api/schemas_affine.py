@@ -15,7 +15,14 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from volfit.api.schemas import DistributionArrays, FitMode, QuoteBand, SmilePoint, VarSwapInfo
+from volfit.api.schemas import (
+    CropRanges,
+    DistributionArrays,
+    FitMode,
+    QuoteBand,
+    SmilePoint,
+    VarSwapInfo,
+)
 
 
 class AffineFitRequest(BaseModel):
@@ -109,6 +116,10 @@ class AffineSmile(BaseModel):
     #: Litzenberger rebuild from the reconstructed IV curve drew a sawtooth on
     #: long maturities and a smoothed, misplaced curve on short ones.
     densityExt: DistributionArrays | None = None
+    #: Display crop table (volfit.api.crop): the realistic k-range per tail
+    #: level from the converged-operator lattice CDF, widened to the quoted
+    #: range; the Stacked-IV view crops the curve to it when stackCrop is on.
+    cropRanges: CropRanges | None = None
 
 
 class AffineFitResponse(BaseModel):

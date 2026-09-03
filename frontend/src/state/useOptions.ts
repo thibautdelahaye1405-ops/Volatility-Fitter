@@ -178,6 +178,12 @@ export interface OptionsSettings {
    *  long-dated names). 2.5 = the historical constant, byte-identical.
    *  LV-only (no parametric refit). */
   lvXMaxMin: number;
+  /** Stacked-IV display crop (opt-in): draw each expiry's curve only inside its
+   *  realistic k-range [Q(ε), Q(1−ε)] widened to the quoted range (lib/stackCrop);
+   *  quotes always drawn. Display-only. */
+  stackCrop: boolean;
+  /** Tail probability ε of the crop, per side (1e-7 ≈ 5.3 Gaussian sd). */
+  stackCropTailProb: number;
   /** Density-smoothness penalty weight μ (LV): third differences of the lattice
    *  call prices per expiry, Jacobian off the marched sensitivities (no extra PDE
    *  work). 1 = default; 0 = off. Targets vertex-scale local-vol ringing. */
@@ -291,6 +297,8 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   lvSolver: 'gn',
   leftWingSlopeMult: 1.5,
   lvXMaxMin: 2.5,
+  stackCrop: false,
+  stackCropTailProb: 1e-7,
   densitySmoothWeight: 1,
   calendarWeight: 1e6,
   sivWingPenaltyPct: 100,

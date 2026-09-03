@@ -131,6 +131,57 @@ export const WORKFLOW_DOCS: SettingDoc[] = [
   },
   // ------------------------------------------------------------ freshness policy
   {
+    key: "stackCrop",
+    model: "options",
+    section: "opt-workflow",
+    label: "Crop stacked IVs to the realistic range",
+    unit: "toggle",
+    summary: "Draw each expiry's stacked-IV curve only inside its own realistic k-range (Parametric and Local Vol); quotes always drawn.",
+    details:
+      "Off by default. On, the Stacked IV views draw each expiry's total-variance curve only " +
+      "inside [Q(ε), Q(1 − ε)] of that expiry's own fitted risk-neutral distribution — the range " +
+      "beyond which less than the tail probability ε of mass remains on each side — widened to the " +
+      "expiry's quoted range so a traded strike is never cropped away. The rationale: a pricer that " +
+      "samples S_T (or a path) from the fitted surface reads the smile outside that range with " +
+      "probability O(ε), so whatever the extrapolated wings do out there (a calendar crossing, a flat " +
+      "tail extension, a wing law beyond the last quote) moves a price by O(ε × payoff). " +
+      "Arbitrage-freeness inside the crop is therefore the computational statement; nothing is " +
+      "computed outside. The Δ-pairs mode draws where both expiries of a pair are realistic.\n\n" +
+      "The range is maturity-dependent by construction (wider for longer expiries) and comes from " +
+      "the model's own CDF — the parametric slice's density, the LV lattice's — not from a " +
+      "lognormal proxy, so fat fitted tails widen it. Display-only: no refit, no cache invalidation; " +
+      "the payloads carry the range at fixed tail levels and the view interpolates ε.",
+    example:
+      "A 1-month SPY slice quoted from k = −0.25 to +0.25 keeps its curve between roughly −0.32 and " +
+      "+0.30 at ε = 1e-7 instead of running to the display edges at −1.4 and +1.0; the 1-year slice " +
+      "keeps almost its full width.",
+    cacheEffect: "display-only",
+    surfaced: true,
+    related: ["stackCropTailProb", "help:guides:localvol"],
+    docs: ["09_wings_last_quote"],
+  },
+  {
+    key: "stackCropTailProb",
+    model: "options",
+    section: "opt-workflow",
+    label: "Crop tail probability ε",
+    unit: "probability per side",
+    summary: "The tail probability beyond the crop, per side; 1e-7 ≈ 5.3 Gaussian standard deviations.",
+    details:
+      "Each side of an expiry's crop range is the quantile at ε (left) and 1 − ε (right) of its " +
+      "fitted distribution. 1e-7 is the default: a Monte-Carlo pricer with a million paths expects " +
+      "a tenth of a path beyond it. Larger values crop tighter (1e-2 keeps only the central 98 %), " +
+      "smaller ones approach no crop. The payload tabulates the range from 1e-2 to 1e-12 and the " +
+      "view interpolates in log10(ε), so changing it costs nothing.",
+    example:
+      "Set 1e-9 before a path-dependent pricing run to see the range a 7-sd path could reach; set " +
+      "1e-3 to read the body of the smiles without the wings.",
+    cacheEffect: "display-only",
+    surfaced: true,
+    related: ["stackCrop"],
+    docs: ["09_wings_last_quote"],
+  },
+  {
     key: "dataAgeAmberMin",
     model: "options",
     section: "opt-workflow",

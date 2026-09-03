@@ -1015,6 +1015,18 @@ def _extended_density(solution, i_exp: int) -> DistributionArrays | None:
     return DistributionArrays(x=k[idx].tolist(), density=f_x[idx].tolist())
 
 
+def _crop_ranges(solution, i_exp: int, k_quote_lo: float, k_quote_hi: float):
+    """The Stacked-IV display crop table of one expiry (volfit.api.crop) from
+    the lattice CDF of ``solution`` (the converged-operator reprice), widened
+    to the quoted range [k_quote_lo, k_quote_hi]; None when degenerate."""
+    from volfit.api.crop import crop_ranges_from_cdf
+
+    k, _, cdf = _lattice_density(solution, i_exp)
+    if k.size < 3 or not np.isfinite(cdf[-1]) or cdf[-1] <= 0.0:
+        return None
+    return crop_ranges_from_cdf(k, cdf, k_quote_lo, k_quote_hi)
+
+
 def _price_density(solution, i_exp: int) -> DistributionArrays:
     """The per-expiry ``density`` payload: ``_lattice_density`` trimmed to the
     central mass (both tails) and strided to the point budget."""
@@ -1518,6 +1530,8 @@ def _fit(
                 # The model's own density on the converged operator, left-
                 # extended to k_min = -1.4 (2026-09-03: no IV-route rebuild).
                 densityExt=_extended_density(conv_sol, conv_index[t]),
+                # Stacked-IV crop table from the same lattice CDF (volfit.api.crop).
+                cropRanges=_crop_ranges(conv_sol, conv_index[t], klo, khi),
             )
         )
 

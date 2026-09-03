@@ -71,6 +71,8 @@ export interface AffineSmile {
   /** Density left-extended to the display lower bound (k_min = -1.4); backs the
    *  stacked "Densities" overlay so its x-axis spans the full smile range. */
   densityExt?: { x: number[]; density: number[] };
+  /** Stacked-IV display crop table (lib/stackCrop): realistic k-range per tail level. */
+  cropRanges?: { u: number[]; lo: number[]; hi: number[] } | null;
 }
 
 /** Response of POST /fit/affine/{ticker}. */

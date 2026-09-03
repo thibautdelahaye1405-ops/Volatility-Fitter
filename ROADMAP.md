@@ -1030,6 +1030,46 @@ universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
 
+### 🧭 SESSION WRAP (2026-09-03d) — STACKED-IV CROP TO THE REALISTIC RANGE (OPT-IN, QUOTES ALWAYS DRAWN)
+
+User proposal, ratified after review: draw each stacked-IV curve (Parametric
+and Local Vol) only inside a maturity-dependent "realistic" k-range —
+tail probability beyond it < ε (Options, default 1e-7) — because a pricer
+sampling the fitted distribution never reads the smile past it with
+probability 1 − O(ε): arbitrage-freeness INSIDE the crop is the
+computational statement, nothing is computed outside. Reviewed caveats
+folded in: the quantiles come from the model's OWN CDF (not a lognormal
+proxy — fat fitted left tails widen the range); traded strikes are
+realistic by definition (range widened to the quoted range, quote markers
+never filtered); ranges need not nest across maturities.
+
+- **Backend** `volfit/api/crop.py`: `crop_ranges_from_cdf(k, cdf, k_lo, k_hi)`
+  samples [Q(u), Q(1 − u)] ∪ quoted range at FIXED levels u = 1e-2 … 1e-12
+  (`TAIL_U_LEVELS`), so the payload serves every ε without a refit;
+  `crop_ranges_for_slice` = the parametric slice's numeric density on a grid
+  reaching the display window (a clamp means "no crop", never a too-narrow
+  one). `SurfaceResponse.cropRanges` (per expiry, from `displayed_slice`),
+  `AffineSmile.cropRanges` (from the converged-operator lattice CDF that
+  `densityExt` already uses; `_crop_ranges`). New `CropRanges` schema.
+- **Options** `stackCrop` (False) / `stackCropTailProb` (1e-7, [1e-12,
+  1e-2]) — display-only: NOT in `affects_fit`, no options-version bump
+  (locked); Options ▸ Workflow toggle + a 1e-2…1e-12 select; settingsDocs
+  entries (cacheEffect display-only); useOptions.ts mirror;
+  settingsSchema.json regenerated (121 fields); SETTINGS_REFERENCE rows.
+- **Frontend** `lib/stackCrop.ts` (`cropRangeAt` — log10(u) interpolation,
+  clamped; `cropPoints` never below two points; `cropRow`;
+  `intersectRanges`), `state/useStackCrop.ts` (reads /settings/options,
+  refreshed on the session spotVersion the Options dialog bumps);
+  StackedVarianceChart levels per expiry, Δ-pairs on the pair's
+  intersection; LocalVolViewer stacked IV per smile. vitest 7 new (432).
+- **Locks** tests/test_stack_crop.py (6: Gaussian exactness Q(1e-7) = −5.2 sd,
+  monotone + quote containment, unresolved-tail clamp, surface tables widen
+  with T on the synthetic, LV tables contain the quoted range, options
+  display-only + 422 out of bounds). Subset 37 passed; tsc clean.
+- **Rider**: the same ε-range could define the extrapolated-region
+  arbitrage taper (make "computationally preserved" a property of the fit,
+  not the drawing) — separate decision.
+
 ### 🧭 SESSION WRAP (2026-09-03c) — THE "SPY LV STALLS AT 1 MIN": A 1-DAY RUNG SETS THE WHOLE LATTICE, THE REPRICES WERE 40 % OF THE WALL, THE VIEW TIMED OUT AT 60 s
 
 User report: NVDA LV fits with a few expiries; SPY "even with just 2

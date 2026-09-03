@@ -33,6 +33,8 @@ def test_defaults(client):
     assert settings == {
         "fitMode": "mid",
         "dataAgeAmberMin": 20.0,
+        "stackCrop": False,
+        "stackCropTailProb": 1e-7,
         "dataAgeRedMin": 120.0,
         "asOfMismatchGate": False,
         "enforceCalendar": True,
@@ -128,6 +130,8 @@ def test_put_round_trip(client):
     body = {
         "fitMode": "haircut",
         "dataAgeAmberMin": 30.0,
+        "stackCrop": True,
+        "stackCropTailProb": 1e-9,
         "dataAgeRedMin": 240.0,
         "asOfMismatchGate": True,
         "enforceCalendar": False,
