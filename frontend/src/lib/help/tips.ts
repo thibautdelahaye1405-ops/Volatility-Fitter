@@ -141,6 +141,13 @@ export const TIPS: Tip[] = [
     scope: "shell", level: "basic",
     action: { command: "help.copyDiagnostics", label: "Copy diagnostics" },
   },
+  {
+    id: "aside-one-card-expanded",
+    title: "Expand one aside card, the other two fold to a row",
+    body: "The Spot move, Variance swap and Fit diagnostics cards never scroll the column: the ⇕ toggle in a header expands that card (wings and Lee slopes, the hard pin, the dial scale and Reset / Sync) while the other two compress to a one-line readout — click a compact row to swap. Toggle the expanded card again and all three return to standard.",
+    scope: "shell", level: "basic",
+    action: { command: "layout.aside", label: "Try it: toggle the aside" },
+  },
   // --------------------------------------------------------------- Graph
   {
     id: "graph-drag-to-light",

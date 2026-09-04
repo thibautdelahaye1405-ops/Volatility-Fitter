@@ -16,9 +16,15 @@
 // same snapshot rule (a synchronous quotes + spot snapshot off the streaming
 // book, else the last fetched chain), as the background job; the previous fit
 // stays on screen (stale) until the new one lands.
+// Sizes (lib/asideSizes, the column's shared focus): compact = one row naming
+// the followed spot; standard = Follow, the spot rows, the dial, Recalibrate;
+// expanded = everything (regime row, dial scale, Reset / Sync, the snapshot
+// rule). Rendered outside the column (tests) the card is expanded.
 import type { ReactNode } from "react";
 import { RotateCcw } from "lucide-react";
+import { AsideBody, AsideHeader } from "./AsideCard";
 import SegmentedControl from "./SegmentedControl";
+import type { AsideSize } from "../lib/asideSizes";
 import { SCOPE_SHORT } from "../lib/calibScope";
 import type { CalibScope } from "../lib/calibScope";
 import { useCalibScope } from "../state/useCalibScope";
@@ -54,6 +60,10 @@ interface SpotPanelProps {
   note: SpotNote | null;
   disabled: boolean;
   disabledReason?: string;
+  /** Card size in the column (default: expanded, the full card). */
+  size?: AsideSize;
+  /** Expand / fold the card (the column's shared focus). */
+  onToggleSize?: () => void;
 }
 
 const signedPct = (r: number, digits = 2): string => `${r > 0 ? "+" : ""}${(r * 100).toFixed(digits)}%`;
@@ -106,8 +116,9 @@ const linkButton = "text-[10px] font-medium text-slate-500 transition enabled:ho
 
 export default function SpotPanel({
   spotReturn, spotState, onSpotReturn, onFollow, onCalibrate, onProbeLive,
-  calib, note, disabled, disabledReason,
+  calib, note, disabled, disabledReason, size = "L", onToggleSize,
 }: SpotPanelProps) {
+  const full = size === "L";
   const scope = useCalibScope(); // the top bar's current Calibrate scope
   const pct = snapDialPct(spotReturn * 100);
   const moved = Math.abs(pct) > 1e-9;
@@ -125,8 +136,8 @@ export default function SpotPanel({
   const what = scope === "lv" ? "LV surface" : scope === "parametric" ? nodes : `${nodes}${s?.lvEnabled ? " + LV" : ""}`;
 
   const step = (dir: 1 | -1, coarse: boolean) => {
-    const size = coarse ? DIAL_COARSE_STEP_PCT : DIAL_STEP_PCT;
-    onSpotReturn(snapDialPct(pct + dir * size) / 100);
+    const stepSize = coarse ? DIAL_COARSE_STEP_PCT : DIAL_STEP_PCT;
+    onSpotReturn(snapDialPct(pct + dir * stepSize) / 100);
   };
 
   const marketSub = !s || live === null
@@ -135,158 +146,186 @@ export default function SpotPanel({
       ? `${s.sourceLabel} · streaming`
       : `${s.liveSource === "probe" ? "probe" : "chain"}${s.liveAt ? ` ${clockOf(s.liveAt)}` : ""}`;
 
+  // Compact row: the followed level (or the running job).
+  const followedValue = scenario
+    ? s ? `${(s.anchorSpot * (1 + spotReturn)).toFixed(2)} ${signedPct(spotReturn, 1)}` : "—"
+    : live !== null && liveRet !== null ? `${live.toFixed(2)} ${signedPct(liveRet)}` : "—";
+  const summary = running && calib
+    ? `Calibrating ${calib.done}/${calib.total}`
+    : `${scenario ? "Scenario" : "Market"} ${followedValue}`;
+
+  const streamingBadge = s?.streaming && (
+    <span
+      className="flex items-center gap-1 text-[10px] font-semibold tracking-wider text-emerald-300"
+      title={`${s.sourceLabel} live book streaming — spot and quotes flow continuously`}
+    >
+      {/* The book streams: spot and quotes flow continuously (a market-
+          following ticker tracks the book; a scenario keeps its dial). */}
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+      {size !== "S" && "STREAMING"}
+    </span>
+  );
+
   return (
-    <section className={disabled ? "opacity-40" : ""} title={disabled ? disabledReason : undefined}>
-      <div className="mb-1 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-100">Spot move</h3>
-        <span className="flex items-center gap-1.5">
-          {/* The book streams: spot and quotes flow continuously (a market-
-              following ticker tracks the book; a scenario keeps its dial). */}
-          {s?.streaming && (
-            <span className="flex items-center gap-1 text-[10px] font-semibold tracking-wider text-emerald-300" title={`${s.sourceLabel} live book streaming — spot and quotes flow continuously`}>
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-              STREAMING
-            </span>
+    <section className={["flex min-h-0 flex-col", disabled ? "opacity-40" : ""].join(" ")} title={disabled ? disabledReason : undefined}>
+      <AsideHeader
+        title="Spot move"
+        size={size}
+        onToggle={onToggleSize}
+        badge={size === "S" ? streamingBadge : undefined}
+        right={streamingBadge}
+        summary={summary}
+        expandTip="regime, dial scale, Reset / Sync, the snapshot rule"
+      />
+      {size !== "S" && (
+        <AsideBody>
+          {full && (
+            <p className="mb-2 text-[11px] text-slate-500">
+              Transports the smile · term · LV grid — no recalibration
+            </p>
           )}
-        </span>
-      </div>
-      <p className="mb-2 text-[11px] text-slate-500">
-        Transports the smile · term · LV grid — no recalibration
-      </p>
 
-      {/* What the spot follows */}
-      <div
-        className="mb-2 flex items-center justify-between gap-2"
-        title={s?.followForced ? "The market spot is pinned by the backend" : "Follow the prevailing market spot, or the scenario dial"}
-      >
-        <span className="text-[11px] text-slate-400">Follow</span>
-        <div className={s?.followForced || disabled ? "pointer-events-none opacity-50" : ""}>
-          <SegmentedControl options={FOLLOW_OPTIONS} value={follow} onChange={onFollow} size="xs" />
-        </div>
-      </div>
+          {/* What the spot follows */}
+          <div
+            className="mb-2 flex items-center justify-between gap-2"
+            title={s?.followForced ? "The market spot is pinned by the backend" : "Follow the prevailing market spot, or the scenario dial"}
+          >
+            <span className="text-[11px] text-slate-400">Follow</span>
+            <div className={s?.followForced || disabled ? "pointer-events-none opacity-50" : ""}>
+              <SegmentedControl options={FOLLOW_OPTIONS} value={follow} onChange={onFollow} size="xs" />
+            </div>
+          </div>
 
-      {/* Spot levels: calibrated -> market -> scenario (the followed one lit) */}
-      <div className="mb-2 divide-y divide-slate-800/80 rounded-md border border-slate-800 bg-surface-800/60 px-2">
-        <Row label="Calibrated" value={s ? s.anchorSpot.toFixed(2) : "—"} />
-        <Row
-          label="Market"
-          sub={marketSub}
-          value={live !== null && liveRet !== null ? `${live.toFixed(2)}  ${signedPct(liveRet)}` : "—"}
-          emphasis={scenario ? "off" : "on"}
-          action={
-            !s?.streaming ? (
+          {/* Spot levels: calibrated -> market -> scenario (the followed one lit) */}
+          <div className="mb-2 divide-y divide-slate-800/80 rounded-md border border-slate-800 bg-surface-800/60 px-2">
+            <Row label="Calibrated" value={s ? s.anchorSpot.toFixed(2) : "—"} />
+            <Row
+              label="Market"
+              sub={marketSub}
+              value={live !== null && liveRet !== null ? `${live.toFixed(2)}  ${signedPct(liveRet)}` : "—"}
+              emphasis={scenario ? "off" : "on"}
+              action={
+                !s?.streaming ? (
+                  <button
+                    type="button"
+                    onClick={onProbeLive}
+                    disabled={disabled}
+                    className={linkButton}
+                    title="Probe the provider spot now (one request)"
+                    aria-label="Probe market spot"
+                  >
+                    ↻
+                  </button>
+                ) : undefined
+              }
+            />
+            <Row
+              label="Scenario"
+              sub={scenario && moved ? "dial" : undefined}
+              value={s ? `${(s.anchorSpot * (1 + spotReturn)).toFixed(2)}  ${signedPct(spotReturn, 1)}` : "—"}
+              emphasis={scenario ? "on" : "off"}
+            />
+            {full && <Row label="Regime · R" value={s ? `${s.regime} · ${s.regimeSsr.toFixed(1)}` : "—"} />}
+          </div>
+
+          {/* The dial (lit in scenario mode, dimmed while following the market) */}
+          <div className={scenario ? "" : "opacity-45"} data-testid="spot-dial" data-active={scenario}>
+            <div className="mb-1 flex items-center justify-between text-xs">
+              <span className="text-slate-400">Spot return</span>
+              <span className={["font-mono font-medium", moved ? "text-accent-400" : "text-slate-500"].join(" ")}>
+                {signedPct(spotReturn, 1)}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={onProbeLive}
-                disabled={disabled}
-                className={linkButton}
-                title="Probe the provider spot now (one request)"
-                aria-label="Probe market spot"
+                className={stepButton}
+                disabled={dialLocked || pct <= -DIAL_MAX_PCT}
+                onClick={(e) => step(-1, e.shiftKey)}
+                title="−0.1 % (Shift: −1 %)"
+                aria-label="Spot down 0.1 percent"
               >
-                ↻
+                −
               </button>
-            ) : undefined
-          }
-        />
-        <Row
-          label="Scenario"
-          sub={scenario && moved ? "dial" : undefined}
-          value={s ? `${(s.anchorSpot * (1 + spotReturn)).toFixed(2)}  ${signedPct(spotReturn, 1)}` : "—"}
-          emphasis={scenario ? "on" : "off"}
-        />
-        <Row label="Regime · R" value={s ? `${s.regime} · ${s.regimeSsr.toFixed(1)}` : "—"} />
-      </div>
+              <input
+                type="range"
+                min={-DIAL_MAX_PCT}
+                max={DIAL_MAX_PCT}
+                step={DIAL_STEP_PCT}
+                value={pct}
+                disabled={dialLocked}
+                onChange={(e) => onSpotReturn(snapDialPct(Number(e.target.value)) / 100)}
+                className="w-full min-w-0 cursor-pointer disabled:cursor-not-allowed"
+                style={{ accentColor: "var(--color-accent-500)" }}
+                aria-label="Spot return"
+              />
+              <button
+                type="button"
+                className={stepButton}
+                disabled={dialLocked || pct >= DIAL_MAX_PCT}
+                onClick={(e) => step(1, e.shiftKey)}
+                title="+0.1 % (Shift: +1 %)"
+                aria-label="Spot up 0.1 percent"
+              >
+                +
+              </button>
+            </div>
+            {full && (
+              <div className="flex justify-between px-7 font-mono text-[10px] text-slate-600">
+                <span>−{DIAL_MAX_PCT}%</span>
+                <span>0</span>
+                <span>+{DIAL_MAX_PCT}%</span>
+              </div>
+            )}
+            {full && (
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                className={smallButton}
+                disabled={dialLocked || !moved}
+                onClick={() => onSpotReturn(0)}
+                title="Reset the scenario to the calibrated spot (0.0 %)"
+              >
+                <RotateCcw size={11} strokeWidth={1.75} /> Reset to 0.0%
+              </button>
+              <button
+                type="button"
+                className={linkButton}
+                disabled={!canSync}
+                onClick={() => liveRet !== null && onSpotReturn(snapDialPct(liveRet * 100) / 100)}
+                title="Copy the market return into the dial"
+              >
+                Sync to market
+              </button>
+            </div>
+            )}
+          </div>
 
-      {/* The dial (lit in scenario mode, dimmed while following the market) */}
-      <div className={scenario ? "" : "opacity-45"} data-testid="spot-dial" data-active={scenario}>
-        <div className="mb-1 flex items-center justify-between text-xs">
-          <span className="text-slate-400">Spot return</span>
-          <span className={["font-mono font-medium", moved ? "text-accent-400" : "text-slate-500"].join(" ")}>
-            {signedPct(spotReturn, 1)}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
+          {/* Recalibrate THIS ticker — the top-bar Calibrate, same scope + snapshot rule */}
           <button
             type="button"
-            className={stepButton}
-            disabled={dialLocked || pct <= -DIAL_MAX_PCT}
-            onClick={(e) => step(-1, e.shiftKey)}
-            title="−0.1 % (Shift: −1 %)"
-            aria-label="Spot down 0.1 percent"
+            onClick={() => onCalibrate(scope)}
+            disabled={disabled || running}
+            className="mt-3 w-full rounded-md border border-accent-500/40 bg-accent-500/10 px-2 py-1.5 text-xs font-semibold text-accent-300 transition enabled:hover:bg-accent-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            title={`The top-bar Calibrate for ${ticker || "this ticker"} only — ${SCOPE_SHORT[scope]} (change the scope in the top bar). Snapshot: streamed quotes + spot when a book streams, else the last fetched chain. Background job; the current fit stays until the new one lands.`}
           >
-            −
+            {running && calib
+              ? `Calibrating${calib.current ? ` · ${calib.current}` : ""}${calib.phase ? ` · ${calib.phase}` : ""} ${calib.done}/${calib.total}`
+              : `Recalibrate${ticker ? ` ${ticker}` : ""} (${SCOPE_SHORT[scope]})`}
           </button>
-          <input
-            type="range"
-            min={-DIAL_MAX_PCT}
-            max={DIAL_MAX_PCT}
-            step={DIAL_STEP_PCT}
-            value={pct}
-            disabled={dialLocked}
-            onChange={(e) => onSpotReturn(snapDialPct(Number(e.target.value)) / 100)}
-            className="w-full min-w-0 cursor-pointer disabled:cursor-not-allowed"
-            style={{ accentColor: "var(--color-accent-500)" }}
-            aria-label="Spot return"
-          />
-          <button
-            type="button"
-            className={stepButton}
-            disabled={dialLocked || pct >= DIAL_MAX_PCT}
-            onClick={(e) => step(1, e.shiftKey)}
-            title="+0.1 % (Shift: +1 %)"
-            aria-label="Spot up 0.1 percent"
-          >
-            +
-          </button>
-        </div>
-        <div className="flex justify-between px-7 font-mono text-[10px] text-slate-600">
-          <span>−{DIAL_MAX_PCT}%</span>
-          <span>0</span>
-          <span>+{DIAL_MAX_PCT}%</span>
-        </div>
-        <div className="mt-1.5 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            className={smallButton}
-            disabled={dialLocked || !moved}
-            onClick={() => onSpotReturn(0)}
-            title="Reset the scenario to the calibrated spot (0.0 %)"
-          >
-            <RotateCcw size={11} strokeWidth={1.75} /> Reset to 0.0%
-          </button>
-          <button
-            type="button"
-            className={linkButton}
-            disabled={!canSync}
-            onClick={() => liveRet !== null && onSpotReturn(snapDialPct(liveRet * 100) / 100)}
-            title="Copy the market return into the dial"
-          >
-            Sync to market
-          </button>
-        </div>
-      </div>
-
-      {/* Recalibrate THIS ticker — the top-bar Calibrate, same scope + snapshot rule */}
-      <button
-        type="button"
-        onClick={() => onCalibrate(scope)}
-        disabled={disabled || running}
-        className="mt-3 w-full rounded-md border border-accent-500/40 bg-accent-500/10 px-2 py-1.5 text-xs font-semibold text-accent-300 transition enabled:hover:bg-accent-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-        title={`The top-bar Calibrate for ${ticker || "this ticker"} only — ${SCOPE_SHORT[scope]} (change the scope in the top bar). Snapshot: streamed quotes + spot when a book streams, else the last fetched chain. Background job; the current fit stays until the new one lands.`}
-      >
-        {running && calib
-          ? `Calibrating${calib.current ? ` · ${calib.current}` : ""}${calib.phase ? ` · ${calib.phase}` : ""} ${calib.done}/${calib.total}`
-          : `Recalibrate${ticker ? ` ${ticker}` : ""} (${SCOPE_SHORT[scope]})`}
-      </button>
-      <p className="mt-1 text-[10px] text-slate-500">
-        {running
-          ? "Background job running — the previous fit stays until it lands."
-          : `Calibrate, this ticker only · ${s?.streaming ? "streamed quotes + spot snapshot" : "last fetched quotes + spot"} · ${what || "the lit nodes"}`}
-      </p>
-      {note && (
-        <p className={["mt-1 text-[10px]", note.ok ? "text-emerald-300" : "text-amber-300"].join(" ")} role="status">
-          {note.text}
-        </p>
+          {full && (
+            <p className="mt-1 text-[10px] text-slate-500">
+              {running
+                ? "Background job running — the previous fit stays until it lands."
+                : `Calibrate, this ticker only · ${s?.streaming ? "streamed quotes + spot snapshot" : "last fetched quotes + spot"} · ${what || "the lit nodes"}`}
+            </p>
+          )}
+          {note && (
+            <p className={["mt-1 text-[10px]", note.ok ? "text-emerald-300" : "text-amber-300"].join(" ")} role="status">
+              {note.text}
+            </p>
+          )}
+        </AsideBody>
       )}
     </section>
   );

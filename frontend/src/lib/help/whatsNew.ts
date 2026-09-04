@@ -6,6 +6,15 @@ import type { WhatsNewEntry } from "./types";
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-09-04",
+    title: "Right-hand column: three cards that always fit, one expanded at a time",
+    items: [
+      "The Spot move, Variance swap and Fit diagnostics cards of the Parametric and Local Vol lenses now share the column without scrolling it. Each card has three sizes — **compact** (one row: the title and a live readout), **standard** (the working controls, the default) and **expanded** (everything the card knows).",
+      "One card gets the room: the ⇕ toggle in a card's header — or a click on a compact row — expands that card and compresses the other two to their one-line readouts; the toggle on the expanded card folds all three back to standard. The choice is shared by both lenses and kept across reloads.",
+      "Standard keeps what a session uses: Follow, the calibrated / market / scenario spots, the dial and Recalibrate; the var-swap readout, editor and undo row; the headline handles and RMS. Expanded adds the regime row, the dial scale, Reset / Sync and the snapshot rule; the penalty weight, replication split and hard pin; the wings, Lee slopes and var-swap vol — and, on Local Vol, the per-expiry table runs free instead of scrolling inside a capped height.",
+    ],
+  },
+  {
     date: "2026-09-02",
     title: "Per-ticker data sources",
     items: [

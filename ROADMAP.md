@@ -951,7 +951,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-02 (resume here)
+## STATUS — updated 2026-09-04 (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1029,6 +1029,53 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-04a) — RIGHT-HAND COLUMN: THREE CARD SIZES, ONE EXPANDED AT A TIME, THE COLUMN NEVER SCROLLS
+
+User request: the Spot move and Variance swap cards expandable like Fit
+diagnostics, all three visible without scrolling, expanding one compresses
+the others, three sizes per card with the most information in the largest.
+
+- **Rule** (`lib/asideSizes.ts`, pure + locked): sizes S compact (one row:
+  title + a live readout that IS the expand button) · M standard (default
+  for all three) · L expanded; ONE focus — `asideSizeOf(focus, panel)` gives
+  L to the focused card and S to the other two, null = all M;
+  `toggleAsideFocus` folds an expanded card back to all-M. Persisted in
+  localStorage (`volfit.asideFocus`) + window event, shared by the Parametric
+  and Local Vol asides (`state/useAsideFocus.ts`); a focus on the gated-off
+  var-swap card reads as none (`effectiveAsideFocus`).
+- **Chrome** `components/AsideCard.tsx`: `AsideCard` (data-aside-panel /
+  data-aside-size; the L card and the M diagnostics card are `min-h-24
+  shrink` so their body scrolls before the column does), `AsideHeader`
+  (⇕ ChevronsUpDown / ChevronsDownUp toggle at the right; compact row =
+  title · badge · truncating readout button), `AsideBody` (min-h-0 flex-1
+  overflow-y-auto).
+- **Per card** — SpotPanel `size` / `onToggleSize` (default L outside the
+  column): M = Follow, Calibrated / Market / Scenario rows, the dial with
+  ± buttons, Recalibrate + the outcome note; L adds the transport subtitle,
+  Regime · R, the −15/0/+15 scale, Reset / Sync, the snapshot-rule line; S =
+  "Market 647.12 +0.31%" / "Scenario …" / "Calibrating 2/5", STREAMING
+  shrinks to its dot. VarSwapPanel: M = model · quote · basis readout, the
+  editor (Add / input + slider + Exclude / Remove), Undo / Redo / Reset; L
+  adds subtitle, penalty weight, replication split, Hard pin; S = "quote
+  18.50% · +30 bp [· excluded]" or "model 18.20%". Parametric diagnostics: M
+  = chip + headline handles; L adds the wings · Lee · var-swap block (the
+  old "More diagnostics" footer is gone — the header toggle replaces it); S
+  = "ATM 21.1% · RMS 0.01%" with the stale / loaded markers beside the
+  title. Local Vol diagnostics: M caps the per-expiry table at max-h-36
+  (scrolls inside); L frees it and shows the min-φ note.
+- **Measured** (`scripts/aside_sizes_check.mjs`, headless Edge on the
+  synthetic smoke server, port 4192 — 4190 never answered on this box):
+  1400×900 M heights spot 264 · var-swap 129 · diag 228 px, column
+  734/734 (no scroll) in every state; 1280×720 the M diagnostics card
+  yields to 137 px and the column stays 554/554; the LV aside inherits the
+  focus. Screenshots .smoke/aside-*.png.
+- **Tests** vitest 445 (asideSizes 6, SpotPanel +3 sizes, VarSwapPanel 4);
+  tsc clean; help corpora: What's new 2026-09-04, lenses guide bullets,
+  `layout.aside` details, tip `aside-one-card-expanded`.
+- **Riders**: a per-card size memory (instead of one focus) if a user wants
+  two expanded cards on a tall screen; the Graph inspector pane does not
+  take part (own layout).
 
 ### 🧭 SESSION WRAP (2026-09-03d) — STACKED-IV CROP TO THE REALISTIC RANGE (OPT-IN, QUOTES ALWAYS DRAWN)
 

@@ -5,19 +5,23 @@
 //                    this ticker (same scope, same snapshot rule)
 //   Variance swap    the var-swap quote editor (adds a calibration penalty;
 //                    Options-gated)
-//   Fit diagnostics  headline handles (ATM / skew / curvature / RMS) with the
-//                    secondary readouts (wings, Lee slopes, var-swap vol)
-//                    behind an expander; the displayed model + hyperparameters
+//   Fit diagnostics  headline handles (ATM / skew / curvature / RMS); the
+//                    secondary readouts (wings, Lee slopes, var-swap vol) at
+//                    the expanded size; the displayed model + hyperparameters
 //                    as a compact chip (full values in the tooltip)
-// Model selection itself lives in Options.
-import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+// The three cards always fit the column without scrolling it: each has a
+// compact / standard / expanded size and ONE shared focus (lib/asideSizes —
+// expanding a card compresses the other two to a single row; folding it back
+// returns all three to standard). Model selection itself lives in Options.
+import { AsideBody, AsideCard, AsideHeader } from "./AsideCard";
 import SpotPanel from "./SpotPanel";
 import VarSwapPanel from "./VarSwapPanel";
+import { ASIDE_PANELS } from "../lib/asideSizes";
+import type { AsidePanelId } from "../lib/asideSizes";
+import { formatPct } from "../lib/chartScale";
+import { useAsideFocus } from "../state/useAsideFocus";
 import { useSmileSession } from "../state/smileSession";
 import { useWorkflowContext } from "../state/workflowContext";
-import { formatPct } from "../lib/chartScale";
-import { cardClass } from "../lib/ui";
 
 /** Fixed-decimal string, or "—" for a null/NaN diagnostic (a degenerate or
  *  transported fit can yield a non-finite value, which JSON-serializes to null —
@@ -42,7 +46,7 @@ const DiagList = ({ rows }: { rows: DiagRow[] }) => (
   </dl>
 );
 
-const card = `${cardClass} p-4`;
+const WITHOUT_VARSWAP: readonly AsidePanelId[] = ["spot", "diag"];
 
 export default function SmileAside() {
   const {
@@ -51,7 +55,9 @@ export default function SmileAside() {
   } = useSmileSession();
   const { workflow } = useWorkflowContext(); // the background job (Re-anchor progress)
   const live = source === "live";
-  const [showMore, setShowMore] = useState(false);
+  const varSwapShown = smile?.varSwap.enabled === true;
+  const { sizeOf, toggle } = useAsideFocus(varSwapShown ? ASIDE_PANELS : WITHOUT_VARSWAP);
+  const diagSize = sizeOf("diag");
 
   const info = smile?.modelInfo;
   const d = smile?.diagnostics;
@@ -79,12 +85,40 @@ export default function SmileAside() {
       ]
     : [];
 
+  // Fit-state markers (stale / loaded): inside the model chip at the standard
+  // and expanded sizes, beside the title on the compact row.
+  const markers = (
+    <>
+      {smile?.stale && <span className="font-sans text-[10px] font-semibold uppercase text-amber-400">stale</span>}
+      {info?.provenance === "loaded" && (
+        <span className="font-sans text-[10px] font-semibold uppercase text-emerald-400" title="Reinstalled from a snapshot file">loaded</span>
+      )}
+    </>
+  );
+  const chip = info && (
+    <span
+      title={info.params.map((p) => `${p.label}: ${p.value}`).join(" · ") || info.label}
+      className="flex min-w-0 items-center gap-1.5 rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-sky-300"
+    >
+      {markers}
+      {info.label}
+      {info.params.length > 0 && (
+        <span className="truncate font-medium text-slate-400">
+          {info.params.map((p) => `${p.label} ${p.value}`).join(" · ")}
+        </span>
+      )}
+    </span>
+  );
+  // Compact row: the two numbers a glance needs (the model chip returns at
+  // the standard size — the row is too narrow for both).
+  const diagSummary = d ? `ATM ${formatPct(d.atmVol)} · RMS ${formatPct(d.rmsError, 2)}` : "Awaiting data…";
+
   return (
-    <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
+    <aside className="flex min-h-0 w-72 shrink-0 flex-col gap-3 overflow-y-auto">
       {/* 1. Spot move: follow the market or the scenario (no recalibration);
           Recalibrate = Calibrate for this ticker. Applies across every lens,
           not just Smile. */}
-      <section className={card}>
+      <AsideCard id="spot" size={sizeOf("spot")}>
         <SpotPanel
           spotReturn={spotReturn}
           spotState={spotState}
@@ -96,12 +130,14 @@ export default function SmileAside() {
           note={spotNote}
           disabled={!live}
           disabledReason={!live ? "requires live backend" : undefined}
+          size={sizeOf("spot")}
+          onToggleSize={() => toggle("spot")}
         />
-      </section>
+      </AsideCard>
 
       {/* 2. Variance-swap quote: adds a calibration penalty (Options-gated). */}
-      {smile?.varSwap.enabled && (
-        <section className={card}>
+      {varSwapShown && smile && (
+        <AsideCard id="varswap" size={sizeOf("varswap")}>
           <VarSwapPanel
             info={smile.varSwap}
             live={live}
@@ -112,50 +148,38 @@ export default function SmileAside() {
             onUndo={() => void undoVarSwap()}
             onRedo={() => void redoVarSwap()}
             onReset={() => void applyVarSwap("reset")}
+            size={sizeOf("varswap")}
+            onToggleSize={() => toggle("varswap")}
           />
-        </section>
+        </AsideCard>
       )}
 
-      {/* 3. Fit diagnostics */}
-      <section className={card}>
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-slate-100">Fit diagnostics</h3>
-          {info && (
-            <span
-              title={info.params.map((p) => `${p.label}: ${p.value}`).join(" · ") || info.label}
-              className="flex items-center gap-1.5 rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-sky-300"
-            >
-              {smile?.stale && <span className="font-sans font-semibold uppercase text-amber-400">stale</span>}
-              {info.provenance === "loaded" && (
-                <span className="font-sans font-semibold uppercase text-emerald-400" title="Reinstalled from a snapshot file">loaded</span>
-              )}
-              {info.label}
-              {info.params.length > 0 && (
-                <span className="font-medium text-slate-400">
-                  {info.params.map((p) => `${p.label} ${p.value}`).join(" · ")}
-                </span>
-              )}
-            </span>
-          )}
-        </div>
-        <p className="mb-3 text-[11px] text-slate-500">
-          {smile ? `Current calibration · ${smile.ticker} ${smile.expiry}` : "Awaiting data…"}
-        </p>
-        <DiagList rows={headline} />
-        {secondary.length > 0 && (
-          <>
-            <button
-              onClick={() => setShowMore((v) => !v)}
-              className="mt-1 flex w-full items-center gap-1 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:text-slate-300"
-            >
-              {showMore ? <ChevronDown size={12} strokeWidth={1.75} /> : <ChevronRight size={12} strokeWidth={1.75} />}
-              More diagnostics
-              {!showMore && <span className="text-slate-600">· wings, Lee, var-swap</span>}
-            </button>
-            {showMore && <DiagList rows={secondary} />}
-          </>
+      {/* 3. Fit diagnostics: headline handles; wings / Lee / var-swap vol when expanded */}
+      <AsideCard id="diag" size={diagSize}>
+        <AsideHeader
+          title="Fit diagnostics"
+          size={diagSize}
+          onToggle={() => toggle("diag")}
+          badge={diagSize === "S" ? markers : undefined}
+          right={chip}
+          summary={diagSummary}
+          expandTip="wings, Lee slopes, var-swap vol"
+        />
+        {diagSize !== "S" && (
+          <AsideBody>
+            <p className="mb-2 text-[11px] text-slate-500">
+              {smile ? `Current calibration · ${smile.ticker} ${smile.expiry}` : "Awaiting data…"}
+            </p>
+            <DiagList rows={headline} />
+            {diagSize === "L" && secondary.length > 0 && (
+              <div className="mt-2 border-t border-slate-800 pt-1">
+                <p className="pt-1 text-[10px] uppercase tracking-wide text-slate-600">wings · Lee · var-swap</p>
+                <DiagList rows={secondary} />
+              </div>
+            )}
+          </AsideBody>
         )}
-      </section>
+      </AsideCard>
     </aside>
   );
 }

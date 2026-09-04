@@ -170,4 +170,49 @@ describe("SpotPanel", () => {
     expect(clockOf(null)).toBe("");
     expect(clockOf("garbage")).toBe("");
   });
+
+  it("standard size keeps the follow selector, the three spot rows, the dial and Recalibrate", () => {
+    const onToggleSize = vi.fn();
+    renderPanel({ spotReturn: 0.03, size: "M", onToggleSize });
+    expect(screen.getByText("Market spot")).toBeTruthy();
+    expect(screen.getByText("6150.00")).toBeTruthy(); // Calibrated row stays
+    expect(screen.getByLabelText("Spot return")).toBeTruthy();
+    expect(screen.getByText(/Recalibrate SPY/)).toBeTruthy();
+    expect(screen.queryByText(/Regime · R/)).toBeNull(); // expanded-only rows
+    expect(screen.queryByText(/Reset to 0\.0%/)).toBeNull();
+    expect(screen.queryByText(/no recalibration/)).toBeNull();
+    expect(screen.queryByText(/Calibrate, this ticker only/)).toBeNull();
+    fireEvent.click(screen.getByLabelText("Expand Spot move"));
+    expect(onToggleSize).toHaveBeenCalledTimes(1);
+  });
+
+  it("compact size is one row naming the followed spot, and the row expands the card", () => {
+    const onToggleSize = vi.fn();
+    renderPanel({ spotReturn: 0.03, size: "S", onToggleSize });
+    expect(screen.queryByLabelText("Spot return")).toBeNull();
+    expect(screen.queryByText("STREAMING")).toBeNull(); // the badge shrinks to its dot
+    const expand = screen.getByLabelText("Expand Spot move");
+    expect(expand.textContent).toMatch(/Scenario 6334\.50 \+3\.0%/);
+    fireEvent.click(expand);
+    expect(onToggleSize).toHaveBeenCalledTimes(1);
+    cleanup();
+    renderPanel({ size: "S", spotState: state({ follow: "market" }), onToggleSize });
+    expect(screen.getByLabelText("Expand Spot move").textContent).toMatch(/Market 6162\.30 \+0\.20%/);
+    cleanup();
+    renderPanel({ size: "S", onToggleSize, calib: { running: true, current: "SPY", phase: "", done: 1, total: 3 } });
+    expect(screen.getByLabelText("Expand Spot move").textContent).toMatch(/Calibrating 1\/3/);
+  });
+
+  it("expanded size shows everything and offers the fold-back toggle", () => {
+    const onToggleSize = vi.fn();
+    renderPanel({ size: "L", onToggleSize });
+    expect(screen.getByText(/Regime · R/)).toBeTruthy();
+    expect(screen.getByText(/Calibrate, this ticker only/)).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Shrink Spot move"));
+    expect(onToggleSize).toHaveBeenCalledTimes(1);
+    cleanup();
+    renderPanel(); // outside the column: expanded, no toggle
+    expect(screen.queryByLabelText("Shrink Spot move")).toBeNull();
+  });
 });
+

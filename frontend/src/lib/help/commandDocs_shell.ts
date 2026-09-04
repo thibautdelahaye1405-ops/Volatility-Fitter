@@ -60,7 +60,7 @@ export const COMMAND_DOCS_SHELL: CommandDoc[] = [
   {
     id: "layout.aside",
     summary: "Show or hide the diagnostics aside.",
-    details: "Toggles the right-hand column of the lenses — the Spot move · Var-swap · Fit diagnostics cards on Parametric and Local Vol, the inspector on Graph. In split editors the non-focused groups yield their aside to save room.",
+    details: "Toggles the right-hand column of the lenses — the Spot move · Var-swap · Fit diagnostics cards on Parametric and Local Vol, the inspector on Graph. The three cards always fit the column: each is compact, standard or expanded, and the ⇕ toggle in a card's header expands it while compressing the other two to one row. In split editors the non-focused groups yield their aside to save room.",
     example: "Hide the aside on a laptop screen to give the SPY 18-Dec-26 smile the full width; the fit RMS stays readable in the status bar.",
     guide: "workbench",
     related: ["layout.zen", "layout.statusBar"],

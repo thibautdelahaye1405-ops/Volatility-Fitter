@@ -9,22 +9,28 @@
 //   Fit diagnostics  fit RMS (smile / surface), the per-expiry fit table (a row
 //                    click selects that expiry's node, i.e. opens / focuses its
 //                    tab) and the LV calibration trace player
+// The cards share the column's compact / standard / expanded sizes and its
+// ONE focus with the Parametric aside (lib/asideSizes): expanding a card
+// compresses the other two to a single row. At the standard size the
+// per-expiry table scrolls inside a capped height; expanded, it runs free.
 // Rendered by LocalVolViewer only while the workbench layout's `aside` toggle
 // is on (or always, outside the shell). Owns nothing but the trace player's
 // local UI state; every fit datum and var-swap verb comes down through the
 // props, the spot-move state through useSmileSession().
 import { useEffect, useState } from "react";
-import type { ReactNode } from "react";
 import { Play } from "lucide-react";
+import { AsideBody, AsideCard, AsideHeader } from "../AsideCard";
 import LvTracePlayer from "../LvTracePlayer";
 import SpotPanel from "../SpotPanel";
 import VarSwapPanel from "../VarSwapPanel";
 import { useExpiryFormat } from "../../state/expiryFormat";
 import { useSmileSession } from "../../state/smileSession";
+import { useAsideFocus } from "../../state/useAsideFocus";
 import { useWorkflowContext } from "../../state/workflowContext";
+import { ASIDE_PANELS } from "../../lib/asideSizes";
+import type { AsidePanelId } from "../../lib/asideSizes";
 import { formatExpiry } from "../../lib/expiryFormat";
 import { formatPct } from "../../lib/chartScale";
-import { cardClass } from "../../lib/ui";
 import type { AffineFitResponse, AffineSmile, UseAffineResult } from "../../state/useAffine";
 import { fmtBp0 } from "./LocalVolToolbar";
 
@@ -45,10 +51,7 @@ export interface LocalVolAsideProps
   varSwapEnabled: boolean;
 }
 
-/** One stacked card of the column. */
-const Card = ({ children }: { children: ReactNode }) => (
-  <section className={`${cardClass} p-4`}>{children}</section>
-);
+const WITHOUT_VARSWAP: readonly AsidePanelId[] = ["spot", "diag"];
 
 export default function LocalVolAside({
   ticker, data, smile, expiryIdx, onSelectExpiry, live, varSwapEnabled,
@@ -61,6 +64,9 @@ export default function LocalVolAside({
     spotReturn, spotState, setSpotReturn, setFollow, recalibrate, probeLive, spotNote,
   } = useSmileSession();
   const { workflow } = useWorkflowContext(); // the background job (Re-anchor progress)
+  const varSwapShown = varSwapEnabled && smile !== undefined;
+  const { sizeOf, toggle } = useAsideFocus(varSwapShown ? ASIDE_PANELS : WITHOUT_VARSWAP);
+  const diagSize = sizeOf("diag");
   // Fit replay (V3.5 item 13): the ⏵ toggle + an epoch that advances whenever a
   // fresh affine payload lands, so useLvTrace refetches and auto-replays once.
   const [traceOpen, setTraceOpen] = useState(false);
@@ -69,12 +75,16 @@ export default function LocalVolAside({
     if (data && data.hasFit !== false) setTraceEpoch((e) => e + 1);
   }, [data]);
 
+  const diagSummary = data
+    ? `rms ${formatPct(smile?.rmsError, 2)} · surface ${formatPct(data.surfaceRmsError, 2)}`
+    : "Awaiting data…";
+
   return (
-    <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
+    <aside className="flex min-h-0 w-72 shrink-0 flex-col gap-3 overflow-y-auto">
       {/* (a) Spot move — SpotPanel renders its own "Spot move" title: follow the
           market or the scenario dial (no recalibration); Recalibrate = the
           top-bar Calibrate for this ticker. */}
-      <Card>
+      <AsideCard id="spot" size={sizeOf("spot")}>
         <SpotPanel
           spotReturn={spotReturn}
           spotState={spotState}
@@ -86,14 +96,16 @@ export default function LocalVolAside({
           note={spotNote}
           disabled={!live}
           disabledReason={!live ? "requires live backend" : undefined}
+          size={sizeOf("spot")}
+          onToggleSize={() => toggle("spot")}
         />
-      </Card>
+      </AsideCard>
 
       {/* (b) Variance swap — VarSwapPanel renders its own title. Quote/session
           shared with Parametric, but the info is the AFFINE payload's own
           varSwap — model/basis/stale from the LV fit. */}
-      {varSwapEnabled && smile && (
-        <Card>
+      {varSwapShown && smile && (
+        <AsideCard id="varswap" size={sizeOf("varswap")}>
           <VarSwapPanel
             info={smile.varSwap}
             live={live}
@@ -105,97 +117,114 @@ export default function LocalVolAside({
             onUndo={() => void undoVarSwap(smile.expiry)}
             onRedo={() => void redoVarSwap(smile.expiry)}
             onReset={() => void applyVarSwap(smile.expiry, "reset")}
+            size={sizeOf("varswap")}
+            onToggleSize={() => toggle("varswap")}
           />
-        </Card>
+        </AsideCard>
       )}
 
       {/* (c) Fit diagnostics — RMS, per-expiry table, LV trace player */}
-      <Card>
-        <h3 className="text-sm font-semibold text-slate-100">Fit diagnostics</h3>
-        <p
-          className="mt-1 text-[11px] text-slate-500"
-          title="Grid size, regularizers and solver are global hyperparameters — set them in Options ▸ Local-Vol surface"
-        >
-          {ticker !== "" ? `Local-vol surface · ${ticker}` : "Awaiting data…"}
-        </p>
-
-        {/* Fit RMS — same calibration-consistent basis + format as Parametric */}
-        {data && (
-          <div className="mt-3 rounded-lg border border-slate-800 bg-surface-800/40 px-3 py-2">
-            <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
-              RMS vol error
-            </div>
-            <div className="flex justify-between font-mono text-[11px] text-slate-300">
-              <span className="text-slate-500">smile</span>
-              <span>{formatPct(smile?.rmsError, 2)}</span>
-            </div>
-            <div className="flex justify-between font-mono text-[11px] text-slate-300">
-              <span className="text-slate-500">surface</span>
-              <span>{formatPct(data.surfaceRmsError, 2)}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Per-expiry diagnostics — a row click selects that expiry's node */}
-        <div className="mt-3 border-t border-slate-800 pt-3">
-          <h4 className="mb-2 text-xs font-semibold text-slate-200">Per-expiry fit</h4>
-          <table className="w-full text-right font-mono text-[10px]">
-            <thead>
-              <tr className="text-slate-600">
-                <th className="pb-1 text-left font-normal">expiry</th>
-                <th className="pb-1 font-normal">T</th>
-                <th className="pb-1 font-normal">err bp</th>
-                <th className="pb-1 font-normal">min φ</th>
-              </tr>
-            </thead>
-            <tbody className="text-slate-300">
-              {(data?.smiles ?? []).map((s, i) => (
-                <tr
-                  key={s.expiry}
-                  onClick={() => onSelectExpiry(s.expiry)}
-                  className={[
-                    "cursor-pointer border-t border-slate-800/60",
-                    i === expiryIdx ? "text-accent-400" : "hover:text-slate-100",
-                  ].join(" ")}
-                >
-                  <td className="py-1 text-left text-slate-400">
-                    {formatExpiry(s.expiry, s.t, format)}
-                  </td>
-                  <td>{s.t.toFixed(2)}</td>
-                  <td>{fmtBp0(s.maxIvErrorBp)}</td>
-                  <td>{(data?.minDensity[i] ?? 0).toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="mt-2 text-[10px] text-slate-600">
-            min φ &gt; 0 ⇒ no butterfly arbitrage (Breeden–Litzenberger density).
-          </p>
-        </div>
-
-        {/* LV calibration trace player + solve-count footer */}
-        {data && (
-          <div className="mt-3 flex shrink-0 flex-col gap-2">
-            {traceOpen && <LvTracePlayer ticker={ticker} epoch={traceEpoch} />}
-            <p className="flex items-center gap-1.5 text-[10px] text-slate-600">
-              <button
-                onClick={() => setTraceOpen((v) => !v)}
-                title="Replay the LV calibration (accepted solver steps, post-hoc)"
-                className={[
-                  "rounded border p-0.5 transition-colors",
-                  traceOpen
-                    ? "border-violet-500/50 bg-violet-500/10 text-violet-300"
-                    : "border-slate-700 bg-surface-800 text-slate-400 hover:border-slate-600 hover:text-slate-200",
-                ].join(" ")}
-              >
-                <Play size={9} strokeWidth={1.75} />
-              </button>
-              {data.nEvals} PDE solves · price rms{" "}
-              {Number.isFinite(data.rmsPriceError) ? (data.rmsPriceError * 1e4).toFixed(1) : "—"} bp
+      <AsideCard id="diag" size={diagSize}>
+        <AsideHeader
+          title="Fit diagnostics"
+          size={diagSize}
+          onToggle={() => toggle("diag")}
+          summary={diagSummary}
+          expandTip="the full per-expiry table, the density note"
+        />
+        {diagSize !== "S" && (
+          <AsideBody>
+            <p
+              className="text-[11px] text-slate-500"
+              title="Grid size, regularizers and solver are global hyperparameters — set them in Options ▸ Local-Vol surface"
+            >
+              {ticker !== "" ? `Local-vol surface · ${ticker}` : "Awaiting data…"}
             </p>
-          </div>
+
+            {/* Fit RMS — same calibration-consistent basis + format as Parametric */}
+            {data && (
+              <div className="mt-3 rounded-lg border border-slate-800 bg-surface-800/40 px-3 py-2">
+                <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
+                  RMS vol error
+                </div>
+                <div className="flex justify-between font-mono text-[11px] text-slate-300">
+                  <span className="text-slate-500">smile</span>
+                  <span>{formatPct(smile?.rmsError, 2)}</span>
+                </div>
+                <div className="flex justify-between font-mono text-[11px] text-slate-300">
+                  <span className="text-slate-500">surface</span>
+                  <span>{formatPct(data.surfaceRmsError, 2)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Per-expiry diagnostics — a row click selects that expiry's node.
+                Capped and scrolling at the standard size, free when expanded. */}
+            <div className="mt-3 border-t border-slate-800 pt-3">
+              <h4 className="mb-2 text-xs font-semibold text-slate-200">Per-expiry fit</h4>
+              <div className={diagSize === "M" ? "max-h-36 overflow-y-auto" : ""}>
+                <table className="w-full text-right font-mono text-[10px]">
+                  <thead>
+                    <tr className="text-slate-600">
+                      <th className="pb-1 text-left font-normal">expiry</th>
+                      <th className="pb-1 font-normal">T</th>
+                      <th className="pb-1 font-normal">err bp</th>
+                      <th className="pb-1 font-normal">min φ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-slate-300">
+                    {(data?.smiles ?? []).map((s, i) => (
+                      <tr
+                        key={s.expiry}
+                        onClick={() => onSelectExpiry(s.expiry)}
+                        className={[
+                          "cursor-pointer border-t border-slate-800/60",
+                          i === expiryIdx ? "text-accent-400" : "hover:text-slate-100",
+                        ].join(" ")}
+                      >
+                        <td className="py-1 text-left text-slate-400">
+                          {formatExpiry(s.expiry, s.t, format)}
+                        </td>
+                        <td>{s.t.toFixed(2)}</td>
+                        <td>{fmtBp0(s.maxIvErrorBp)}</td>
+                        <td>{(data?.minDensity[i] ?? 0).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {diagSize === "L" && (
+                <p className="mt-2 text-[10px] text-slate-600">
+                  min φ &gt; 0 ⇒ no butterfly arbitrage (Breeden–Litzenberger density).
+                </p>
+              )}
+            </div>
+
+            {/* LV calibration trace player + solve-count footer */}
+            {data && (
+              <div className="mt-3 flex shrink-0 flex-col gap-2">
+                {traceOpen && <LvTracePlayer ticker={ticker} epoch={traceEpoch} />}
+                <p className="flex items-center gap-1.5 text-[10px] text-slate-600">
+                  <button
+                    onClick={() => setTraceOpen((v) => !v)}
+                    title="Replay the LV calibration (accepted solver steps, post-hoc)"
+                    className={[
+                      "rounded border p-0.5 transition-colors",
+                      traceOpen
+                        ? "border-violet-500/50 bg-violet-500/10 text-violet-300"
+                        : "border-slate-700 bg-surface-800 text-slate-400 hover:border-slate-600 hover:text-slate-200",
+                    ].join(" ")}
+                  >
+                    <Play size={9} strokeWidth={1.75} />
+                  </button>
+                  {data.nEvals} PDE solves · price rms{" "}
+                  {Number.isFinite(data.rmsPriceError) ? (data.rmsPriceError * 1e4).toFixed(1) : "—"} bp
+                </p>
+              </div>
+            )}
+          </AsideBody>
         )}
-      </Card>
+      </AsideCard>
     </aside>
   );
 }
