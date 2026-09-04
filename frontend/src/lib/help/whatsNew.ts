@@ -7,6 +7,15 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-04",
+    title: "Compare: match LQD's tails and compare bellies only",
+    items: [
+      "Three new toggles in the Compare strip — **= Var-swap**, **= Lee wings**, **= Edge** — refit SVI-JW and MCS with their tails pulled onto LQD's: the fair var-swap level, both asymptotic total-variance slopes, or the value and slope of total variance at the last quoted strike on each side (where extrapolation starts). Fits to the same quotes differ in the wings, so with the tails matched the RMS column reads belly expressiveness alone.",
+      "LQD joins the comparison as the pinned *target* while a toggle is lit; constrained rows carry a teal pill naming the constraints, and the Lee / Var-swap columns become a self-check that reads equal across rows. eSSVI is never constrained.",
+      "Each match is a stiff row (equality to solver tolerance), so the belly pays: with all three lit SVI-JW is over-determined and meets them in the least-squares sense. **= Lee wings** needs LQD's exponential tails (α = 0) — on a name with generalized tails the chip shows an amber ! and the reason; a reference slope above the Lee cap is matched at the cap (a *cap* tag).",
+    ],
+  },
+  {
+    date: "2026-09-04",
     title: "One chart grammar: Compare, Densities, Stacked IV and the Local Vol smile zoom like the Smile",
     items: [
       "Every 2-D chart now carries the Smile chart's full interaction stack: wheel zoom (Shift = x only, Alt = y only), drag to pan, double-click or ⌂ to reset, the **Y center** / **Y fit** buttons at the top-left of the plot, and an x-range slider under the plot.",

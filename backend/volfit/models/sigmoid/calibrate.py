@@ -23,6 +23,8 @@ re-exported here so the public import surface is unchanged.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 from scipy.optimize import least_squares
 
@@ -38,6 +40,7 @@ from volfit.calib.band import (
 from volfit.calib.extrap import ExtrapTarget, extrap_residuals
 from volfit.calib.operators import OperatorPriorTarget, operator_residuals
 from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
+from volfit.calib.tails import TailMatchTarget
 from volfit.calib.varswap import VarSwapTarget, varswap_residual
 from volfit.core.black import black_call
 from volfit.models.sigmoid.jacobian import siv_residual_jacobian
@@ -53,6 +56,7 @@ from volfit.models.sigmoid.structural import (
     pack_structural_mcs, siv_residual_jacobian_structural,
     structural_bounds_mcs, unpack_structural_mcs,
 )
+from volfit.models.sigmoid.tail_rows import mcs_tail_jacobian, mcs_tail_rows
 
 #: Default Lee wing-slope cap for the structural chart — mirrors the buffered
 #: FitSettings.leeSlopeMax production default (committee R1: beta = 2 itself
@@ -60,6 +64,25 @@ from volfit.models.sigmoid.structural import (
 #: Only read when ``chart="structural"``; the raw chart has no cap (its wings
 #: are diagnosed, not fenced — the historical behaviour, byte-identical).
 _LEE_SLOPE_MAX = 1.95
+#: Stiffness ramp of a tail-matched refine (fractions of the target's stiff
+#: weight solved in turn, warm-started, before the full-weight solve).
+_TAIL_CONTINUATION = (1e-4, 1e-3, 1e-2, 1e-1)
+#: The tail-matched refine's anchor ridge: sqrt(lambda) (theta - theta_plain)
+#: / max(|theta_plain|, floor) per solver coordinate. 1e-6 makes a FULL
+#: relative move cost what a 10 bp error on one quote costs — invisible to
+#: the belly fit, decisive along the far-wing valley (curvature ~1e-9 there).
+_ANCHOR_LAMBDA = 1e-6
+_ANCHOR_FLOOR = 0.1
+
+
+def _scaled_tail_match(target: TailMatchTarget, frac: float) -> TailMatchTarget:
+    """The same tail target at ``frac`` of its stiff weight (var-swap row too)."""
+    vs = target.var_swap
+    return replace(
+        target,
+        weight=target.weight * frac,
+        var_swap=None if vs is None else replace(vs, weight=vs.weight * frac),
+    )
 
 
 def _fit(
@@ -93,8 +116,20 @@ def _fit(
     solver_diag: dict | None = None,
     price_rows: tuple | None = None,
     scheme_mean_w: float | None = None,
+    tail_match: TailMatchTarget | None = None,
+    anchor: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> np.ndarray:
     """Bounded least-squares of the data term plus the amplitude ridge.
+
+    ``tail_match`` (volfit.calib.tails — the Compare view's tail-matching
+    toggles) appends the stiff var-swap / Lee-slope / edge rows (analytic
+    Jacobian, sigmoid/tail_rows); ``anchor`` = (theta_ref, scale) adds the
+    tiny scaled ridge sqrt(_ANCHOR_LAMBDA) (theta - theta_ref) / scale on the
+    SOLVER vector (the LAST block) that makes a tail-matched refine the
+    smallest deformation of the plain fit — without it the far-wing
+    parameters the quotes never see trade off along a flat valley the
+    trust-region solver inches through for its whole budget. Both None
+    (every production fit) are byte-identical.
 
     The data term is the plain mid residual (``band is None``) or the bid-ask /
     haircut band objective in vol space (volfit.calib.band); ``ridge`` is the
@@ -127,6 +162,7 @@ def _fit(
     ceil_z = np.asarray(calendar_k_ceil, float) / (sigma_ref * np.sqrt(t)) if ceil_on else None
     ceil_w = np.asarray(calendar_ceiling, float) if ceil_on else None
     sqrt_cal = np.sqrt(calendar_weight)
+    _anchor_sqrt = float(np.sqrt(_ANCHOR_LAMBDA))
 
     def to_raw(theta: np.ndarray) -> np.ndarray:
         """Chart -> raw parameter vector (identity on the raw chart)."""
@@ -195,10 +231,16 @@ def _fit(
             res = np.concatenate([res, belly_rows(theta_r, belly_z, n_cores, t, sigma_ref)])
         if extrap is not None:
             res = np.concatenate([res, _extrap_rows(theta)])
+        if tail_match is not None:
+            res = np.concatenate([res, _tail_rows(theta)])
+        if anchor is not None:
+            res = np.concatenate([res, _anchor_sqrt * (theta - anchor[0]) / anchor[1]])
         return res
 
-    def _extrap_rows(theta: np.ndarray) -> np.ndarray:
-        """Tapered extrapolated-region rows (Notes 09/10 Phase 2, LAST block)."""
+    def _w_and_lee(theta: np.ndarray):
+        """The iterate's total-variance curve w(k) and its closed-form
+        asymptotic k-space slopes (V3.1 leg 1, eq mcsbetak: the kernels are
+        zero-wing, so the base decides both tails)."""
         theta_r = to_raw(theta)
 
         def w_of_k(kk: np.ndarray) -> np.ndarray:
@@ -206,18 +248,44 @@ def _fit(
             return np.maximum(_eval_v(theta_r, zz, n_cores), _V_FLOOR) * t
 
         v0, s0, k0, z0, kp, kc = theta_r[:6]
+        lee_fn = lambda: analytic_lee_slopes(  # noqa: E731
+            s0 - 2.0 * k0 / kp, s0 + 2.0 * k0 / kc, sigma_ref, t
+        )
+        return w_of_k, lee_fn
+
+    def _extrap_rows(theta: np.ndarray) -> np.ndarray:
+        """Tapered extrapolated-region rows (Notes 09/10 Phase 2)."""
+        w_of_k, lee_fn = _w_and_lee(theta)
         return extrap_residuals(
             w_of_k, extrap, t,
             # Frozen at the scheme weights under IRLS (same float otherwise).
             mean_weight=(
                 scheme_mean_w if scheme_mean_w is not None else float(np.mean(sqrt_w**2))
             ),
-            # Closed-form asymptotic slopes (V3.1 leg 1, eq mcsbetak): the
-            # kernels are zero-wing, so the base decides both tails.
-            lee_fn=lambda: analytic_lee_slopes(
-                s0 - 2.0 * k0 / kp, s0 + 2.0 * k0 / kc, sigma_ref, t
-            ),
+            lee_fn=lee_fn,
         )
+
+    def _tail_rows(theta: np.ndarray) -> np.ndarray:
+        """Tail-matching rows (Compare toggles, volfit.calib.tails) — LAST block."""
+        return mcs_tail_rows(to_raw(theta), n_cores, sigma_ref, t, tail_match)
+
+    def _tail_jac(theta: np.ndarray) -> np.ndarray:
+        """Analytic Jacobian of the tail rows (sigmoid/tail_rows); on the
+        structural chart the 6 base columns chain through the chart map
+        (a 6x6 central difference of the closed-form unpack — cheap)."""
+        j = mcs_tail_jacobian(to_raw(theta), n_cores, sigma_ref, t, tail_match)
+        if chart_cap is not None:
+            eps = 1e-6
+            chain = np.empty((6, 6))
+            for p in range(6):
+                d = np.zeros(6)
+                d[p] = eps
+                chain[:, p] = (
+                    unpack_structural_mcs(theta[:6] + d, chart_cap, slope_scale)
+                    - unpack_structural_mcs(theta[:6] - d, chart_cap, slope_scale)
+                ) / (2.0 * eps)
+            j[:, :6] = j[:, :6] @ chain
+        return j
 
     def _wing_res(theta: np.ndarray) -> np.ndarray:
         g = _eval_g(to_raw(theta), wing_z, n_cores, t, sigma_ref)
@@ -258,6 +326,10 @@ def _fit(
                 j = np.vstack([j, fd_rows(_belly_res, theta)])
             if extrap is not None:  # hybrid: FD only the small extrap block
                 j = np.vstack([j, fd_rows(_extrap_rows, theta)])
+            if tail_match is not None:  # analytic (sigmoid/tail_rows): one replication, not 2P
+                j = np.vstack([j, _tail_jac(theta)])
+            if anchor is not None:  # the scaled ridge is diagonal in the solver vector
+                j = np.vstack([j, np.diag(_anchor_sqrt / anchor[1])])
             return j
 
     result = least_squares(
@@ -304,8 +376,13 @@ def calibrate_sigmoid(
     robust_loss: str = "off",
     robust_f_scale: float = 0.005,
     price_residuals: bool = False,
+    tail_match: TailMatchTarget | None = None,
 ) -> MultiCoreSiv:
     """Fit the Multi-Core SIV slice to total-variance quotes (eq mcsiv-slice).
+
+    ``tail_match`` (volfit.calib.tails — the Compare view's tail-matching
+    toggles) adds the stiff var-swap / Lee-slope / edge rows to the refine
+    stage (the base seeding stays mid); None (the default) is byte-identical.
 
     ``n_cores`` is the number R of zero-wing hats added on top of the base SIV
     (the "cores" slider). It is capped so the model never has more free
@@ -403,12 +480,17 @@ def calibrate_sigmoid(
         chart_cap=lee_slope_max if structural else None,
         slope_scale=slope_scale,
         solver_diag=solver_diag,
+        tail_match=tail_match,
     )
     base_theta0 = pack_structural_mcs(base, lee_slope_max, slope_scale) if structural else base
     ref_lo, ref_hi = structural_bounds_mcs(z) if structural else (base_lo, base_hi)
 
     # Stage 2: seed hats on the base residual, then refine everything jointly
-    # under the requested objective (band or mid).
+    # under the requested objective (band or mid). A tail-matched refine is
+    # WARM-STARTED from the plain refine's solution: the stiff rows are then
+    # met in a few iterations as the smallest deformation of the plain fit,
+    # instead of a long walk from the seeds along the far-wing valley the
+    # quotes never see (the plain path is byte-identical: one solve).
     if n_cores > 0:
         residual = v_quotes - _eval_v(base, z, 0)
         seeds = _seed_cores(z, residual, n_cores)
@@ -416,12 +498,21 @@ def calibrate_sigmoid(
         clo, chi = _core_bounds(z)
         lo = np.concatenate([ref_lo, *([clo] * n_cores)])
         hi = np.concatenate([ref_hi, *([chi] * n_cores)])
-        theta = _fit(theta0, lo, hi, z, vol_quotes, sqrt_w, n_cores, **refine_kwargs)
     else:
-        lo, hi = ref_lo, ref_hi
-        theta = _fit(
-            base_theta0, ref_lo, ref_hi, z, vol_quotes, sqrt_w, 0, **refine_kwargs
-        )
+        theta0, lo, hi = base_theta0, ref_lo, ref_hi
+    if tail_match is not None:
+        theta0 = _fit(theta0, lo, hi, z, vol_quotes, sqrt_w, n_cores, **{**refine_kwargs, "tail_match": None})
+        # The tail-matched refine is the SMALLEST deformation of that plain
+        # solution meeting the stiff rows: an anchor ridge (see _fit) on the
+        # solver vector turns the far-wing valley — parameters the quotes never
+        # see trading off with no cost — into a bowl the solver can descend.
+        # A stiffness ramp (continuation) then lets each solve converge instead
+        # of the trust region collapsing against the full-weight rows at once.
+        refine_kwargs["anchor"] = (theta0.copy(), np.maximum(np.abs(theta0), _ANCHOR_FLOOR))
+        for frac in _TAIL_CONTINUATION:
+            soft = _scaled_tail_match(tail_match, frac)
+            theta0 = _fit(theta0, lo, hi, z, vol_quotes, sqrt_w, n_cores, **{**refine_kwargs, "tail_match": soft})
+    theta = _fit(theta0, lo, hi, z, vol_quotes, sqrt_w, n_cores, **refine_kwargs)
 
     def to_raw(th: np.ndarray) -> np.ndarray:
         if not structural:

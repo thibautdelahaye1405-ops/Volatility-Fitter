@@ -8,6 +8,7 @@
 // stays presentation only.
 import type { CompareResponse } from "../lib/mockData";
 import { MODEL_COLORS, REFERENCE_NOTE, isReferenceModel } from "../lib/modelColor";
+import { tailMatchedLabel } from "../lib/tailMatch";
 import {
   formatFitMs,
   formatMetric,
@@ -90,6 +91,14 @@ export default function ModelCompareTable({ data }: { data: CompareResponse }) {
                         title={REFERENCE_NOTE[m.model] ?? "Reference family — compare-only yardstick, never a displayed model"}
                       >
                         reference
+                      </span>
+                    )}
+                    {tailMatchedLabel(m) !== null && (
+                      <span
+                        className="rounded border border-teal-500/30 bg-teal-500/10 px-1 py-px text-[9px] font-medium tracking-wider text-teal-300/90"
+                        title={`Tails matched to LQD's (${tailMatchedLabel(m)}): this fit carried the stiff tail-matching rows — equality to solver tolerance, the belly pays for it`}
+                      >
+                        {tailMatchedLabel(m)}
                       </span>
                     )}
                   </span>

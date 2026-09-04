@@ -21,6 +21,17 @@ describe("ModelCompareTable", () => {
     expect(screen.getByText("reference").getAttribute("title")).toMatch(/never a calibrated/i);
   });
 
+  it("tags a tail-matched row with the constraints it carried", () => {
+    const data = getMockComparison();
+    data.models = data.models.map((m) =>
+      m.model === "svi" ? { ...m, tailMatched: ["varswap", "edge"] as const } : m,
+    ) as typeof data.models;
+    render(<ModelCompareTable data={data} />);
+    const pill = screen.getByText("= var-swap · edge");
+    expect(pill.getAttribute("title")).toMatch(/matched to LQD/i);
+    expect(screen.getAllByText(/^= /).length).toBe(1); // only the SVI-JW row
+  });
+
   it("shows no pill when only models are compared", () => {
     const data = getMockComparison();
     data.models = data.models.filter((m) => m.model !== "essvi");

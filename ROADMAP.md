@@ -1030,6 +1030,90 @@ universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
 
+### 🧭 SESSION WRAP (2026-09-04d) — COMPARE TAIL MATCHING: THREE TOGGLES PULL SVI-JW / MCS TAILS ONTO LQD's
+
+User request: "optionally constrain SVI-JW and MCS targeting LQD-implied
+var-swap level and / or Lee asymptotes … all displayed models would share
+similar tails" + the third toggle proposed in the assessment (the quoted-EDGE
+value + slope match). Rationale recorded: fits to the same quotes agree
+inside the quoted range to within their RMS and differ in the extrapolated
+wings, so with the tails matched the RMS column reads belly expressiveness
+alone — the Note 02 committee's open question. LQD is the reference by
+choice (arbitrage-free backbone, analytic tails + var-swap); eSSVI is never
+constrained (its wings are tied to all three handles).
+
+- `calib/tails.py` — `TailMatchTarget` (var-swap `VarSwapTarget` at the
+  stiff weight VARSWAP_PIN_MULT × Σw, Lee pair clamped under the cap −0.02,
+  the two `EdgePoint`s), `tail_reference` (read off the LQD slice: exact
+  var-swap, `lee_slopes` only in the exponential class — alpha > 0 makes the
+  slope 0, unmatchable — and w / dw/dk at the quoted extremes),
+  `build_tail_match`, `tail_match_residuals` (wire order: var-swap · β_L ·
+  β_R · left value / slope · right value / slope; values vol-space, slopes
+  × 0.05 vol-equivalent), `tail_match_jacobian` (analytic assembly: the
+  var-swap row differentiated UNDER the replication integral through
+  black_vega_w, the edge slope through the residual's own k-difference).
+  FINDING: the var-swap row must integrate on the DIAGNOSTICS grid (4001
+  points, `VS_MATCH_POINTS`) — the in-loop 801-point grid of the market
+  var-swap penalty is 10 bp of vol away on a one-month node (the kink at
+  k = 0), and the pin has to land on the number the table reports.
+- `svi_jw/calibrate.py`: `tail_match=` — rows LAST, FD'd as a hybrid block
+  (`_fd_block` generalizes the extrap FD; byte-identical arithmetic).
+- `sigmoid/calibrate.py` + `sigmoid/tail_rows.py`: `tail_match=` in `_fit`
+  and `calibrate_sigmoid` (refine stage only); ANALYTIC tail Jacobian via
+  `jacobian._model_v_grad` (chart chain = 6×6 central difference of
+  `unpack_structural_mcs`). PERF CASE FILE: the first cut ran to trf's
+  evaluation budget on the six-month node — 49 s — with the var-swap and
+  Lee already matched after ~50 evaluations. Diagnosed in order: not FD
+  noise (the FD Jacobian agrees to 1e-8 across step sizes), not bounds
+  (none active), not stiffness (mult 1e1 … 1e4 all slow), `x_scale="jac"`
+  worse, dogbox worse, a capped budget MISREPORTS the belly (RMS 7.5 bp at
+  100 evals vs 1.1 bp converged). Root cause: the far-wing parameters the
+  var-swap integral reads (z0, kappas, hat positions) trade off along a
+  flat valley the quotes never pin, and the trust region inches along it.
+  Fix: (i) warm start from the PLAIN refine, (ii) an anchor ridge
+  sqrt(1e-6)(θ − θ_plain)/max(|θ_plain|, 0.1) on the solver vector — the
+  smallest deformation meeting the constraints, invisible to the belly
+  (a full relative move costs one 10 bp quote error), decisive along the
+  valley — (iii) a stiffness continuation (1e-4 … 1e-1 of the weight).
+  Measured: every MCS case ≤ 0.44 s (49 s → 0.32 s live on the app with all
+  three toggles), matches to 0.00 bp / 4 decimals. Plain path byte-identical
+  (one solve, no anchor).
+- `models/display.py` threads `tail_match`; `api/compare_tails.py`
+  (`parse_tail_flags`, `reference_of`, `resolve_tail_match` → the wire
+  `TailMatchInfo`: requested / applied / target / leeAvailable / leeClamped /
+  note / reference numbers / edge k's); `api/compare.py`: `tail_flags` on
+  `compare_payload`, the LQD row computed FIRST as the reference (its slice
+  kept beside the row in the side cache — `CompareCache.slices`), constrained
+  rows keyed (fit_key, model, applied flags) and never a committed-record
+  reuse, `CompareModelFit.tailMatched`; router `tail_match=` CSV (422 on an
+  unknown flag).
+- Frontend: `lib/tailMatch.ts` (labels · titles · `tailChipState` — a lit
+  flag the backend dropped shows "!" + the note, a clamped Lee a "cap" tag —
+  `tailMatchedLabel`); CompareChips: a third group "match LQD tails" with the
+  three toggles, LQD pinned as *target* while one is lit; ModelCompareTable:
+  teal pill "= var-swap · Lee · edge" on constrained rows; SmileViewer:
+  `compareTails` in the tab's view state, LQD auto-joins the comparison;
+  `useModelComparison(…, tails)` → `tail_match=` (the mock echoes the flags).
+  Help: tip `compare-tail-matching`, glossary `tail-matching`, What's new
+  2026-09-04, VIEW_HINTS compare.
+- Locks: `test_calib_tails.py` (rows vanish on the reference; SVI lands on
+  the Lee slopes both charts, on the var-swap and both edges; MCS on Lee +
+  var-swap; the MCS analytic Jacobian vs FD both charts; default call
+  untouched; clamp / drop / parse), `test_api_compare_tails.py` (each flag's
+  rows land on LQD's numbers, wire order + separate cache keys + hits, Lee
+  unavailable under `tailAlphaByTicker` alpha > 0 with Edge still applied,
+  422). Frontend: `tailMatch.test.ts`, CompareChips / ModelCompareTable
+  cases. Backend 135 + 16 passed across the calibrator / compare / extrap /
+  var-swap suites; tsc · vitest 71 files / 477 tests · build ·
+  `npm run smoke:ui` green LIVE; live probe of the toggles (rows refit,
+  pills, columns equal, plain rows back from the cache; screenshots
+  .smoke/tail-match-*.png).
+- Honest caveats recorded: a stiff edge match on a one-month node can wreck
+  a straight-wing family (SVI right Lee → 1.34, MCS RMS 51 bp on the
+  synthetic 1M node) — that IS the result, the table shows it; with all
+  three on the seven stiff rows are met in the least-squares sense (the
+  structural MCS chart leaves the slopes ~0.01 off).
+
 ### 🧭 SESSION WRAP (2026-09-04c) — ONE CHART GRAMMAR: COMPARE, DENSITIES, STACKED IV AND THE LV SMILE ZOOM LIKE THE SMILE
 
 User request: give the Compare chart the Smile chart's zoom / pan features

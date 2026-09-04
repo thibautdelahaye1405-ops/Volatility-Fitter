@@ -376,6 +376,28 @@ export interface CompareValidity {
   certified?: boolean | null;
 }
 
+/** The tail-matching toggles of the Compare view (wire order): pin the
+ *  SVI-JW / MCS fits' var-swap level, Lee slopes and quoted-edge value +
+ *  slope to LQD's, so the comparison isolates belly expressiveness. */
+export type CompareTailFlag = "varswap" | "lee" | "edge";
+
+/** What tail matching did on one compare (GET …/compare?tail_match=…). */
+export interface CompareTailInfo {
+  requested: CompareTailFlag[];
+  /** The constraints the straight-wing rows actually carried. */
+  applied: CompareTailFlag[];
+  target: string; // "lqd"
+  /** False when LQD's tails are generalized (α > 0): its Lee slope is 0. */
+  leeAvailable: boolean;
+  leeClamped: boolean;
+  note?: string | null;
+  referenceVarSwapVol?: number | null;
+  referenceLeeLeft?: number | null;
+  referenceLeeRight?: number | null;
+  edgeKLeft?: number | null;
+  edgeKRight?: number | null;
+}
+
 /** One model family's fit + uniform metrics on the compared node. */
 export interface CompareModelFit {
   model: CompareModelId;
@@ -401,6 +423,8 @@ export interface CompareModelFit {
   /** Ad-hoc fit wall time (ms); null when the committed record was reused. */
   fitMs?: number | null;
   reused?: boolean;
+  /** The tail-matching constraints this row's fit carried (empty = plain). */
+  tailMatched?: CompareTailFlag[];
 }
 
 /** Response of GET /smiles/{ticker}/{expiry}/compare. */
@@ -410,6 +434,8 @@ export interface CompareResponse {
   fitMode: string;
   activeModel: string;
   models: CompareModelFit[];
+  /** Present whenever tail matching was requested. */
+  tailMatch?: CompareTailInfo | null;
 }
 
 /* ------------------------------------------------------------------ */

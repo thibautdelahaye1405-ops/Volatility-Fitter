@@ -46,6 +46,7 @@ from volfit.calib.rms import max_quote_error
 from volfit.calib.extrap import ExtrapTarget, extrap_residuals
 from volfit.calib.operators import OperatorPriorTarget, operator_residuals
 from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
+from volfit.calib.tails import TailMatchTarget, tail_match_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual
 from volfit.core.black import black_call, black_vega_sigma
 from volfit.models.svi_jw.jacobian import (
@@ -166,8 +167,14 @@ def calibrate_svi(
     robust_loss: str = "off",
     robust_f_scale: float = 0.005,
     price_residuals: bool = False,
+    tail_match: TailMatchTarget | None = None,
 ) -> SVICalibration:
     """Least-squares fit of a raw-SVI slice to total-variance quotes.
+
+    ``tail_match`` (volfit.calib.tails — the Compare view's tail-matching
+    toggles) appends the stiff var-swap / Lee-slope / edge rows pulling this
+    slice's tails onto a reference's (LQD), as the LAST block, FD-differentiated
+    like the extrap block. None (the default) is byte-identical.
 
     ``k``/``w_quotes`` are log-moneyness and total implied variance; ``t`` the
     expiry year fraction (only the vol/vega scaling depends on it). ``weights``
@@ -330,28 +337,36 @@ def calibrate_svi(
             res = np.concatenate((res, operator_residuals(raw.total_variance, operator_prior)))
         if extrap is not None:
             res = np.concatenate((res, _extrap_rows(raw)))
+        if tail_match is not None:
+            res = np.concatenate((res, _tail_rows(raw)))
         return res
 
+    def _lee_of(raw: RawSVI) -> tuple[float, float]:
+        """SVI's asymptotic total-variance slopes are exact: b(1 -/+ rho)."""
+        return (raw.b * (1.0 - raw.rho), raw.b * (1.0 + raw.rho))
+
     def _extrap_rows(raw: RawSVI) -> np.ndarray:
-        """Tapered extrapolated-region rows (LAST in the residual vector)."""
+        """Tapered extrapolated-region rows (after the data / penalty blocks)."""
         return extrap_residuals(
             raw.total_variance, extrap, t,
             mean_weight=float(np.mean(sqrt_weights**2)),
-            # SVI's asymptotic total-variance slopes are exact: b(1 -/+ rho).
-            lee_fn=lambda: (raw.b * (1.0 - raw.rho), raw.b * (1.0 + raw.rho)),
+            lee_fn=lambda: _lee_of(raw),
         )
 
-    def _extrap_fd_jac(theta: np.ndarray, eps: float = 1e-6) -> np.ndarray:
-        """Central FD of the extrap rows only — the hybrid-Jacobian pattern of
-        the MCS wing penalty: the dominant blocks stay analytic."""
-        base = _extrap_rows(unpack(theta))
+    def _tail_rows(raw: RawSVI) -> np.ndarray:
+        """Tail-matching rows (Compare toggles, volfit.calib.tails) — LAST block."""
+        return tail_match_residuals(raw.total_variance, lambda: _lee_of(raw), tail_match)
+
+    def _fd_block(rows_of, theta: np.ndarray, eps: float = 1e-6) -> np.ndarray:
+        """Central FD of one small residual block (extrap / tail rows) — the
+        hybrid-Jacobian pattern of the MCS wing penalty: the dominant blocks
+        stay analytic."""
+        base = rows_of(unpack(theta))
         jw = np.empty((base.size, theta.size))
         for p in range(theta.size):
             d = np.zeros_like(theta)
             d[p] = eps
-            jw[:, p] = (
-                _extrap_rows(unpack(theta + d)) - _extrap_rows(unpack(theta - d))
-            ) / (2.0 * eps)
+            jw[:, p] = (rows_of(unpack(theta + d)) - rows_of(unpack(theta - d))) / (2.0 * eps)
         return jw
 
     theta0 = _init_theta(k, w_quotes)
@@ -393,7 +408,9 @@ def calibrate_svi(
                 ceil_k, ceil_w, price_targets=pt,
             )
             if extrap is not None:  # hybrid: FD only the small extrap block
-                j = np.vstack([j, _extrap_fd_jac(theta)])
+                j = np.vstack([j, _fd_block(_extrap_rows, theta)])
+            if tail_match is not None:  # hybrid: FD only the tail-matching rows
+                j = np.vstack([j, _fd_block(_tail_rows, theta)])
             return j
 
     def _run(theta_start: np.ndarray):

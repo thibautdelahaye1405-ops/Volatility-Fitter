@@ -54,7 +54,7 @@ import { composeFrames } from "../lib/smileLayers";
 import { useModelComparison } from "../state/useModelComparison";
 import { compareSeries } from "../lib/modelCompare";
 import { MODEL_ORDER } from "../lib/modelColor";
-import type { CompareModelId } from "../lib/mockData";
+import type { CompareModelId, CompareTailFlag } from "../lib/mockData";
 import { axisModeLabel, axisTickLabel, axisTransform, makeVolAt } from "../lib/axisModes";
 import type { AxisContext, AxisMode } from "../lib/axisModes";
 import { formatPct } from "../lib/chartScale";
@@ -77,6 +77,9 @@ interface ParametricView {
   autoScaleY: AutoScaleToggles;
   /** Extra Compare families beyond the prevailing one (chips clicked). */
   compareExtra: CompareModelId[];
+  /** Tail-matching toggles lit in Compare (lib/tailMatch): the SVI-JW / MCS
+   *  rows refit with their tails pulled onto LQD's. */
+  compareTails: CompareTailFlag[];
 }
 
 export default function SmileViewer() {
@@ -103,7 +106,7 @@ export default function SmileViewer() {
   const [vs, patchView] = useLensViewMemory<ParametricView>("parametric", () => ({
     view: "smile", densityKind: "density", axisMode: "logmoneyness",
     showTarget: true, showCalibQuotes: false, showCalibFit: true, showWeights: false,
-    autoScaleY: readSmileAutoScale(), compareExtra: [],
+    autoScaleY: readSmileAutoScale(), compareExtra: [], compareTails: [],
   }));
   const { view, densityKind, axisMode, showTarget, showCalibQuotes, showCalibFit, showWeights, autoScaleY } = vs;
   const setDensityKind = (densityKind: DistKind) => patchView({ densityKind });
@@ -167,9 +170,14 @@ export default function SmileViewer() {
       patchView({ compareExtra: [] });
     }
   }, [smileKey, prevailing]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Tail matching (lib/tailMatch): LQD is the reference, so it joins the
+  // comparison whenever a toggle is lit (its chip is pinned meanwhile).
+  const compareTails = vs.compareTails ?? [];
   const compareModels = useMemo(
-    () => MODEL_ORDER.filter((m) => m === prevailing || vs.compareExtra.includes(m)),
-    [prevailing, vs.compareExtra],
+    () => MODEL_ORDER.filter(
+      (m) => m === prevailing || vs.compareExtra.includes(m) || (m === "lqd" && compareTails.length > 0),
+    ),
+    [prevailing, vs.compareExtra, compareTails],
   );
   const toggleModel = (id: CompareModelId) =>
     patchView({
@@ -177,8 +185,14 @@ export default function SmileViewer() {
         ? vs.compareExtra.filter((m) => m !== id)
         : [...vs.compareExtra, id],
     });
+  const toggleTail = (flag: CompareTailFlag) =>
+    patchView({
+      compareTails: compareTails.includes(flag)
+        ? compareTails.filter((f) => f !== flag)
+        : [...compareTails, flag],
+    });
   const comparison = useModelComparison(
-    view === "compare", live, ticker, expiry, fitMode, spotVersion, compareModels,
+    view === "compare", live, ticker, expiry, fitMode, spotVersion, compareModels, compareTails,
   );
   // Compare chart x-axis: the smile's own context (forward, T, ATM vol, the
   // prevailing fit's vol at k for the delta mode) — ONE coordinate for every
@@ -267,7 +281,8 @@ export default function SmileViewer() {
       case "compare": {
         const chips = (
           <CompareChips prevailing={prevailing} selected={new Set(compareModels)} onToggle={toggleModel}
-            data={comparison.data} loading={comparison.loading} />
+            data={comparison.data} loading={comparison.loading}
+            tails={new Set(compareTails)} onToggleTail={toggleTail} tailInfo={comparison.data?.tailMatch ?? null} />
         );
         if (comparison.data === null) {
           return (

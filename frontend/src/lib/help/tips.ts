@@ -208,6 +208,13 @@ export const TIPS: Tip[] = [
     action: { command: "lens.parametric", label: "Go to the Parametric lens" },
   },
   {
+    id: "compare-tail-matching",
+    title: "Match LQD's tails to compare bellies only",
+    body: "In Compare, **= Var-swap**, **= Lee wings** and **= Edge** refit SVI-JW and MCS with their tails pulled onto LQD's — the var-swap level, the asymptotic slopes, or the value and slope at the last quoted strike. Fits to the same quotes differ in the wings, so what is left in the RMS column is belly expressiveness. Lee needs LQD's exponential tails (α = 0); a chip the backend could not apply shows an amber !.",
+    scope: "parametric", level: "pro",
+    action: { command: "lens.parametric", label: "Go to the Parametric lens" },
+  },
+  {
     id: "quote-editing-keys",
     title: "Edit quotes with the keyboard",
     body: "Click a quote to select it; Delete excludes or restores it; ↑ / ↓ amend the mid by 0.1 vol pt (Shift = 0.5); Ctrl+Z / Ctrl+Y undo and redo. The node turns stale until you calibrate.",

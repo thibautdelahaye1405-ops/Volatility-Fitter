@@ -30,6 +30,7 @@ from volfit.calib.band import BandTarget
 from volfit.calib.rms import max_quote_error
 from volfit.calib.operators import OperatorPriorTarget
 from volfit.calib.prior import PriorAnchorTarget
+from volfit.calib.tails import TailMatchTarget
 from volfit.calib.varswap import VarSwapTarget
 from volfit.models.base import SmileModel
 from volfit.models.diagnostics import (
@@ -103,8 +104,13 @@ def build_display_fit(
     prior_var_swap: VarSwapTarget | None = None,
     wing_penalty: float = 0.0,
     extrap=None,
+    tail_match: TailMatchTarget | None = None,
 ) -> DisplayFit | None:
     """Fit the chosen overlay family; None for "lqd" (the dedicated path).
+
+    ``tail_match`` (volfit.calib.tails — the Compare view's tail-matching
+    toggles) pulls either overlay family's tails onto a reference's (LQD);
+    None (the default, and every production fit) is byte-identical.
 
     ``settings`` is any object carrying the per-model overlay coefficients
     (nCores, the SVI penalty weight / Lee-slope bound, the sigmoid ridge, the
@@ -156,6 +162,7 @@ def build_display_fit(
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
             extrap=extrap,
+            tail_match=tail_match,
             chart=getattr(settings, "sviChart", "raw"),
             # Short-dated objective knobs (defaults byte-identical): tau-aware
             # anchor attenuation, IRLS robust data loss, price-space residuals.
@@ -196,6 +203,7 @@ def build_display_fit(
             prior_var_swap=prior_var_swap,
             wing_penalty=wing_penalty,
             extrap=extrap,
+            tail_match=tail_match,
             # V3.1 leg 3: MCS optimization chart (default "raw", byte-identical)
             # against the same buffered Lee cap the SVI chart honours.
             chart=getattr(settings, "mcsChart", "raw"),

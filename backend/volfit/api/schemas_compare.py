@@ -34,6 +34,28 @@ class CompareValidity(BaseModel):
     certified: bool | None = None
 
 
+class TailMatchInfo(BaseModel):
+    """What the tail-matching toggles (volfit.calib.tails) did on this compare:
+    the flags asked for, the ones that could apply, the reference numbers the
+    straight-wing families were pulled onto, and why a flag was dropped."""
+
+    requested: list[str] = []  # subset of ("varswap", "lee", "edge"), wire order
+    applied: list[str] = []  # the constraints the SVI-JW / MCS rows carried
+    target: str = "lqd"  # the reference family
+    #: False when the reference's tails are generalized (LQD alpha > 0): its
+    #: asymptotic Lee slope is 0, unreachable for a straight-wing family.
+    leeAvailable: bool = True
+    #: True when a reference Lee slope was pulled under the family cap.
+    leeClamped: bool = False
+    #: Human note when something was dropped (Lee unavailable, LQD fit failed).
+    note: str | None = None
+    referenceVarSwapVol: float | None = None
+    referenceLeeLeft: float | None = None
+    referenceLeeRight: float | None = None
+    edgeKLeft: float | None = None  # the quoted edges the "edge" flag matches at
+    edgeKRight: float | None = None
+
+
 class CompareModelFit(BaseModel):
     """One model family's fit + uniform metrics on the compared node."""
 
@@ -62,6 +84,9 @@ class CompareModelFit(BaseModel):
     #: True when this row reads the ACTIVE displayed family's committed
     #: record (fresh fit_key) instead of an ad-hoc fit — read-only reuse.
     reused: bool = False
+    #: The tail-matching constraints this row's fit carried (empty for the
+    #: reference LQD, the eSSVI yardstick and every unconstrained fit).
+    tailMatched: list[str] = []
 
 
 class CompareResponse(BaseModel):
@@ -72,3 +97,5 @@ class CompareResponse(BaseModel):
     fitMode: str
     activeModel: str  # FitSettings.model at compare time
     models: list[CompareModelFit] = []
+    #: Present whenever tail matching was requested (even if nothing applied).
+    tailMatch: TailMatchInfo | None = None

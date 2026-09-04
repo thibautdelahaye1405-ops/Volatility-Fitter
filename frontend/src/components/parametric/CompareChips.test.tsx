@@ -61,6 +61,47 @@ describe("CompareChips", () => {
   });
 });
 
+describe("tail matching", () => {
+  const tailProps = (tails: string[] = [], info: object | null = null) => ({
+    tails: new Set(tails as ("varswap" | "lee" | "edge")[]),
+    onToggleTail: vi.fn(),
+    tailInfo: info as never,
+  });
+
+  it("shows the three toggles only with a toggler, and reports the click", () => {
+    renderChips();
+    expect(screen.queryByRole("button", { name: /= Var-swap/ })).toBeNull();
+    cleanup();
+    const p = tailProps();
+    render(
+      <CompareChips prevailing="lqd" selected={new Set(["lqd"])} onToggle={vi.fn()} data={null} loading={false} {...p} />,
+    );
+    for (const name of [/= Var-swap/, /= Lee wings/, /= Edge/]) {
+      expect(screen.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("false");
+    }
+    fireEvent.click(screen.getByRole("button", { name: /= Edge/ }));
+    expect(p.onToggleTail).toHaveBeenCalledWith("edge");
+  });
+
+  it("pins LQD as the target while a toggle is lit, and flags a dropped toggle", () => {
+    const p = tailProps(["lee", "edge"], {
+      requested: ["lee", "edge"], applied: ["edge"], target: "lqd",
+      leeAvailable: false, leeClamped: false, note: "alpha > 0",
+    });
+    render(
+      <CompareChips prevailing="svi" selected={new Set(["svi", "lqd"])} onToggle={vi.fn()} data={null} loading={false} {...p} />,
+    );
+    const lqd = screen.getByRole("button", { name: /^LQD/ });
+    expect((lqd as HTMLButtonElement).disabled).toBe(true);
+    expect(lqd.textContent).toContain("target");
+    const lee = screen.getByRole("button", { name: /= Lee wings/ });
+    expect(lee.getAttribute("aria-pressed")).toBe("true");
+    expect(lee.textContent).toContain("!");
+    expect(lee.getAttribute("title")).toContain("alpha > 0");
+    expect(screen.getByRole("button", { name: /= Edge/ }).textContent).not.toContain("!");
+  });
+});
+
 describe("prevailingModelId", () => {
   it("routes ids and labels onto families, eSSVI before SVI", () => {
     expect(prevailingModelId("svi_jw", "SVI-JW")).toBe("svi");

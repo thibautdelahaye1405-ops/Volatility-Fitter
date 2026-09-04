@@ -19,6 +19,13 @@ the endpoint's own bounded FIFO side cache on the AppState, keyed
 carry no var-swap / prior / calendar targets — a like-for-like fit of each
 family to the same quotes (the dispatch.fit_node semantics); the reused
 committed row is the production fit as displayed.
+
+TAIL MATCHING (volfit.api.compare_tails, the view's three toggles): with
+``tail_flags`` the SVI-JW / MCS rows are refit with the stiff rows pulling
+their tails onto the LQD row's (var-swap level, Lee slopes, the quoted-edge
+value + slope), so the comparison isolates belly expressiveness. Those rows
+are keyed (fit_key, model, applied flags) and never reuse a committed record;
+the LQD reference row is computed first (and cached like any other).
 """
 
 from __future__ import annotations
@@ -28,8 +35,14 @@ from collections import OrderedDict
 
 import numpy as np
 
+from volfit.api.compare_tails import TAIL_FAMILIES, resolve_tail_match
 from volfit.api.schemas import SmilePoint
-from volfit.api.schemas_compare import CompareModelFit, CompareResponse, CompareValidity
+from volfit.api.schemas_compare import (
+    CompareModelFit,
+    CompareResponse,
+    CompareValidity,
+    TailMatchInfo,
+)
 from volfit.api.service import (
     K_DISPLAY_HI,
     K_DISPLAY_LO,
@@ -46,6 +59,7 @@ from volfit.api.service import (
 )
 from volfit.api.state import AppState
 from volfit.calib.rms import max_quote_error, node_error_terms, rms
+from volfit.calib.tails import TailMatchTarget
 from volfit.calib.weights import resolve_weights
 from volfit.models.diagnostics import (
     analytic_butterfly,
@@ -66,20 +80,25 @@ from volfit.models.wings import wing_laws_of
 #: (volfit.models.essvi) — a yardstick, never a selectable displayed model.
 COMPARE_MODELS = ("lqd", "svi", "sigmoid", "essvi")
 _LABELS = {"lqd": "LQD", "svi": "SVI-JW", "sigmoid": "MCS", "essvi": "eSSVI"}
-#: FIFO bound on the side cache (a handful of nodes x 4 families in practice).
+#: FIFO bound on the side cache (a handful of nodes x 4 families x a few
+#: tail-matching combinations in practice).
 _CACHE_MAX = 96
 
 
 class CompareCache:
-    """Bounded FIFO side map of computed compare rows, keyed (fit_key, model).
+    """Bounded FIFO side map of computed compare rows, keyed (fit_key, model)
+    or (fit_key, model, applied tail flags).
 
     Lives as a lazily-created plain attribute on the AppState — NEVER
     persisted, never part of the fit cache; invalidation is the key change
     itself (fit_key already carries every input version). ``hits`` counts
-    served entries (testability: a second identical call must not refit)."""
+    served entries (testability: a second identical call must not refit).
+    ``slices`` keeps the fitted slice beside its row (same keys, same
+    eviction) so the LQD reference of tail matching needs no refit."""
 
     def __init__(self, max_entries: int = _CACHE_MAX) -> None:
         self.entries: OrderedDict[tuple, CompareModelFit] = OrderedDict()
+        self.slices: dict[tuple, object] = {}
         self.max_entries = max_entries
         self.hits = 0
 
@@ -89,10 +108,13 @@ class CompareCache:
             self.hits += 1
         return row
 
-    def put(self, key: tuple, row: CompareModelFit) -> None:
+    def put(self, key: tuple, row: CompareModelFit, slice_=None) -> None:
         self.entries[key] = row
+        if slice_ is not None:
+            self.slices[key] = slice_
         while len(self.entries) > self.max_entries:
-            self.entries.popitem(last=False)  # FIFO: evict the oldest entry
+            old, _ = self.entries.popitem(last=False)  # FIFO: evict the oldest entry
+            self.slices.pop(old, None)
 
 
 def compare_cache(state: AppState) -> CompareCache:
@@ -151,12 +173,16 @@ def _validity(family: str, slice_, k: np.ndarray) -> CompareValidity | None:
     return CompareValidity(kind=kind, minValue=_finite_or_none(min_v), certified=certified)
 
 
-def _fit_family(family: str, k, w, tau, weights, band, settings, ticker: str):
+def _fit_family(
+    family: str, k, w, tau, weights, band, settings, ticker: str,
+    tail_match: TailMatchTarget | None = None,
+):
     """Ad-hoc fit of one family at the LIVE hyperparameters — a pure function
     call (mirrors service._slice_task's settings threading: LQD order guard,
     coords + per-underlier tail alphas; the overlays via the same
     OverlaySettings the fit-pool workers read, incl. sviChart / mcsChart /
-    leeSlopeMax / bellyRepair). No var-swap / prior / calendar targets."""
+    leeSlopeMax / bellyRepair). No var-swap / prior / calendar targets;
+    ``tail_match`` (the straight-wing families only) adds the tail rows."""
     if family == "lqd":
         alpha_left, alpha_right = settings.tail_alphas(ticker)
         result = calibrate_slice(
@@ -181,7 +207,10 @@ def _fit_family(family: str, k, w, tau, weights, band, settings, ticker: str):
             mid_anchor_tau_ref=settings.midAnchorTauRef,
         )
         return result.slice
-    display = build_display_fit(family, k, w, tau, weights, _overlay_settings(settings), band=band)
+    display = build_display_fit(
+        family, k, w, tau, weights, _overlay_settings(settings), band=band,
+        tail_match=tail_match,
+    )
     return display.slice
 
 
@@ -255,12 +284,15 @@ def _model_row(
 def compare_payload(
     state: AppState, ticker: str, expiry_iso: str,
     models: tuple[str, ...] = COMPARE_MODELS, fit_mode: str = "mid",
+    tail_flags: tuple[str, ...] = (),
 ) -> CompareResponse:
     """Fit every requested family to one node's prepared quotes; one row each.
 
     Raises UnknownNodeError (-> 404) for an unknown node. A node with no
     chain / no forward yet yields an empty, honest ``models`` list. A single
-    family's fit failure is recorded on its row (ok=False), never a 500."""
+    family's fit failure is recorded on its row (ok=False), never a 500.
+    ``tail_flags`` (compare_tails) constrains the SVI-JW / MCS rows' tails to
+    the LQD row's; the response then carries a ``tailMatch`` report."""
     expiry = state.resolve_expiry(ticker, expiry_iso)  # UnknownNodeError -> 404
     iso = expiry.isoformat()
     settings = state.fit_settings()
@@ -269,6 +301,10 @@ def compare_payload(
     )
     prepared = prepare_slice(state, ticker, iso)
     if prepared is None:
+        if tail_flags:
+            response.tailMatch = TailMatchInfo(
+                requested=list(tail_flags), note="tail matching needs the LQD reference fit (no quotes)"
+            )
         return response
 
     # The production fit's own post-edit inputs, resolved ONCE for every family.
@@ -278,26 +314,48 @@ def compare_payload(
     key = fit_key(state, ticker, iso, fit_mode)
     cache = compare_cache(state)
 
+    def family_row(family: str, target: TailMatchTarget | None = None):
+        """This family's row (+ slice when fitted here): cached, reused from
+        the committed record (unconstrained rows only), or fitted ad hoc."""
+        flags = target.applied if (target is not None and family in TAIL_FAMILIES) else ()
+        ckey = (key, family, flags) if flags else (key, family)
+        row = cache.get(ckey)
+        if row is not None:
+            return row, cache.slices.get(ckey)
+        slice_ = None
+        try:
+            committed = None if flags else _committed_slice(state, ticker, iso, fit_mode, key, family)
+            if committed is not None:
+                slice_ = committed
+                row = _model_row(family, slice_, prepared, k, w, weights, band,
+                                 fit_ms=None, reused=True)
+            else:
+                t0 = time.perf_counter()
+                slice_ = _fit_family(family, k, w, prepared.tau, weights, band, settings, ticker,
+                                     tail_match=target if flags else None)
+                fit_ms = (time.perf_counter() - t0) * 1e3
+                row = _model_row(family, slice_, prepared, k, w, weights, band,
+                                 fit_ms=fit_ms, reused=False)
+            if flags:
+                row.tailMatched = list(flags)
+        except Exception as exc:  # noqa: BLE001 - a fit break is a row, not a 500
+            row = CompareModelFit(
+                model=family, label=_LABELS[family], ok=False,
+                error=type(exc).__name__ + ": " + str(exc)[:160],
+            )
+        cache.put(ckey, row, slice_)
+        return row, slice_
+
+    target = None
+    if tail_flags:
+        # The reference first: LQD's row (fitted or reused) yields the numbers
+        # the straight-wing families are pulled onto.
+        lqd_row, lqd_slice = family_row("lqd")
+        target, response.tailMatch = resolve_tail_match(
+            tail_flags, lqd_slice if lqd_row.ok else None, lqd_row.error,
+            k, prepared.tau, weights, settings.leeSlopeMax,
+        )
     for family in models:
-        row = cache.get((key, family))
-        if row is None:
-            try:
-                committed = _committed_slice(state, ticker, iso, fit_mode, key, family)
-                if committed is not None:
-                    row = _model_row(family, committed, prepared, k, w, weights, band,
-                                     fit_ms=None, reused=True)
-                else:
-                    t0 = time.perf_counter()
-                    slice_ = _fit_family(family, k, w, prepared.tau, weights, band,
-                                         settings, ticker)
-                    fit_ms = (time.perf_counter() - t0) * 1e3
-                    row = _model_row(family, slice_, prepared, k, w, weights, band,
-                                     fit_ms=fit_ms, reused=False)
-            except Exception as exc:  # noqa: BLE001 - a fit break is a row, not a 500
-                row = CompareModelFit(
-                    model=family, label=_LABELS[family], ok=False,
-                    error=type(exc).__name__ + ": " + str(exc)[:160],
-                )
-            cache.put((key, family), row)
+        row, _ = family_row(family, target)
         response.models.append(row)
     return response

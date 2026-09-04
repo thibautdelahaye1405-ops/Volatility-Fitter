@@ -15,6 +15,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from volfit.api import compare
+from volfit.api.compare_tails import parse_tail_flags
 from volfit.api.schemas import FitMode
 from volfit.api.schemas_compare import CompareResponse
 from volfit.api.state import UnknownNodeError
@@ -29,10 +30,13 @@ def get_compare(
     request: Request,
     models: str = "lqd,svi,sigmoid,essvi",
     fit_mode: FitMode = "mid",
+    tail_match: str = "",
 ) -> CompareResponse:
     """Side-by-side LQD / SVI-JW / MCS / eSSVI comparison on one node (lazy:
     the UI fetches only when the Compare view opens — up to 3 extra fits,
-    cached)."""
+    cached). ``tail_match`` is a CSV subset of ``varswap,lee,edge``: the
+    tail-matching toggles pulling the SVI-JW / MCS rows' tails onto LQD's
+    (volfit.api.compare_tails); empty = the like-for-like fits."""
     requested: list[str] = []
     for name in (m.strip().lower() for m in models.split(",")):
         if name and name not in requested:
@@ -44,9 +48,15 @@ def get_compare(
             detail=f"models must be a CSV subset of {list(compare.COMPARE_MODELS)}"
             + (f"; unknown: {unknown}" if unknown else "; got none"),
         )
+    try:
+        flags = parse_tail_flags(tail_match)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     state = request.app.state.volfit
     try:
         with state.activity.activity("compare", f"Comparing models on {ticker} {expiry}"):
-            return compare.compare_payload(state, ticker, expiry, tuple(requested), fit_mode)
+            return compare.compare_payload(
+                state, ticker, expiry, tuple(requested), fit_mode, tail_flags=flags
+            )
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
