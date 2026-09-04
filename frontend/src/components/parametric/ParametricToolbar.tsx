@@ -54,7 +54,7 @@ export const VIEW_HINTS: Record<ChartView, string> = {
   density: "Risk-neutral distribution of the current fit — pdf, log quantile density ℓ(u) = log q(u), or the CDF",
   compare: "Prevailing model shown · click a family chip to fit it on the same quotes · match LQD tails (var-swap / Lee / edge) to compare bellies only · scroll: zoom · drag: pan",
   table: "Market frame (prevailing quotes, target, fit @ market spot) · Calib. quotes toggles the calibration columns · Copy / CSV in the footer",
-  term: "ATM term structure across the expiry ladder · real / event-dilated clock",
+  term: "ATM term structure across the expiry ladder · real / event-dilated clock · dashed = the calendar-day reading while events are active",
   stackeddensity: "All expiries' densities overlaid · ≥ 0 is structural for LQD only — SVI/MCS dips draw signed in red (clipped otherwise)",
   stackedvar: "Total variance w=σ²·T per expiry · non-crossing ⇒ no calendar arbitrage",
   surface: "Drag to rotate · σ(k, T) across the expiry ladder",

@@ -1,10 +1,15 @@
 // Term-structure chart: two stacked SVG panels sharing one maturity axis.
 //   top    ATM vol vs maturity — dense fit curve, per-expiry ATM markers (●)
 //          and var-swap vols (◆ joined by a faint line)
-//   bottom ATM total variance w = σ²·t — visibly nondecreasing when the
-//          ladder is calendar-arbitrage-free
-// The x axis is real time t or event-dilated time τ; in dilated mode each
-// enabled event is drawn as a faint dashed vertical at its dilated position.
+//   bottom forward variance per interval, a step — negative means total
+//          variance fell between two expiries (calendar arbitrage)
+// Both panels read the WORKING clock (event time τ, what every fit uses).
+// While an event calendar is active (τ ≠ t) the calendar-day reading of the
+// same total variance is drawn beside it, dashed amber: the vol √(w/t) above
+// and the invariant ladder Δw/Δt below — so an event's effect (the hot
+// interval pulled down, the vol crush) is visible on EITHER maturity axis,
+// not only the dilated one. The x axis is real time t or event-dilated τ; in
+// dilated mode each enabled event is a faint dashed vertical at its position.
 // Hand-rolled SVG, no chart deps; conventions match SmileChart.
 import { useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -25,6 +30,10 @@ import {
 } from "../lib/chartScale";
 import { timeAxisValue } from "../lib/timeAxis";
 import type { TimeAxisMode } from "../lib/timeAxis";
+import { clocksDiffer, forwardLadder } from "../lib/termLadder";
+
+/** Stroke of the calendar-day reading (dashed amber, the events' colour). */
+const CALENDAR_STROKE = "rgb(251 191 36 / 0.75)";
 
 interface TermChartProps {
   points: TermPoint[];
@@ -100,6 +109,14 @@ export default function TermChart({
   const curveX = dilated ? curve.tau : curve.t;
   const xOf = (p: TermPoint) => (dilated ? p.tau : p.t);
 
+  // An active event calendar separates the clocks: the same total variance
+  // read per calendar day, √(w/t), is the "no events" reading of the vol
+  // panel — drawn beside the working curve so the event's crush is visible.
+  const twoClocks = clocksDiffer(points);
+  const calVol = twoClocks
+    ? curve.w.map((w, i) => Math.sqrt(Math.max(w, 0) / Math.max(curve.t[i], 1e-12)))
+    : [];
+
   const plotW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const innerH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
   const topH = Math.max(0, (innerH - PANEL_GAP) * TOP_SHARE);
@@ -117,6 +134,7 @@ export default function TermChart({
   let vLo = Infinity;
   let vHi = -Infinity;
   for (const v of curve.vol) { vLo = Math.min(vLo, v); vHi = Math.max(vHi, v); }
+  for (const v of calVol) { vLo = Math.min(vLo, v); vHi = Math.max(vHi, v); }
   for (const p of points) {
     vLo = Math.min(vLo, p.atmVol, p.varSwapVol);
     vHi = Math.max(vHi, p.atmVol, p.varSwapVol);
@@ -128,32 +146,30 @@ export default function TermChart({
   if (!Number.isFinite(vLo)) { vLo = 0; vHi = 1; }
   const vPad = Math.max(1e-4, (vHi - vLo) * 0.1);
 
-  // Forward (annualized) variance between consecutive expiries: Δw / Δx on the
-  // active clock — the level of each [x_{k-1}, x_k] interval (the first runs
-  // from the origin). A negative level means total variance fell between two
-  // expiries, i.e. a calendar-arbitrage interval (drawn below the zero line).
-  const fwdSorted = [...points].sort((a, b) => xOf(a) - xOf(b));
-  const fwdSegments: { x0: number; x1: number; level: number }[] = [];
-  {
-    let prevX = 0;
-    let prevW = 0;
-    for (const p of fwdSorted) {
-      const x = xOf(p);
-      const dx = x - prevX;
-      fwdSegments.push({ x0: prevX, x1: x, level: dx > 1e-9 ? (p.w0 - prevW) / dx : 0 });
-      prevX = x;
-      prevW = p.w0;
-    }
-  }
-  /** Forward variance at x (piecewise-constant step lookup). */
-  const fwdAt = (x: number): number | null => {
-    for (const s of fwdSegments) if (x <= s.x1) return s.level;
-    return fwdSegments.length ? fwdSegments[fwdSegments.length - 1].level : null;
+  // Forward (annualized) variance between consecutive expiries — the level of
+  // each interval (the first runs from the origin), positioned on the active
+  // axis. `level` is the working clock's Δw/Δτ; `calendar` the event-invariant
+  // Δw/Δt, drawn beside it only while the clocks differ (equal otherwise). A
+  // negative level means total variance fell between two expiries, i.e. a
+  // calendar-arbitrage interval (drawn below the zero line).
+  const fwdSegments = forwardLadder(points).map((iv) => ({
+    x0: dilated ? iv.tau0 : iv.t0,
+    x1: dilated ? iv.tau1 : iv.t1,
+    level: iv.eventTime,
+    calendar: iv.calendar,
+  }));
+  /** The interval containing x (piecewise-constant step lookup). */
+  const fwdAt = (x: number): { level: number; calendar: number } | null => {
+    for (const s of fwdSegments) if (x <= s.x1) return s;
+    return fwdSegments.length ? fwdSegments[fwdSegments.length - 1] : null;
   };
 
   let wLo = 0;
   let wHi = -Infinity;
-  for (const s of fwdSegments) { wLo = Math.min(wLo, s.level); wHi = Math.max(wHi, s.level); }
+  for (const s of fwdSegments) {
+    wLo = Math.min(wLo, s.level, twoClocks ? s.calendar : s.level);
+    wHi = Math.max(wHi, s.level, twoClocks ? s.calendar : s.level);
+  }
   if (!Number.isFinite(wHi)) { wLo = 0; wHi = 1; }
   const wPad = Math.max(1e-6, (wHi - wLo) * 0.1);
 
@@ -178,14 +194,22 @@ export default function TermChart({
 
   const sorted = [...points].sort((a, b) => xOf(a) - xOf(b));
   const volPath = pathOf(curveX, curve.vol, volScale);
-  // Step path of the forward-variance levels (vertical risers at each expiry).
-  let wPath = "";
-  fwdSegments.forEach((seg, i) => {
-    const y = wScale.map(seg.level).toFixed(2);
-    const xa = X(seg.x0).toFixed(2);
-    const xb = X(seg.x1).toFixed(2);
-    wPath += `${i === 0 ? "M" : "L"}${xa},${y}L${xb},${y}`;
-  });
+  // The calendar-day reading of the same curve, √(w/t) (only while τ ≠ t).
+  const calVolPath = twoClocks ? pathOf(curveX, calVol, volScale) : "";
+  // Step paths of the forward-variance levels (vertical risers at each
+  // expiry): the working clock's, and the calendar reading beside it.
+  const stepPath = (levelOf: (seg: (typeof fwdSegments)[number]) => number): string => {
+    let d = "";
+    fwdSegments.forEach((seg, i) => {
+      const y = wScale.map(levelOf(seg)).toFixed(2);
+      const xa = X(seg.x0).toFixed(2);
+      const xb = X(seg.x1).toFixed(2);
+      d += `${i === 0 ? "M" : "L"}${xa},${y}L${xb},${y}`;
+    });
+    return d;
+  };
+  const wPath = stepPath((seg) => seg.level);
+  const wCalPath = twoClocks ? stepPath((seg) => seg.calendar) : "";
   const vsPath = pathOf(sorted.map(xOf), sorted.map((p) => p.varSwapVol), volScale);
   // Active fetched prior's ATM term (dotted teal, spot-updated), where present.
   const priorPts = sorted.filter((p) => p.priorVol != null);
@@ -227,11 +251,17 @@ export default function TermChart({
   };
 
   const hoverVol = hover !== null ? interp(curveX, curve.vol, hover) : null;
+  const hoverCalVol = hover !== null && twoClocks ? interp(curveX, calVol, hover) : null;
   const hoverFwd = hover !== null ? fwdAt(hover) : null;
   const hoverPx = hover !== null ? X(hover) : 0;
+  // Readout: the working clock's numbers, with the calendar reading in
+  // brackets while an event calendar separates the two.
   const hoverLabel =
     hover !== null && hoverVol !== null && hoverFwd !== null
-      ? `${dilated ? "τ" : "t"} ${hover.toFixed(2)}y · σ ${formatPct(hoverVol, 2)} · fwd var ${hoverFwd.toFixed(4)}`
+      ? `${dilated ? "τ" : "t"} ${hover.toFixed(2)}y · σ ${formatPct(hoverVol, 2)}` +
+        (hoverCalVol !== null ? ` (cal ${formatPct(hoverCalVol, 2)})` : "") +
+        ` · fwd var ${hoverFwd.level.toFixed(4)}` +
+        (twoClocks ? ` (cal ${hoverFwd.calendar.toFixed(4)})` : "")
       : null;
 
   /* ---------------- render ---------------- */
@@ -252,6 +282,11 @@ export default function TermChart({
         {points.some((p) => p.varSwapQuote != null) && (
           <span className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full border-2 border-teal-400" /> Var-swap quote
+          </span>
+        )}
+        {twoClocks && (
+          <span className="flex items-center gap-1.5" title="The same total variance read per calendar day, as if the event calendar were empty: σ = √(w/t) above, Δw/Δt below">
+            <span className="w-5 border-t border-dashed border-amber-400/80" /> Calendar-day reading
           </span>
         )}
         {eventMarks.length > 0 && (
@@ -349,6 +384,13 @@ export default function TermChart({
                     strokeWidth={1.5} strokeDasharray="2 3" />
                 )}
 
+                {/* Calendar-day reading √(w/t) of the same curve (τ ≠ t only):
+                    what the vol would read with an empty event calendar */}
+                {calVolPath !== "" && (
+                  <path d={calVolPath} fill="none" stroke={CALENDAR_STROKE}
+                    strokeWidth={1.4} strokeDasharray="4 3" strokeLinejoin="round" />
+                )}
+
                 {/* Dense ATM-vol fit + per-expiry markers (clickable to select
                     an expiry for var-swap editing) */}
                 <path d={volPath} fill="none" stroke="var(--color-accent-400)"
@@ -397,6 +439,13 @@ export default function TermChart({
                 {wScale.domain[0] < 0 && (
                   <line x1={0} x2={plotW} y1={wScale.map(0)} y2={wScale.map(0)}
                     stroke="rgb(248 113 113 / 0.35)" strokeDasharray="2 4" />
+                )}
+
+                {/* Calendar reading Δw/Δt beside the working step (τ ≠ t only):
+                    event-invariant, so the gap between the two IS the event */}
+                {wCalPath !== "" && (
+                  <path d={wCalPath} fill="none" stroke={CALENDAR_STROKE}
+                    strokeWidth={1.4} strokeDasharray="4 3" strokeLinejoin="round" />
                 )}
 
                 {/* Forward-variance step + a marker at each interval's level */}
@@ -457,7 +506,7 @@ export default function TermChart({
                     stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
                   <circle cx={hoverPx} cy={volScale.map(hoverVol)} r={3.5}
                     fill="var(--color-accent-400)" stroke="var(--color-surface-900)" strokeWidth={1.5} />
-                  <circle cx={hoverPx} cy={botY0 + wScale.map(hoverFwd)} r={3.5}
+                  <circle cx={hoverPx} cy={botY0 + wScale.map(hoverFwd.level)} r={3.5}
                     fill="var(--color-accent-400)" stroke="var(--color-surface-900)" strokeWidth={1.5} />
                 </g>
               )}

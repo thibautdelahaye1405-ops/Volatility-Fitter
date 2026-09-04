@@ -7,8 +7,9 @@
 // markers and the expiry ladder, laid out as the chart card's body.
 //
 // Live backend only (POST /term/{ticker}); offline shows a retry message.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import TermChart from "./TermChart";
+import { clocksDiffer, forwardLadder, ladderSpreadBp } from "../lib/termLadder";
 import VarSwapTermRows from "./VarSwapTermRows";
 import { useTerm } from "../state/useTerm";
 import type { ClockMode } from "../state/useTerm";
@@ -67,15 +68,36 @@ export default function TermPanel() {
   const [selectedExpiry, setSelectedExpiry] = useState<string | null>(null);
   const points = data?.points ?? [];
 
-  // Auto-calibrate horizon (defaults to the last expiry) + in-flight flag.
+  // Auto-calibrate horizon (defaults to the last expiry) + in-flight flag +
+  // what the last run installed (so "nothing found" is a visible outcome, not
+  // a silent one — with no peak above the floor the chart cannot change).
   const [maxExpiry, setMaxExpiry] = useState("");
   const [autoBusy, setAutoBusy] = useState(false);
+  const [autoResult, setAutoResult] = useState<{ count: number; days: number } | "failed" | null>(null);
   const effMaxExpiry = maxExpiry || (points.length ? points[points.length - 1].expiry : "");
   const runAutocalibrate = () => {
     if (!effMaxExpiry) return;
     setAutoBusy(true);
-    void autocalibrate(effMaxExpiry).finally(() => setAutoBusy(false));
+    void autocalibrate(effMaxExpiry)
+      .then((installed) =>
+        setAutoResult(
+          installed === null
+            ? "failed"
+            : { count: installed.length, days: installed.reduce((s, ev) => s + ev.weight, 0) },
+        ),
+      )
+      .finally(() => setAutoBusy(false));
   };
+  const ticker = data?.ticker ?? "";
+  useEffect(() => setAutoResult(null), [ticker]); // the readout is per ticker
+
+  // Before/after readout of the ladder: the calendar reading is what the
+  // solver saw, the event-time reading is what it left. Spread = max − min of
+  // the forward variance across intervals, in variance bp.
+  const ladder = forwardLadder(points);
+  const ladderActive = eventsEnabled && clocksDiffer(points);
+  const spreadCal = ladderSpreadBp(ladder.map((iv) => iv.calendar));
+  const spreadEvt = ladderSpreadBp(ladder.map((iv) => iv.eventTime));
   const selected =
     points.find((p) => p.expiry === selectedExpiry) ?? points[0] ?? null;
   const selExpiry = selected?.expiry ?? "";
@@ -125,7 +147,8 @@ export default function TermPanel() {
           )}
         </div>
         <p className="mt-1 shrink-0 text-[10px] text-slate-600">
-          ATM vol σ(T) · forward variance Δw/Δt between expiries · events add diffusion time
+          ATM vol σ(T) · forward variance per interval, both on the working clock · dashed: the
+          calendar-day reading while events are active
         </p>
       </div>
 
@@ -264,6 +287,30 @@ export default function TermPanel() {
               {autoBusy ? "…" : "Calibrate"}
             </button>
           </div>
+          {autoResult !== null && (
+            <p
+              data-testid="autocal-result"
+              className={[
+                "mt-1.5 text-[10px]",
+                autoResult === "failed" ? "text-amber-400/80" : "text-slate-400",
+              ].join(" ")}
+            >
+              {autoResult === "failed"
+                ? "Auto-calibrate did not reach the backend — calendar unchanged."
+                : autoResult.count === 0
+                  ? "No interval runs hotter than both neighbours by the floor — no events installed."
+                  : `${autoResult.count} event${autoResult.count === 1 ? "" : "s"} installed · ${autoResult.days.toFixed(1)} extra days`}
+            </p>
+          )}
+          {ladderActive && spreadCal !== null && spreadEvt !== null && (
+            <p
+              data-testid="ladder-spread"
+              className="mt-1 font-mono text-[10px] text-slate-500"
+              title="Spread (max − min) of the forward-variance ladder in variance bp: read per calendar year (what the solver saw) → per event-time year (what it left)"
+            >
+              Ladder spread: calendar {spreadCal.toFixed(0)} bp → event time {spreadEvt.toFixed(0)} bp
+            </p>
+          )}
           {!eventsEnabled && (
             <p className="mt-1 text-[10px] text-amber-400/80">
               Enable Events in Options to apply the calibrated clock.

@@ -1092,12 +1092,47 @@ ladders, then the user ratified the solver fixes.
   once events became sparse); macros regenerated, both Note 11 PDFs rebuilt;
   handoff mirror updated; variance-clock edition text + table; schema
   docstring; Term panel copy.
-- RIDER (UI, not done — the user asked for the solver fixes): after a
-  calibrate, switch the Term chart to the event-dilated axis or draw both
-  forward-variance steps, and show a before/after readout (events found,
-  roughness) — with the default "Real time" axis the effect is invisible by
-  construction. The Papers/book chapter that quotes the old flatness
-  objective (if any) is a BOOK-session item.
+- The chart side shipped in the next wrap (2026-09-04f). The Papers/book
+  chapter that quotes the old flatness objective (if any) is a BOOK-session
+  item.
+
+### 🧭 SESSION WRAP (2026-09-04f) — TERM CHART: BOTH CLOCK READINGS DRAWN, THE AUTO-CALIBRATE OUTCOME SPOKEN
+
+User: "Now do the chart change too." Rationale: with the default "Real time"
+axis the lower panel plotted the CALENDAR forward variance Δw/Δt, which is
+event-invariant by construction, so a calibrate could never move it and a
+"nothing found" run was indistinguishable from a broken one.
+
+- `lib/termLadder.ts` (new, pure): `forwardLadder(points)` → per interval
+  both readings (`calendar` Δw/Δt, `eventTime` Δw/Δτ) on their t / τ bounds;
+  `clocksDiffer`, `ladderSpreadBp` (max − min, variance bp — the note's
+  hero number). 5 vitest locks.
+- `TermChart.tsx`: both panels read the WORKING clock (event time, what
+  every fit uses); while τ ≠ t the calendar-day reading of the same total
+  variance is drawn dashed amber beside it — √(w/t) above (the crush hump
+  after the event, Note 11 fig. 2B), the invariant ladder Δw/Δt below — on
+  EITHER maturity axis, with a "Calendar-day reading" legend entry and the
+  hover readout carrying both (`σ 21.32% (cal 21.49%) · fwd var 0.0414 (cal
+  0.0414)`). No axis is switched behind the user's back. Behaviour with an
+  empty calendar is unchanged (the two readings coincide; one step drawn).
+- `TermPanel.tsx` + `useTerm.autocalibrate` (now resolves to the installed
+  calendar, null when unreachable): a result line under the button — `1
+  event installed · 1.9 extra days`, or "No interval runs hotter than both
+  neighbours by the floor — no events installed", or the unreachable
+  message — reset per ticker; and, while events are active, `Ladder spread:
+  calendar 131 bp → event time 100 bp`. Caption + toolbar hint + help guide
+  (lenses_b §Term) updated.
+- LIVE-VERIFIED headless (`scripts/term_events_check.mjs`, synthetic smoke
+  server on :4191 — NOT :4190, which the WHATWG fetch bad-ports list blocks
+  and Node 24's fetch obeys; select the chart by `main svg.cursor-crosshair`,
+  the first `main svg` is a toolbar icon): one reading before; Calibrate on
+  ALPHA → 1 event / 1.9 d (its front interval runs 6.8 % above the back's
+  log-slope continuation — the documented front limitation, on a synthetic
+  backwardation), both dashed paths + legend + spread + hover on the
+  Real-time axis, the same on Event-dilated, a single reading again after
+  clearing the calendar; screenshots `.smoke/term-{1,2,3}-*.png`.
+- File sizes: TermChart.tsx 526 lines (was 477; already over the 400 policy
+  before this wrap — the ladder maths moved OUT to the new lib rather than in).
 
 ### 🧭 SESSION WRAP (2026-09-04d) — COMPARE TAIL MATCHING: THREE TOGGLES PULL SVI-JW / MCS TAILS ONTO LQD's
 

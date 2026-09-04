@@ -155,10 +155,12 @@ export interface UseTermResult {
   /** Maturity-axis clock mode for the chart. */
   axisClock: ClockMode;
   setAxisClock: (mode: ClockMode) => void;
-  /** Auto-calibrate the event calendar from the term structure: place events
-   *  before each expiry up to ``maxExpiry`` so the weighted forward variance is
-   *  flat / monotone with small, sparse events; then refit term + smile. */
-  autocalibrate: (maxExpiry: string) => Promise<void>;
+  /** Auto-calibrate the event calendar from the term structure: read every
+   *  interval up to ``maxExpiry`` that runs hotter than both neighbours as one
+   *  exactly sized event, install the calendar, then refit term + smile.
+   *  Resolves to the installed calendar (empty when no peak clears the
+   *  materiality floor), or null when the backend could not be reached. */
+  autocalibrate: (maxExpiry: string) => Promise<TermEvent[] | null>;
   /** Whether var-swap quoting is enabled (OptionsSettings.varSwapEnabled). */
   varSwapEnabled: boolean;
   /** Edit one expiry's var-swap quote (set/exclude/include/remove/reset), then
@@ -399,22 +401,24 @@ export function useTerm(): UseTermResult {
   );
 
   const autocalibrate = useCallback(
-    async (maxExpiry: string): Promise<void> => {
-      if (ticker === "" || maxExpiry === "") return;
+    async (maxExpiry: string): Promise<TermEvent[] | null> => {
+      if (ticker === "" || maxExpiry === "") return null;
+      let installed: TermEvent[] | null = null;
       try {
         const res = await api.post<{ events: { time: number; weight: number; label: string }[] }>(
           `/events/${ticker}/autocalibrate`,
           { body: { maxExpiry, fitMode } },
         );
-        const loaded = res.events.map((e) => ({ id: nextIdRef.current++, ...e }));
-        savedRef.current = serializeEvents(loaded); // backend already saved; skip echo PUT
+        installed = res.events.map((e) => ({ id: nextIdRef.current++, ...e }));
+        savedRef.current = serializeEvents(installed); // backend already saved; skip echo PUT
         loadedTickerRef.current = ticker;
-        setEvents(loaded);
+        setEvents(installed);
       } catch {
         /* offline / 404: leave the current calendar */
       }
       reload();
       reloadSmile();
+      return installed;
     },
     [ticker, reload, reloadSmile, fitMode],
   );
