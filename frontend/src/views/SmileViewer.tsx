@@ -55,7 +55,9 @@ import { useModelComparison } from "../state/useModelComparison";
 import { compareSeries } from "../lib/modelCompare";
 import { MODEL_ORDER } from "../lib/modelColor";
 import type { CompareModelId } from "../lib/mockData";
-import type { AxisMode } from "../lib/axisModes";
+import { axisModeLabel, axisTickLabel, axisTransform, makeVolAt } from "../lib/axisModes";
+import type { AxisContext, AxisMode } from "../lib/axisModes";
+import { formatPct } from "../lib/chartScale";
 import { readSmileAutoScale, writeSmileAutoScale } from "../lib/autoScaleY";
 import type { AutoScaleToggles } from "../lib/autoScaleY";
 import { cardClass, chartMessageClass } from "../lib/ui";
@@ -178,6 +180,17 @@ export default function SmileViewer() {
   const comparison = useModelComparison(
     view === "compare", live, ticker, expiry, fitMode, spotVersion, compareModels,
   );
+  // Compare chart x-axis: the smile's own context (forward, T, ATM vol, the
+  // prevailing fit's vol at k for the delta mode) — ONE coordinate for every
+  // family, so the curves stay comparable; identity in log-moneyness.
+  const compareTx = useMemo(() => {
+    if (smile === null || axisMode === "logmoneyness") return (k: number) => k;
+    const ctx: AxisContext = {
+      forward: smile.forward, t: smile.T, atmVol: smile.diagnostics.atmVol,
+      volAt: makeVolAt(smile.model), kRange: [smile.kMin, smile.kMax],
+    };
+    return (k: number) => axisTransform(axisMode, k, ctx);
+  }, [smile, axisMode]);
 
   // Graph-extrapolation live overlay (plan Phase 5): when the user drilled into
   // THIS node from the Graph lens, overlay the posterior curve + credible band.
@@ -268,7 +281,21 @@ export default function SmileViewer() {
           <div className="flex h-full min-h-0 flex-col gap-2">
             {chips}
             <div className={["min-h-0 flex-1", comparison.loading ? "opacity-60" : ""].join(" ")}>
-              <OverlayCurvesChart series={compareSeries(comparison.data)} xLabel="log-moneyness k" yLabel="implied vol" zoomY />
+              {/* Same grammar as the Smile: strike-axis mode, the SHARED k-window
+                  brush (zoom the belly here, see it there), Y center / Y fit. */}
+              <OverlayCurvesChart
+                series={compareSeries(comparison.data, compareTx)}
+                xLabel={axisMode === "logmoneyness" ? "log-moneyness k" : axisModeLabel(axisMode)}
+                yLabel="implied vol"
+                formatX={(v) => axisTickLabel(axisMode, v)}
+                formatY={(v) => formatPct(v)}
+                formatHoverY={(v) => `σ ${formatPct(v, 2)}`}
+                xBrush={{
+                  min: smile.kMin, max: smile.kMax, value: kWindow, onChange: setKWindow,
+                  toX: compareTx, format: (v) => v.toFixed(2),
+                }}
+                autoScaleY={autoScaleY} onToggleAutoScale={toggleAutoScale}
+              />
             </div>
             <ModelCompareTable data={comparison.data} />
           </div>
@@ -282,11 +309,13 @@ export default function SmileViewer() {
         return live ? <TermPanel /> : chartMessage("Term-structure view requires the live backend.");
       case "stackeddensity":
         return live
-          ? <StackedDensityChart ticker={ticker} fitMode={fitMode} smile={smile} axisMode={axisMode} />
+          ? <StackedDensityChart ticker={ticker} fitMode={fitMode} smile={smile} axisMode={axisMode}
+              autoScaleY={autoScaleY} onToggleAutoScale={toggleAutoScale} />
           : chartMessage("Densities require the live backend.");
       case "stackedvar":
         return live
-          ? <StackedVarianceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} axisMode={axisMode} />
+          ? <StackedVarianceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} axisMode={axisMode}
+              autoScaleY={autoScaleY} onToggleAutoScale={toggleAutoScale} />
           : chartMessage("Stacked IV requires the live backend.");
       case "surface":
         return live

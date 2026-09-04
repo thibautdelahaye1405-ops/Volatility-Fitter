@@ -17,20 +17,21 @@
 // its own axis transform (its forward), so strike mode places both by true
 // strike and k mode shows each in its own moneyness (a sticky-strike move reads
 // as the lateral shift it is).
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { SmilePoint } from "../lib/mockData";
 import type { FitMode } from "../state/useSmile";
-import { clamp, formatPct, linearScale, niceTicks } from "../lib/chartScale";
+import { formatPct, linearScale, niceTicks } from "../lib/chartScale";
 import { axisDisplayTicks, axisInvert, axisTransform, formatHoverValue } from "../lib/axisModes";
 import type { AxisContext, AxisMode } from "../lib/axisModes";
 import type { MarketFrame, SmileFrame } from "../lib/smileLayers";
 import { useElementSize } from "../lib/useElementSize";
-import { useZoom } from "../lib/useZoom";
-import { autoScaleYWindow, DEFAULT_AUTOSCALE } from "../lib/autoScaleY";
+import { useChartZoom } from "../lib/useChartZoom";
+import { DEFAULT_AUTOSCALE } from "../lib/autoScaleY";
 import type { AutoScaleToggles } from "../lib/autoScaleY";
 import QuoteLayer from "./QuoteLayer";
 import RangeBrush from "./RangeBrush";
+import ZoomOverlay from "./charts/ZoomOverlay";
 
 interface SmileChartProps {
   /** The PREVAILING market frame (layers 1 + 3): quotes + target and the fit
@@ -177,27 +178,24 @@ export default function SmileChart({
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const clipId = useId();
-  const zoom = useZoom();
-  // Y auto-scale policy (lib/autoScaleY): the y BASE already fits the data in
-  // the x-window, so the policy only rewrites the y FRACTIONS — always through
-  // zoom.setYWindow, so the QuoteLayer remount viewKey still fires.
-  const autoCenter = autoScaleY.center;
-  const autoFit = autoScaleY.fit;
-  const autoActive = autoCenter || autoFit;
-  const applyAutoY = () => {
-    const w = autoScaleYWindow(zoom.fractions, { center: autoCenter, fit: autoFit });
-    if (w !== null) zoom.setYWindow(w.yLo, w.yHi);
-  };
   /** Hover position in k-space, or null when the pointer is outside. */
   const [hoverK, setHoverK] = useState<number | null>(null);
   /** Hover y-position in vol units (pointer level), or null when outside. */
   const [hoverV, setHoverV] = useState<number | null>(null);
-  /** Active drag-pan: last pointer px and whether it has moved past a click. */
-  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
   const [kLo, kHi] = kWindow;
   const plotW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const plotH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
+  // The shared interaction grammar (lib/useChartZoom): wheel / drag / reset
+  // and the Y auto-scale policy (lib/autoScaleY) — the y BASE already fits
+  // the data in the x-window, so the policy only rewrites the y FRACTIONS,
+  // always through zoom.setYWindow so the QuoteLayer remount viewKey fires.
+  // The brush window and the axis mode move the x base outside the handlers.
+  const cz = useChartZoom(svgRef, {
+    plotW, plotH, marginLeft: MARGIN.left, marginTop: MARGIN.top,
+    autoScaleY, xBaseKey: `${kLo},${kHi},${axisMode}`,
+  });
+  const { zoom } = cz;
 
   // Context for the axis-mode transforms.
   const axisCtx: AxisContext = useMemo(
@@ -315,8 +313,7 @@ export default function SmileChart({
   // ghost beams at the old positions under live streaming until the next tick
   // rebuilt them). Live ticks themselves do not change this key, so a beam's
   // click target survives between pointer-down and click while streaming.
-  const zf = zoom.fractions;
-  const viewKey = `${zf.xLo},${zf.xHi},${zf.yLo},${zf.yHi},${plotW},${plotH},${axisMode}`;
+  const viewKey = `${cz.viewKey},${axisMode}`;
   const tickStamp = market.timestamp ? `${market.timestamp.slice(11, 19)} UTC` : "";
 
   // X ticks: nice values in display units, placed directly on the display scale.
@@ -332,46 +329,9 @@ export default function SmileChart({
     return X0 >= lo && X0 <= hi ? xScale.map(X0) : null;
   }, [axisMode, axisCtx, xView, xScale]);
 
-  /* ---------------- wheel zoom (native, non-passive) ---------------- */
+  /* ---------------- hover + drag-pan (wheel zoom lives in the hook) ---------------- */
 
-  useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const onWheel = (e: WheelEvent) => {
-      if (plotW <= 0 || plotH <= 0) return;
-      e.preventDefault();
-      const rect = svg.getBoundingClientRect();
-      const fx = clamp((e.clientX - rect.left - MARGIN.left) / plotW, 0, 1);
-      const fy = clamp((e.clientY - rect.top - MARGIN.top) / plotH, 0, 1);
-      const axis = e.shiftKey ? "x" : e.altKey ? "y" : "both";
-      if (autoActive && axis !== "y") {
-        // The policy owns y: zoom x only, then re-apply it. Alt+wheel — the
-        // manual y-only zoom — falls through untouched (no policy).
-        zoom.zoomAt(fx, fy, e.deltaY, "x");
-        applyAutoY();
-      } else {
-        zoom.zoomAt(fx, fy, e.deltaY, axis);
-      }
-    };
-    svg.addEventListener("wheel", onWheel, { passive: false });
-    return () => svg.removeEventListener("wheel", onWheel);
-  }, [zoom, plotW, plotH, autoActive]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Re-apply the policy when the x view changes OUTSIDE the zoom handlers —
-  // the coarse RangeBrush window or an axis-mode switch — and when the chips
-  // themselves flip on (so enabling one takes effect immediately). Reset is
-  // already the identity, so no trigger is needed there. No loop: the deps
-  // exclude the fractions, and a satisfied window is a state no-op.
-  useEffect(() => {
-    if (!autoActive) return;
-    applyAutoY();
-  }, [kLo, kHi, axisMode, autoCenter, autoFit]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /* ---------------- hover + drag-pan ---------------- */
-
-  const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
-    drag.current = { x: e.clientX, y: e.clientY, moved: false };
-  };
+  const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => cz.beginDrag(e);
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -385,27 +345,16 @@ export default function SmileChart({
       setHoverK(k !== null && Number.isFinite(k) ? k : null);
     }
     setHoverV(py >= 0 && py <= plotH ? yScale.invert(py) : null);
-    // Drag-pan.
-    const d = drag.current;
-    if (d && plotW > 0 && plotH > 0) {
-      const dx = e.clientX - d.x;
-      const dy = e.clientY - d.y;
-      if (Math.abs(dx) + Math.abs(dy) > 2) {
-        zoom.panBy(dx / plotW, dy / plotH, "both");
-        if (autoActive && dx !== 0) applyAutoY(); // x moved: policy rules y
-        drag.current = { x: e.clientX, y: e.clientY, moved: true };
-      }
-    }
+    cz.dragMove(e); // drag-pan (the policy re-applies on x moves)
   };
   const onPointerUp = () => {
-    const d = drag.current;
-    drag.current = null;
-    if (d && !d.moved) onQuoteSelect?.(null); // a plain click clears selection
+    const d = cz.endDrag();
+    if (d !== null && !d.moved) onQuoteSelect?.(null); // a plain click clears selection
   };
   const onPointerLeave = () => {
     setHoverK(null);
     setHoverV(null);
-    drag.current = null;
+    cz.cancelDrag();
   };
 
   const hoverVol = hoverK !== null ? volAt(model, hoverK) : null;
@@ -718,44 +667,11 @@ export default function SmileChart({
           </div>
         )}
 
-        {/* Y auto-scale overlay buttons (wave 2): after any x-view change,
-            "Y fit" snaps the y window to the data in view; "Y center" keeps
-            the y zoom but recenters it (fit wins when both are lit). */}
-        {onToggleAutoScale && (
-          <div className="absolute top-1 left-14 flex gap-1">
-            {(["center", "fit"] as const).map((key) => (
-              <button
-                key={key}
-                aria-pressed={autoScaleY[key]}
-                onClick={() => onToggleAutoScale(key)}
-                title={
-                  key === "center"
-                    ? "Y center — after any x-view change, keep the y window centered on the data in view (preserves your y zoom; alt+wheel still zooms y)"
-                    : "Y fit — after any x-view change, auto-fit the y-axis to every curve and quote in the visible x-range"
-                }
-                className={[
-                  "rounded border px-1.5 py-px font-mono text-[9px] shadow transition-colors",
-                  autoScaleY[key]
-                    ? "border-accent-500/50 bg-accent-500/15 text-accent-300"
-                    : "border-slate-700 bg-surface-800/90 text-slate-500 hover:text-slate-200",
-                ].join(" ")}
-              >
-                {key === "center" ? "Y center" : "Y fit"}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Reset-zoom affordance */}
-        {zoom.zoomed && (
-          <button
-            onClick={zoom.reset}
-            title="Reset zoom (or double-click the chart)"
-            className="absolute bottom-1 right-2 rounded-md border border-slate-700 bg-surface-800/95 px-2 py-0.5 text-[10px] text-slate-300 shadow hover:text-slate-100"
-          >
-            ⌂ reset
-          </button>
-        )}
+        {/* Y center / Y fit overlay buttons (wave 2) + the ⌂ reset affordance:
+            after any x-view change, "Y fit" snaps the y window to the data in
+            view; "Y center" keeps the y zoom but recenters it (fit wins). */}
+        <ZoomOverlay autoScaleY={autoScaleY} onToggleAutoScale={onToggleAutoScale}
+          zoomed={zoom.zoomed} onReset={zoom.reset} left={MARGIN.left} />
       </div>
 
       {/* Optional footer strip (V3.4 weight strip) — above the brush */}

@@ -19,6 +19,7 @@ import {
   makeVolAt,
 } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
+import type { AutoScaleToggles } from "../lib/autoScaleY";
 
 interface StackedItem {
   expiry: string;
@@ -51,9 +52,14 @@ interface Props {
   smile: SmileData | null;
   /** Strike-axis display mode (shared with the Smile view). */
   axisMode?: AxisMode;
+  /** Y auto-scale toggles + toggler (the chart's Y center / Y fit buttons). */
+  autoScaleY?: AutoScaleToggles;
+  onToggleAutoScale?: (key: keyof AutoScaleToggles) => void;
 }
 
-export default function StackedDensityChart({ ticker, fitMode, smile, axisMode = "logmoneyness" }: Props) {
+export default function StackedDensityChart({
+  ticker, fitMode, smile, axisMode = "logmoneyness", autoScaleY, onToggleAutoScale,
+}: Props) {
   const { format } = useExpiryFormat();
   const [data, setData] = useState<StackedResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -149,6 +155,8 @@ export default function StackedDensityChart({ ticker, fitMode, smile, axisMode =
       formatX={(v) => axisTickLabel(axisMode, v)}
       markers={markers}
       link={axisMode === "logmoneyness" ? { ticker, chartId: "parametric:densities" } : undefined}
+      autoScaleY={autoScaleY}
+      onToggleAutoScale={onToggleAutoScale}
     />
   );
 }

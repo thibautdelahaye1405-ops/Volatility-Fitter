@@ -56,6 +56,8 @@ import { buildIvSurface, smileAxisContext } from "../lib/affineSurface";
 import { formatExpiry } from "../lib/expiryFormat";
 import { axisModeLabel, axisTickLabel, axisTransform } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
+import { readSmileAutoScale, writeSmileAutoScale } from "../lib/autoScaleY";
+import type { AutoScaleToggles } from "../lib/autoScaleY";
 import { buttonClass, cardClass, chartMessageClass } from "../lib/ui";
 
 const chartMessage = (text: string) => <div className={chartMessageClass}>{text}</div>;
@@ -77,13 +79,24 @@ export default function LocalVolViewer() {
   const lvReloadKey = varSwapNonce + spotVersion;
   const { format } = useExpiryFormat();
   // View state: sub-view · strike-axis mode · LV-surface render (3D mesh or
-  // heatmap) · x-axis scale of the 3D LV mesh · maturity clock (Term sub-tab).
+  // heatmap) · x-axis scale of the 3D LV mesh · maturity clock (Term sub-tab)
+  // · the Y center / Y fit chips of the 2-D charts (seeded from the same
+  // persisted preference as the Parametric lens — lib/autoScaleY).
   const [vs, patchView] = useLensViewMemory<{
     view: LvView; axisMode: AxisMode; lvRender: LvRender; lvAxis: LvAxis; axisClock: ClockMode;
-  }>("localvol", { view: "smile", axisMode: "logmoneyness", lvRender: "mesh", lvAxis: "moneyness", axisClock: "real" });
-  const { view, axisMode, lvRender, lvAxis, axisClock } = vs;
+    autoScaleY: AutoScaleToggles;
+  }>("localvol", () => ({
+    view: "smile", axisMode: "logmoneyness", lvRender: "mesh", lvAxis: "moneyness", axisClock: "real",
+    autoScaleY: readSmileAutoScale(),
+  }));
+  const { view, axisMode, lvRender, lvAxis, axisClock, autoScaleY } = vs;
   const setView = (view: LvView) => patchView({ view });
   const setAxisMode = (axisMode: AxisMode) => patchView({ axisMode });
+  const toggleAutoScale = (key: keyof AutoScaleToggles) => {
+    const next = { ...autoScaleY, [key]: !autoScaleY[key] };
+    writeSmileAutoScale(next);
+    patchView({ autoScaleY: next });
+  };
   const setLvRender = (lvRender: LvRender) => patchView({ lvRender });
   const setLvAxis = (lvAxis: LvAxis) => patchView({ lvAxis });
   const setAxisClock = (axisClock: ClockMode) => patchView({ axisClock });
@@ -282,15 +295,18 @@ export default function LocalVolViewer() {
               xLabel={axisMode === "logmoneyness" ? "k = log(K / F)" : axisModeLabel(axisMode)}
               yLabel="total variance w = σ²·τ"
               zeroBaseline
-              zoomY
               formatX={(v) => axisTickLabel(axisMode, v)}
               markers={lvCalMarkers}
               link={axisMode === "logmoneyness" ? { ticker, chartId: "localvol:stackedvar" } : undefined}
+              autoScaleY={autoScaleY}
+              onToggleAutoScale={toggleAutoScale}
             />
           )
           : chartMessage("Stacked IV needs at least one fitted expiry.");
       case "smile":
-        return smile ? <LocalVolSmile smile={smile} axisMode={axisMode} /> : chartMessage("No smile");
+        return smile
+          ? <LocalVolSmile smile={smile} axisMode={axisMode} autoScaleY={autoScaleY} onToggleAutoScale={toggleAutoScale} />
+          : chartMessage("No smile");
       case "densities":
         return stackedDensities
           ? (
@@ -301,6 +317,8 @@ export default function LocalVolViewer() {
               zeroBaseline
               formatX={(v) => axisTickLabel(axisMode, v)}
               link={axisMode === "logmoneyness" ? { ticker, chartId: "localvol:densities" } : undefined}
+              autoScaleY={autoScaleY}
+              onToggleAutoScale={toggleAutoScale}
             />
           )
           : chartMessage("Densities need at least one fitted expiry.");

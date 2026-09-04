@@ -32,6 +32,7 @@ import {
   makeVolAt,
 } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
+import type { AutoScaleToggles } from "../lib/autoScaleY";
 
 const message = (text: string) => (
   <div className="flex h-full items-center justify-center text-xs text-slate-500">{text}</div>
@@ -50,6 +51,9 @@ interface Props {
   reloadKey?: number;
   /** Strike-axis display mode (shared with the Smile view). */
   axisMode?: AxisMode;
+  /** Y auto-scale toggles + toggler (the chart's Y center / Y fit buttons). */
+  autoScaleY?: AutoScaleToggles;
+  onToggleAutoScale?: (key: keyof AutoScaleToggles) => void;
 }
 
 export default function StackedVarianceChart({
@@ -57,6 +61,8 @@ export default function StackedVarianceChart({
   fitMode,
   reloadKey = 0,
   axisMode = "logmoneyness",
+  autoScaleY,
+  onToggleAutoScale,
 }: Props) {
   const { format } = useExpiryFormat();
   const { data, loading, error } = useSurface(ticker, fitMode, reloadKey);
@@ -162,10 +168,11 @@ export default function StackedVarianceChart({
           }
           yLabel={deltaAxis ? "Δw = w_far − w_near (adjacent pairs)" : "total variance w = σ²·T"}
           zeroBaseline
-          zoomY
           formatX={(v) => (deltaAxis ? axisTickLabel("logmoneyness", v) : axisTickLabel(axisMode, v))}
           markers={markers}
           link={!deltaAxis && axisMode === "logmoneyness" ? { ticker, chartId: "parametric:stackedvar" } : undefined}
+          autoScaleY={autoScaleY}
+          onToggleAutoScale={onToggleAutoScale}
         />
       </div>
     </div>

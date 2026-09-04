@@ -39,7 +39,7 @@ export const TICKER_VIEWS: { id: ChartView; label: string }[] = [
 ];
 
 /** Views whose x-axis can switch coordinate (ln(K/F) / strike / %ATM / Δ / …). */
-export const AXIS_MODE_VIEWS = new Set<ChartView>(["smile", "stackeddensity", "surface", "stackedvar"]);
+export const AXIS_MODE_VIEWS = new Set<ChartView>(["smile", "compare", "stackeddensity", "surface", "stackedvar"]);
 
 /** Density sub-views: the pdf, the LQD backbone ℓ(u), the cumulative F(x). */
 export const DENSITY_KINDS: { id: DistKind; label: string }[] = [
@@ -52,7 +52,7 @@ export const DENSITY_KINDS: { id: DistKind; label: string }[] = [
 export const VIEW_HINTS: Record<ChartView, string> = {
   smile: "Click a quote · Del exclude · ↑↓ amend · Ctrl+Z undo · scroll: zoom · drag: pan",
   density: "Risk-neutral distribution of the current fit — pdf, log quantile density ℓ(u) = log q(u), or the CDF",
-  compare: "Prevailing model shown · click a family chip to fit it on the same quotes · validity = each family's analytic no-arb signal",
+  compare: "Prevailing model shown · click a family chip to fit it on the same quotes · validity = each family's analytic no-arb signal · scroll: zoom · drag: pan",
   table: "Market frame (prevailing quotes, target, fit @ market spot) · Calib. quotes toggles the calibration columns · Copy / CSV in the footer",
   term: "ATM term structure across the expiry ladder · real / event-dilated clock",
   stackeddensity: "All expiries' densities overlaid · ≥ 0 is structural for LQD only — SVI/MCS dips draw signed in red (clipped otherwise)",

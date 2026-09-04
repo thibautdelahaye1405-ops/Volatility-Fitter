@@ -1030,6 +1030,64 @@ universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
 
+### 🧭 SESSION WRAP (2026-09-04c) — ONE CHART GRAMMAR: COMPARE, DENSITIES, STACKED IV AND THE LV SMILE ZOOM LIKE THE SMILE
+
+User request: give the Compare chart the Smile chart's zoom / pan features
+(Y center, Y fit, the x-axis slider) and the x-axis unit switcher, and do the
+same on the other similar charts — the Local-Vol lens smile, the stacked IV
+charts. Shipped by EXTRACTING the Smile's interaction stack into shared
+pieces and adopting them everywhere (the Smile chart itself now runs on
+them, 776 → 692 lines):
+
+- `lib/useChartZoom.ts` — the one grammar on top of `useZoom` +
+  `autoScaleY`: native non-passive wheel (Shift = x, Alt = y, else both;
+  with the policy lit, x only + re-apply), drag-pan through `beginDrag /
+  dragMove / endDrag / cancelDrag` (the chart keeps hover + click-to-select),
+  the policy re-apply on `xBaseKey` (brush window / axis mode) and on a chip
+  flipping on, `viewKey` for remount-per-step layers. The policy reads the
+  live fractions through refs, so the wheel listener never goes stale.
+  SEMANTIC FIX found by its lock: with Y fit / Y center lit a diagonal drag
+  used to pan y too (the old Smile code read pre-pan fractions, a no-op);
+  now a lit policy pans x only — what the buttons promise.
+- `components/charts/ZoomOverlay.tsx` — Y center / Y fit (top-left of the
+  plot, `left` = the chart's margin) + ⌂ reset; `lib/overlayPaths.ts` — the
+  overlay chart's pure geometry: `inViewYDomain` (the y BASE auto-fits the
+  points inside the x view, 6 % pad, zero floor with `zeroBaseline` unless
+  the data dips), NaN-splitting `seriesPath`, `negativeFillPath`.
+- `OverlayCurvesChart` (Compare · Densities · Stacked IV, both lenses):
+  the hook, the Y buttons (`autoScaleY` / `onToggleAutoScale`), a coarse
+  x-window brush under the plot — `xBrush` CONTROLLED in the caller's units
+  through `toX` (Compare shares the Smile's k-window: zoom the belly there,
+  see it here), INTERNAL in display units over the data extent otherwise
+  (reset when the extent changes: new data, another axis mode), `false` to
+  hide (PriorEvidenceTab's small innovation chart). `formatY` /
+  `formatHoverY` (Compare reads vol %). `zoomY` dropped: every chart zooms
+  both axes. The y title is rotated along the y-axis (the top-left corner
+  belongs to the buttons).
+- `LocalVolSmile`: the hook, in-view y base (curve · prior · quotes ·
+  var-swap), a k-window brush over model + quotes reset per expiry, the Y
+  buttons; shared `useElementSize`.
+- Wiring: Compare joins `AXIS_MODE_VIEWS` (footer AxisModeSelect) with ONE
+  axis context for every family (`compareSeries(data, tx)`: the smile's
+  forward / T / ATM vol, the prevailing fit's vol at k for delta);
+  StackedVariance / StackedDensity forward the toggles; LocalVolViewer keeps
+  `autoScaleY` in its view memory seeded from the same persisted preference
+  (`volfit.smileAutoScale`) — one Y center / Y fit choice across lenses.
+- Help: tip `y-center-y-fit` reworded, What's new 2026-09-04; VIEW_HINTS
+  compare adds the zoom hint.
+- Locks: `useChartZoom.test.ts` (fit re-pins y after an x-pan, both off =
+  free y pan + click verdict, center keeps the manual span and recentres on
+  an x-base move, flipping fit on takes effect at once, viewKey),
+  `overlayPaths.test.ts`, `OverlayCurvesChart.test.tsx` (internal brush in
+  display units with formatX labels, controlled brush in the caller's units,
+  `xBrush={false}`, Y buttons state + click, empty state). tsc clean ·
+  vitest 70 files / 470 tests · build · `npm run smoke:ui` green LIVE · a
+  live probe of all four charts (chrome asserted, zoom + drag, the shared
+  Smile ↔ Compare window, no page errors; screenshots .smoke/zoom-*.png).
+- Not touched (candidates for the same grammar): `DistributionChart` (the
+  single-node Density view: zoom/pan/reset only, no Y buttons / brush — its
+  x is log-return or u ∈ [0,1] per kind) and `TermChart` (click-to-select).
+
 ### 🧭 SESSION WRAP (2026-09-04b) — COMPARE: eSSVI IS A REFERENCE ROW, NOT A FOURTH MODEL
 
 User question: "why do we have eSSVI in there? It is nowhere else in the app."

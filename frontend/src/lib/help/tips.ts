@@ -196,7 +196,7 @@ export const TIPS: Tip[] = [
   {
     id: "y-center-y-fit",
     title: "Y center / Y fit follow your x-range; Alt+wheel overrides",
-    body: "The two chips on the chart recenter and refit the y-axis whenever the x-range changes. Alt+wheel zooms y only and bypasses the auto-scale; Shift+wheel zooms x only; double-click resets.",
+    body: "The two chips on every 2-D chart — Smile, Compare, Densities, Stacked IV and the Local Vol smile — recenter and refit the y-axis whenever the x-range changes (wheel, drag, the x-range slider under the plot or the x-axis unit). Alt+wheel zooms y only and bypasses the auto-scale; Shift+wheel zooms x only; double-click resets.",
     scope: "parametric", level: "basic",
     action: { command: "help.open", arg: "shortcuts", label: "Chart shortcuts" },
   },

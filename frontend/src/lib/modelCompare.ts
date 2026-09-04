@@ -11,14 +11,15 @@ export const REFERENCE_DASH = "5 3";
 
 /** One OverlayCurvesChart series per successfully fitted model, in the
  *  response's (book) order, coloured by family; reference families (eSSVI)
- *  are dashed. Failed rows and degenerate curves are skipped — the table
- *  still lists them with their error. */
-export function compareSeries(data: CompareResponse): OverlaySeries[] {
+ *  are dashed. `tx` maps log-moneyness k to the chart's display coordinate
+ *  (the selected strike-axis mode; identity = k). Failed rows and degenerate
+ *  curves are skipped — the table still lists them with their error. */
+export function compareSeries(data: CompareResponse, tx: (k: number) => number = (k) => k): OverlaySeries[] {
   return data.models
     .filter((m) => m.ok && m.curve.length > 1)
     .map((m) => ({
       label: MODEL_LABELS[m.model] ?? m.label,
-      xs: m.curve.map((p) => p.k),
+      xs: m.curve.map((p) => tx(p.k)),
       ys: m.curve.map((p) => p.vol),
       color: MODEL_COLORS[m.model] ?? "#94a3b8",
       ...(isReferenceModel(m.model) ? { dash: REFERENCE_DASH } : {}),

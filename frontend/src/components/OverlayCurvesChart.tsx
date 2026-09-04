@@ -1,24 +1,32 @@
 // Generic overlaid multi-series line chart (ROADMAP Phase 10).
 //
-// Backs the Parametric "Stacked densities" and "Stacked IV" views: every
-// selected expiry is one curve on shared axes, colour-graded near→far by
-// maturity. Hand-rolled SVG following the SmileChart conventions; no chart deps.
-// Supports wheel-zoom (x by default; +Shift x-only / +Alt y-only when zoomY),
-// drag-pan and double-click / ⌂ reset — zoom-out reveals beyond the data.
+// Backs the Parametric / Local-Vol "Densities" and "Stacked IV" views and the
+// Compare view: every series is one curve on shared axes (the ladder views
+// colour-grade near→far by maturity). Hand-rolled SVG on the SmileChart
+// conventions, with the SAME interaction stack (lib/useChartZoom): wheel-zoom
+// (+Shift x-only / +Alt y-only), drag-pan, double-click / ⌂ reset, the Y
+// center / Y fit overlay buttons whose policy owns y (the y BASE auto-fits
+// the points inside the x view, like the Smile), and a coarse x-window brush
+// under the plot — controlled in the caller's units (the Compare view shares
+// the smile's k-window) or internal in display units over the data extent.
 // Linked hover (wave 3, B2): with `link` set and the x-axis in log-moneyness,
 // hovering publishes (ticker, k = x, T of the nearest curve) on the surface
 // hover store, and a point published by another chart of the ticker shows
 // here as a highlighted curve (nearest T) + a marker at k.
 import { useEffect, useId, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { clamp, formatAxisNumber, linearScale, niceTicks } from "../lib/chartScale";
+import { formatAxisNumber, linearScale, niceTicks } from "../lib/chartScale";
 import { useElementSize } from "../lib/useElementSize";
-import { useZoom } from "../lib/useZoom";
+import { useChartZoom } from "../lib/useChartZoom";
+import type { AutoScaleToggles } from "../lib/autoScaleY";
 import { crosshairLabel, crosshairPoint } from "../lib/crosshair";
 import type { CrosshairPoint } from "../lib/crosshair";
 import { interpolateY, nearestByT, nearestCurveAt } from "../lib/overlayLink";
+import { fullDomain, inViewYDomain, negativeFillPath, seriesPath } from "../lib/overlayPaths";
 import { useSurfaceHover } from "../state/surfaceHover";
 import { CrosshairBadge, CrosshairGuides } from "./CrosshairOverlay";
+import ZoomOverlay from "./charts/ZoomOverlay";
+import RangeBrush from "./RangeBrush";
 
 /** One plottable curve. */
 export interface OverlaySeries {
@@ -47,20 +55,43 @@ export interface OverlayMarker {
   color?: string;
 }
 
+/** A CONTROLLED coarse x-window brush in the caller's units: `toX` maps a
+ *  bound to display x (the Compare chart brushes in log-moneyness k while its
+ *  geometry sits in the selected axis coordinate). */
+export interface OverlayBrush {
+  min: number;
+  max: number;
+  value: readonly [number, number];
+  onChange: (next: [number, number]) => void;
+  toX?: (v: number) => number;
+  format?: (v: number) => string;
+}
+
 interface OverlayCurvesChartProps {
   series: OverlaySeries[];
   xLabel: string;
   yLabel: string;
   /** Draw a y = 0 baseline (used by the density view to anchor positivity). */
   zeroBaseline?: boolean;
-  /** Allow zooming the y-axis too (Stacked IV); otherwise wheel zooms x only. */
-  zoomY?: boolean;
   /** X tick-label formatter (display units, e.g. "25Δ"/"120%"); default numeric. */
   formatX?: (v: number) => string;
+  /** Y tick-label formatter (e.g. a vol percentage); default numeric. */
+  formatY?: (v: number) => string;
+  /** Crosshair y readout; defaults to `formatY`. */
+  formatHoverY?: (v: number) => string;
   /** Evidence circles (optional, additive — no behavior change when absent). */
   markers?: OverlayMarker[];
   /** Linked (k, T) hover: set only when the x-axis IS log-moneyness. */
   link?: { ticker: string; chartId: string };
+  /** The coarse x-window brush under the plot: a controlled OverlayBrush,
+   *  `false` to hide it (small embedded charts), or absent for the internal
+   *  brush in display units over the data extent (reset when the extent
+   *  changes — new data, another axis mode). */
+  xBrush?: OverlayBrush | false;
+  /** Y auto-scale toggles (lib/autoScaleY) + their toggler: with a toggler
+   *  the Y center / Y fit buttons show on the plot. Both ON by default. */
+  autoScaleY?: AutoScaleToggles;
+  onToggleAutoScale?: (key: keyof AutoScaleToggles) => void;
 }
 
 /** Evidence-rose used for sub-zero fills and default marker strokes. */
@@ -68,35 +99,23 @@ const EVIDENCE_ROSE = "rgb(244 63 94)";
 
 const MARGIN = { top: 14, right: 16, bottom: 34, left: 56 } as const;
 
-/** Min/max across all series for one accessor, or null when there's no data. */
-function domain(series: OverlaySeries[], pick: (s: OverlaySeries) => number[]) {
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const s of series) {
-    for (const v of pick(s)) {
-      if (!Number.isFinite(v)) continue;
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
-    }
-  }
-  return lo <= hi ? { lo, hi } : null;
-}
-
 export default function OverlayCurvesChart({
   series,
   xLabel,
   yLabel,
   zeroBaseline = false,
-  zoomY = false,
   formatX = formatAxisNumber,
+  formatY = formatAxisNumber,
+  formatHoverY,
   markers,
   link,
+  xBrush,
+  autoScaleY,
+  onToggleAutoScale,
 }: OverlayCurvesChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const clipId = useId();
-  const zoom = useZoom();
   /** Crosshair position, or null when the pointer is outside / panning. */
   const [cross, setCross] = useState<CrosshairPoint | null>(null);
   const hoverLink = useSurfaceHover(link?.chartId ?? "overlay");
@@ -113,40 +132,50 @@ export default function OverlayCurvesChart({
   const innerW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const innerH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
 
-  // Wheel zoom (native, non-passive so preventDefault works).
-  useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const onWheel = (e: WheelEvent) => {
-      if (innerW <= 0 || innerH <= 0) return;
-      e.preventDefault();
-      const rect = svg.getBoundingClientRect();
-      const fx = clamp((e.clientX - rect.left - MARGIN.left) / innerW, 0, 1);
-      const fy = clamp((e.clientY - rect.top - MARGIN.top) / innerH, 0, 1);
-      const axis = !zoomY ? "x" : e.shiftKey ? "x" : e.altKey ? "y" : "both";
-      zoom.zoomAt(fx, fy, e.deltaY, axis);
-    };
-    svg.addEventListener("wheel", onWheel, { passive: false });
-    return () => svg.removeEventListener("wheel", onWheel);
-  }, [zoom, innerW, innerH, zoomY]);
+  // The coarse x window: controlled (caller units through toX) or internal
+  // in display units over the data extent — reset whenever that extent
+  // changes (new data, another axis mode), adjusted during render so the
+  // chart never paints a stale window.
+  const xd = fullDomain(series, (s) => s.xs);
+  const extentKey = xd === null ? "" : `${xd.lo},${xd.hi}`;
+  const [innerWin, setInnerWin] = useState<[number, number] | null>(null);
+  const [prevExtentKey, setPrevExtentKey] = useState(extentKey);
+  if (extentKey !== prevExtentKey) {
+    setPrevExtentKey(extentKey);
+    setInnerWin(null);
+  }
+  const brush: OverlayBrush | null =
+    xBrush === false
+      ? null
+      : (xBrush ??
+        (xd === null
+          ? null
+          : { min: xd.lo, max: xd.hi, value: innerWin ?? [xd.lo, xd.hi], onChange: setInnerWin, format: formatX }));
+  const toX = brush?.toX ?? ((v: number) => v);
+  const winLo = brush ? toX(brush.value[0]) : (xd?.lo ?? 0);
+  const winHi = brush ? toX(brush.value[1]) : (xd?.hi ?? 1);
+  const baseX: [number, number] = [Math.min(winLo, winHi), Math.max(winLo, winHi)];
 
-  const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
-    drag.current = { x: e.clientX, y: e.clientY, moved: false };
-  };
+  const cz = useChartZoom(svgRef, {
+    plotW: innerW, plotH: innerH, marginLeft: MARGIN.left, marginTop: MARGIN.top,
+    autoScaleY, xBaseKey: `${baseX[0]},${baseX[1]}`,
+  });
+  const { zoom } = cz;
+
+  // Scales: x = the brushed window, zoomed; y auto-fits the points inside the
+  // x view (the base the Y center / Y fit policy rides on), then zoomed.
+  const [vxLo, vxHi] = zoom.viewX(baseX);
+  const yBase = inViewYDomain(series, vxLo, vxHi, zeroBaseline);
+  const [vyLo, vyHi] = zoom.viewY([yBase.lo, yBase.hi]);
+  const xScale = linearScale([vxLo, vxHi], [0, innerW]);
+  const yScale = linearScale([vyLo, vyHi], [innerH, 0]);
+
+  const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => cz.beginDrag(e);
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
-    const d = drag.current;
-    if (d && innerW > 0 && innerH > 0) {
-      const dx = e.clientX - d.x;
-      const dy = e.clientY - d.y;
-      if (Math.abs(dx) + Math.abs(dy) > 2) {
-        zoom.panBy(dx / innerW, dy / innerH, zoomY ? "both" : "x");
-        drag.current = { x: e.clientX, y: e.clientY, moved: true };
-      }
-    }
-    // Crosshair rides the same handler (hover-only, hidden while panning).
     const svg = svgRef.current;
     if (!svg) return;
-    if (drag.current?.moved) {
+    // Crosshair rides the same handler (hover-only, hidden while panning).
+    if (cz.dragMove(e)) {
       setCrossLinked(null);
       return;
     }
@@ -155,11 +184,9 @@ export default function OverlayCurvesChart({
         innerW, innerH, xScale.invert, yScale.invert),
     );
   };
-  const onPointerUp = () => {
-    drag.current = null;
-  };
+  const onPointerUp = () => cz.endDrag();
   const onPointerLeave = () => {
-    drag.current = null;
+    cz.cancelDrag();
     setCrossLinked(null);
   };
   // A point published by another chart of this ticker → curve + marker here.
@@ -180,199 +207,141 @@ export default function OverlayCurvesChart({
     );
   }
 
-  const xd = domain(series, (s) => s.xs);
-  const yd0 = domain(series, (s) => s.ys);
-  // Pad the y-domain a touch; include 0 when a baseline is requested.
-  const baseYLo = zeroBaseline ? Math.min(0, yd0?.lo ?? 0) : (yd0?.lo ?? 0);
-  const baseYHi = (yd0?.hi ?? 1) * 1.04;
-
-  const ready = size.width > 0 && size.height > 0 && xd !== null && yd0 !== null;
-
-  // Apply zoom to the base domains.
-  const [vxLo, vxHi] = zoom.viewX([xd?.lo ?? 0, xd?.hi ?? 1]);
-  const [vyLo, vyHi] = zoom.viewY([baseYLo, baseYHi]);
-  const xScale = linearScale([vxLo, vxHi], [0, innerW]);
-  const yScale = linearScale([vyLo, vyHi], [innerH, 0]);
-
+  const ready = size.width > 0 && size.height > 0 && xd !== null;
   const xTicks = ready ? niceTicks(Math.min(vxLo, vxHi), Math.max(vxLo, vxHi), 6) : [];
   const yTicks = ready ? niceTicks(Math.min(vyLo, vyHi), Math.max(vyLo, vyHi), 5) : [];
-
-  const pathOf = (s: OverlaySeries): string => {
-    let d = "";
-    let started = false;
-    for (let i = 0; i < s.xs.length; i++) {
-      const x = s.xs[i];
-      const y = s.ys[i];
-      if (!Number.isFinite(x) || !Number.isFinite(y)) {
-        started = false;
-        continue;
-      }
-      const px = xScale.map(x);
-      const py = yScale.map(y);
-      d += `${started ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`;
-      started = true;
-    }
-    return d;
-  };
-
-  /** Sub-zero fill of a series: the polyline of min(y, 0) closed along y = 0 —
-   *  regions with y >= 0 collapse onto the baseline (zero area), so only the
-   *  negative excursions read as red. */
-  const negativeFillPath = (s: OverlaySeries): string => {
-    const y0 = yScale.map(0);
-    let d = "";
-    let firstPx: number | null = null;
-    let lastPx: number | null = null;
-    for (let i = 0; i < s.xs.length; i++) {
-      const x = s.xs[i];
-      const y = s.ys[i];
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      const px = xScale.map(x);
-      const py = yScale.map(Math.min(y, 0));
-      d += `${d === "" ? "M" : "L"}${px.toFixed(1)},${py.toFixed(1)}`;
-      if (firstPx === null) firstPx = px;
-      lastPx = px;
-    }
-    if (d === "" || firstPx === null || lastPx === null) return "";
-    return `${d}L${lastPx.toFixed(1)},${y0.toFixed(1)}L${firstPx.toFixed(1)},${y0.toFixed(1)}Z`;
-  };
+  const px = (x: number) => xScale.map(x);
+  const py = (y: number) => yScale.map(y);
 
   return (
-    <div ref={ref} className="relative h-full w-full">
-      {ready && (
-        <svg
-          ref={svgRef}
-          width={size.width}
-          height={size.height}
-          className="block touch-none select-none"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerLeave={onPointerLeave}
-          onDoubleClick={zoom.reset}
-        >
-          <defs>
-            <clipPath id={clipId}>
-              <rect x={0} y={0} width={innerW} height={innerH} />
-            </clipPath>
-          </defs>
-          <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
-            {/* Y grid + labels */}
-            {yTicks.map((t) => {
-              const y = yScale.map(t);
-              return (
-                <g key={`y${t}`}>
-                  <line x1={0} x2={innerW} y1={y} y2={y} stroke="var(--color-surface-700)" strokeWidth={1} />
-                  <text x={-8} y={y} dy="0.32em" textAnchor="end" className="fill-slate-500 text-[10px]">
-                    {formatAxisNumber(t)}
-                  </text>
-                </g>
-              );
-            })}
-            {/* X grid + labels */}
-            {xTicks.map((t) => {
-              const x = xScale.map(t);
-              return (
-                <g key={`x${t}`}>
-                  <line x1={x} x2={x} y1={0} y2={innerH} stroke="var(--color-surface-700)" strokeWidth={1} />
-                  <text x={x} y={innerH + 18} textAnchor="middle" className="fill-slate-500 text-[10px]">
-                    {formatX(t)}
-                  </text>
-                </g>
-              );
-            })}
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div ref={ref} className="relative min-h-0 flex-1">
+        {ready && (
+          <svg
+            ref={svgRef}
+            width={size.width}
+            height={size.height}
+            className="block touch-none select-none"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerLeave={onPointerLeave}
+            onDoubleClick={zoom.reset}
+          >
+            <defs>
+              <clipPath id={clipId}>
+                <rect x={0} y={0} width={innerW} height={innerH} />
+              </clipPath>
+            </defs>
+            <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
+              {/* Y grid + labels */}
+              {yTicks.map((t) => {
+                const y = yScale.map(t);
+                return (
+                  <g key={`y${t}`}>
+                    <line x1={0} x2={innerW} y1={y} y2={y} stroke="var(--color-surface-700)" strokeWidth={1} />
+                    <text x={-8} y={y} dy="0.32em" textAnchor="end" className="fill-slate-500 text-[10px]">
+                      {formatY(t)}
+                    </text>
+                  </g>
+                );
+              })}
+              {/* X grid + labels */}
+              {xTicks.map((t) => {
+                const x = xScale.map(t);
+                return (
+                  <g key={`x${t}`}>
+                    <line x1={x} x2={x} y1={0} y2={innerH} stroke="var(--color-surface-700)" strokeWidth={1} />
+                    <text x={x} y={innerH + 18} textAnchor="middle" className="fill-slate-500 text-[10px]">
+                      {formatX(t)}
+                    </text>
+                  </g>
+                );
+              })}
 
-            <g clipPath={`url(#${clipId})`}>
-              {/* Zero baseline (densities) */}
-              {zeroBaseline && (
-                <line x1={0} x2={innerW} y1={yScale.map(0)} y2={yScale.map(0)} stroke="var(--color-slate-700)" strokeWidth={1} />
-              )}
-              {/* Sub-zero excursion fills (arb evidence), UNDER the curves */}
-              {series
-                .filter((s) => s.fillNegative === true)
-                .map((s) => {
-                  const d = negativeFillPath(s);
-                  return d !== "" ? (
-                    <path key={`${s.label}·neg`} d={d} fill="rgb(244 63 94 / 0.22)" stroke="none" />
-                  ) : null;
-                })}
-              {/* Curves, near→far (the linked curve reads bolder) */}
-              {series.map((s, i) => (
-                <path key={s.label} d={pathOf(s)} fill="none" stroke={s.color} strokeDasharray={s.dash}
-                  strokeWidth={i === linkedIdx ? 2.75 : 1.5} opacity={linkedIdx === null || i === linkedIdx ? 0.95 : 0.45} />
-              ))}
-              {/* Linked hover marker (a point published by a surface chart) */}
-              {linkedIdx !== null && linkedY !== null && h !== null && (
-                <g pointerEvents="none">
-                  <line x1={xScale.map(h.k)} x2={xScale.map(h.k)} y1={0} y2={innerH} stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
-                  <circle cx={xScale.map(h.k)} cy={yScale.map(linkedY)} r={4.5} fill="rgb(15 23 42)" stroke={series[linkedIdx].color} strokeWidth={1.75} />
-                </g>
-              )}
-              {/* Evidence circles (calendar cross / density dip) + hover title */}
-              {(markers ?? [])
-                .filter((m) => Number.isFinite(m.x) && Number.isFinite(m.y))
-                .map((m, i) => (
-                  <g key={`marker${i}`}>
-                    <circle
-                      cx={xScale.map(m.x)}
-                      cy={yScale.map(m.y)}
-                      r={4.5}
-                      fill="rgb(244 63 94 / 0.15)"
-                      stroke={m.color ?? EVIDENCE_ROSE}
-                      strokeWidth={1.75}
-                    >
-                      <title>{m.label}</title>
-                    </circle>
-                    <circle
-                      cx={xScale.map(m.x)}
-                      cy={yScale.map(m.y)}
-                      r={1.4}
-                      fill={m.color ?? EVIDENCE_ROSE}
-                      pointerEvents="none"
-                    />
+              <g clipPath={`url(#${clipId})`}>
+                {/* Zero baseline (densities) */}
+                {zeroBaseline && (
+                  <line x1={0} x2={innerW} y1={yScale.map(0)} y2={yScale.map(0)} stroke="var(--color-slate-700)" strokeWidth={1} />
+                )}
+                {/* Sub-zero excursion fills (arb evidence), UNDER the curves */}
+                {series
+                  .filter((s) => s.fillNegative === true)
+                  .map((s) => {
+                    const d = negativeFillPath(s, px, py);
+                    return d !== "" ? (
+                      <path key={`${s.label}·neg`} d={d} fill="rgb(244 63 94 / 0.22)" stroke="none" />
+                    ) : null;
+                  })}
+                {/* Curves, near→far (the linked curve reads bolder) */}
+                {series.map((s, i) => (
+                  <path key={s.label} d={seriesPath(s, px, py)} fill="none" stroke={s.color} strokeDasharray={s.dash}
+                    strokeWidth={i === linkedIdx ? 2.75 : 1.5} opacity={linkedIdx === null || i === linkedIdx ? 0.95 : 0.45} />
+                ))}
+                {/* Linked hover marker (a point published by a surface chart) */}
+                {linkedIdx !== null && linkedY !== null && h !== null && (
+                  <g pointerEvents="none">
+                    <line x1={xScale.map(h.k)} x2={xScale.map(h.k)} y1={0} y2={innerH} stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
+                    <circle cx={xScale.map(h.k)} cy={yScale.map(linkedY)} r={4.5} fill="rgb(15 23 42)" stroke={series[linkedIdx].color} strokeWidth={1.75} />
+                  </g>
+                )}
+                {/* Evidence circles (calendar cross / density dip) + hover title */}
+                {(markers ?? [])
+                  .filter((m) => Number.isFinite(m.x) && Number.isFinite(m.y))
+                  .map((m, i) => (
+                    <g key={`marker${i}`}>
+                      <circle cx={xScale.map(m.x)} cy={yScale.map(m.y)} r={4.5}
+                        fill="rgb(244 63 94 / 0.15)" stroke={m.color ?? EVIDENCE_ROSE} strokeWidth={1.75}>
+                        <title>{m.label}</title>
+                      </circle>
+                      <circle cx={xScale.map(m.x)} cy={yScale.map(m.y)} r={1.4} fill={m.color ?? EVIDENCE_ROSE} pointerEvents="none" />
+                    </g>
+                  ))}
+              </g>
+
+              {/* Crosshair guides (hover-only) */}
+              {cross !== null && <CrosshairGuides point={cross} plotW={innerW} plotH={innerH} />}
+
+              {/* Axis titles: x at the axis's right end, y rotated along the
+                  y-axis (the plot's top-left corner belongs to the Y buttons) */}
+              <text x={innerW} y={innerH + 30} textAnchor="end" className="fill-slate-600 text-[10px]">
+                {xLabel}
+              </text>
+              <text transform={`translate(${-MARGIN.left + 10},${innerH / 2}) rotate(-90)`} textAnchor="middle"
+                className="fill-slate-600 text-[10px]">
+                {yLabel}
+              </text>
+
+              {/* Legend (maturity-graded) */}
+              <g transform={`translate(${innerW - 4},6)`}>
+                {series.map((s, i) => (
+                  <g key={s.label} transform={`translate(0,${i * 14})`}>
+                    <line x1={-26} x2={-12} y1={0} y2={0} stroke={s.color} strokeWidth={2} strokeDasharray={s.dash} />
+                    <text x={-30} y={0} dy="0.32em" textAnchor="end" className="fill-slate-400 text-[10px]">
+                      {s.label}
+                    </text>
                   </g>
                 ))}
+              </g>
             </g>
+          </svg>
+        )}
 
-            {/* Crosshair guides (hover-only) */}
-            {cross !== null && <CrosshairGuides point={cross} plotW={innerW} plotH={innerH} />}
+        {/* Crosshair readout badge (x in display units, y in axis units) */}
+        {cross !== null && (
+          <CrosshairBadge label={crosshairLabel(cross, formatX, formatHoverY ?? formatY)} />
+        )}
 
-            {/* Axis labels */}
-            <text x={innerW} y={innerH + 30} textAnchor="end" className="fill-slate-600 text-[10px]">
-              {xLabel}
-            </text>
-            <text x={2} y={-4} className="fill-slate-600 text-[10px]">
-              {yLabel}
-            </text>
+        <ZoomOverlay autoScaleY={autoScaleY} onToggleAutoScale={onToggleAutoScale}
+          zoomed={zoom.zoomed} onReset={zoom.reset} left={MARGIN.left} />
+      </div>
 
-            {/* Legend (maturity-graded) */}
-            <g transform={`translate(${innerW - 4},6)`}>
-              {series.map((s, i) => (
-                <g key={s.label} transform={`translate(0,${i * 14})`}>
-                  <line x1={-26} x2={-12} y1={0} y2={0} stroke={s.color} strokeWidth={2} strokeDasharray={s.dash} />
-                  <text x={-30} y={0} dy="0.32em" textAnchor="end" className="fill-slate-400 text-[10px]">
-                    {s.label}
-                  </text>
-                </g>
-              ))}
-            </g>
-          </g>
-        </svg>
-      )}
-
-      {/* Crosshair readout badge (x in display units, y in axis units) */}
-      {cross !== null && (
-        <CrosshairBadge label={crosshairLabel(cross, formatX, formatAxisNumber)} />
-      )}
-
-      {zoom.zoomed && (
-        <button
-          onClick={zoom.reset}
-          title="Reset zoom (or double-click)"
-          className="absolute bottom-1 right-2 rounded-md border border-slate-700 bg-surface-800/95 px-2 py-0.5 text-[10px] text-slate-300 shadow hover:text-slate-100"
-        >
-          ⌂ reset
-        </button>
+      {/* Coarse x-window brush (display units, or the caller's units) */}
+      {brush !== null && (
+        <div className="mt-2 shrink-0 px-1">
+          <RangeBrush min={brush.min} max={brush.max} value={brush.value} onChange={brush.onChange}
+            format={brush.format ?? formatX} />
+        </div>
       )}
     </div>
   );

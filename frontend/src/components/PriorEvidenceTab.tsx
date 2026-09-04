@@ -207,6 +207,7 @@ export default function PriorEvidenceTab({
               yLabel="|innovation| (bp)"
               zeroBaseline
               formatX={(v) => shaped.days[Math.round(v)]?.slice(5) ?? ""}
+              xBrush={false}
             />
           </div>
         )}

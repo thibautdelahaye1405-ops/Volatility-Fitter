@@ -7,6 +7,16 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-04",
+    title: "One chart grammar: Compare, Densities, Stacked IV and the Local Vol smile zoom like the Smile",
+    items: [
+      "Every 2-D chart now carries the Smile chart's full interaction stack: wheel zoom (Shift = x only, Alt = y only), drag to pan, double-click or ⌂ to reset, the **Y center** / **Y fit** buttons at the top-left of the plot, and an x-range slider under the plot.",
+      "Compare gains the x-axis unit selector in the chart footer (ln(K/F), strike, % ATM, delta, normalized) and shares the Smile view's strike window: zoom the belly in Smile, switch to Compare, see the same belly. Its y-axis reads in vol percent.",
+      "Densities and Stacked IV (Parametric and Local Vol) and the Local Vol smile get the same Y buttons and slider; the y-axis auto-fits the points inside the visible x-range, so a zoom into a wing no longer leaves the curves squashed at the bottom. The Y center / Y fit preference is shared by both lenses.",
+      "With Y center or Y fit lit, a drag pans the x-axis only — the policy places y. Alt+wheel still zooms y by hand.",
+    ],
+  },
+  {
+    date: "2026-09-04",
     title: "Compare: eSSVI is a reference row, not a fourth model",
     items: [
       "The Compare strip shows the three families you can calibrate — LQD, SVI-JW, MCS. eSSVI, the compare-only SSVI yardstick (three handles, the belly tied to the wings), is no longer a default chip: **+ reference** at the end of the strip reveals it, tagged *ref*; **− reference** hides it and drops it from the comparison.",
