@@ -1030,6 +1030,75 @@ universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
 
+### 🧭 SESSION WRAP (2026-09-04e) — AUTO-CALIBRATE EVENTS: A PEAK DETECTOR REPLACES THE FLATNESS SOLVE
+
+User question: "what should 'Auto-calibrate events' do precisely, and is it
+working adequately? It does not seem to change the term-structure much."
+Diagnosis on the standing live export (SPY / NVDA / AAPL) and synthetic
+ladders, then the user ratified the solver fixes.
+
+- FINDINGS (the old `event_autocalib.py`, L-BFGS-B over a flatness +
+  monotone + L1/ridge objective): (1) the Term chart's default "Real time"
+  axis plots the CALENDAR forward variance Δw/Δt, which is event-invariant by
+  construction — the panel could never move after a calibrate; only the
+  "Event-dilated" axis shows Δw/Δτ, and the vol points move by √(t/τ), a few
+  percent at most. (2) The solve stopped early: variable in days, objective
+  in variance², projected gradient ≈ PGTOL after 3–12 iterations — installed
+  AAPL events were 2.2 / 10.0 / 3.1 days against a converged 5.6 / 13.1 /
+  16.5. (3) The UI's default horizon (last expiry) removed the tail anchor,
+  so the objective's optimum was "dilate everything down to the lowest
+  forward variance": AAPL, with no earnings spike in the export, got events
+  in three of four intervals; mild backwardation (NVDA) read as an event; a
+  vol spike would have dumped tens of days into the front. (4) Calendar-day
+  jaggedness: the Saturday-snapshot SPY export showed a 0.7-day "event" on a
+  Tuesday because the Sat→Mon interval spans a weekend.
+- SOLVER (`calib/event_autocalib.py`, rewritten): a DETECTOR, not a
+  smoother. Forward variance per day-weight f_i = Δw_i/d_i; an interval that
+  exceeds the higher of its two neighbours r_i = max(g_{i−1}, g_{i+1}) is
+  clipped to it and the excess is one event N_i = d_i (f_i/r_i − 1) — exact,
+  no penalty shrinkage. Monotone fixed point (feasible set closed under the
+  componentwise max ⇒ converges to the greatest element, the smallest
+  events leaving no peak, ≤ one pass per interval; microseconds). The LAST
+  interval of the ladder is never a candidate (tail reference, whatever the
+  horizon); the FIRST interval's reference is its right neighbour continued
+  by the back ladder's log-slope when backwardated (a mean-reverting spike
+  front is not an event). Materiality floors `MIN_EVENT_DAYS` 0.5 AND
+  `MIN_REL_EXCESS` 0.03 (fit noise sits below both). `base_days=` takes the
+  session clock's day base: the service (`api/event_autocalib.py`) passes
+  `node_clock` bases when `intradayClock` is on, so weekends stop reading as
+  hot intervals; the horizon now counts CALIBRATED expiries only.
+- RESULTS on the export: SPY → no events (was a 0.7-day weekend artefact);
+  NVDA → 2.9 days before Sep (the only neighbour is lower; late-Aug earnings
+  plausible); AAPL → ONE event, 3.8 days in the Sep→Dec (late-Oct earnings)
+  interval, spread 127 → 106 bp (was 2 events / 11.8 days smeared across
+  intervals). Synthetic: earnings 26 % → 34 % ⇒ one 9.7-day event in the
+  earnings interval only; contango ramp ⇒ none; mean-reverting spike front
+  ⇒ none; planted events recovered to round-off at 20 % and 40 % vol.
+- LIMITS recorded (Note 11 §Limitations): two adjacent equal events form a
+  plateau with no peak (invisible); the front interval — one neighbour —
+  cannot separate a scheduled event from a spike front that decays FASTER
+  than the back's own log-slope (a 35/31/29 % ladder still yields ~1.8 front
+  days). Review the installed calendar.
+- TESTS: `tests/test_event_autocalib.py` 20 (spike clipped exactly, flat /
+  ramp / backwardation / dip / rising-tail eventless, front event detected,
+  planted recovery ×8, materiality floors, intraday base removes the weekend
+  artefact, degenerate ladders, horizon, endpoint). Neighbouring event /
+  term / weighted-time modules green.
+- DOCS: Note 11 market-clock edition §3.2 rewritten (eq. 4 → f/g ladder, eq.
+  4b the size), abstract, AAPL section, design + limitations paragraphs,
+  hyper-parameter table, traceability; `gen_event_market_clock.py` ident
+  audit now sweeps 0.5–8 days at both vols with the floor shaded (+ hero
+  annotation placed by interval, not by event order — was on the wrong bar
+  once events became sparse); macros regenerated, both Note 11 PDFs rebuilt;
+  handoff mirror updated; variance-clock edition text + table; schema
+  docstring; Term panel copy.
+- RIDER (UI, not done — the user asked for the solver fixes): after a
+  calibrate, switch the Term chart to the event-dilated axis or draw both
+  forward-variance steps, and show a before/after readout (events found,
+  roughness) — with the default "Real time" axis the effect is invisible by
+  construction. The Papers/book chapter that quotes the old flatness
+  objective (if any) is a BOOK-session item.
+
 ### 🧭 SESSION WRAP (2026-09-04d) — COMPARE TAIL MATCHING: THREE TOGGLES PULL SVI-JW / MCS TAILS ONTO LQD's
 
 User request: "optionally constrain SVI-JW and MCS targeting LQD-implied

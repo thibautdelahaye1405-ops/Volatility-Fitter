@@ -2344,11 +2344,12 @@ class EventCalendar(BaseModel):
 class EventAutocalibrateRequest(BaseModel):
     """Auto-calibrate the event calendar from the ATM term structure.
 
-    ``maxExpiry`` is the horizon: one candidate event is placed before each
-    expiry at or before it, and their day-weights are solved (all at once) so the
-    weighted forward variance up to the interval just past the horizon is as flat
-    and monotone-increasing as possible, with events as small and sparse as
-    possible (volfit.calib.event_autocalibrate). Replaces the existing calendar."""
+    ``maxExpiry`` is the horizon: every inter-expiry interval at or before it is
+    a candidate. An interval whose forward variance per day-weight runs hotter
+    than both its neighbours (by the materiality floors) carries one event sized
+    exactly to its excess over the higher neighbour; ramps, backwardation and
+    dips yield none, and the ladder's last interval is the tail reference, never
+    a candidate (volfit.calib.event_autocalib). Replaces the existing calendar."""
 
     maxExpiry: str  # ISO date: no events are added beyond this expiry
     fitMode: FitMode = "mid"

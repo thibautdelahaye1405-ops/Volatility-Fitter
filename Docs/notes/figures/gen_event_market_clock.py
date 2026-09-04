@@ -46,7 +46,11 @@ sys.path.insert(0, str(REPO / "backend"))
 
 from style import PALETTE, WIDE, callout, label_panel, save, setup  # noqa: E402
 
-from volfit.calib.event_autocalib import autocalibrate_events  # noqa: E402
+from volfit.calib.event_autocalib import (  # noqa: E402
+    MIN_EVENT_DAYS,
+    MIN_REL_EXCESS,
+    autocalibrate_events,
+)
 from volfit.calib.weighted_time import (  # noqa: E402
     DAYS_PER_YEAR,
     interp_total_variance,
@@ -129,7 +133,8 @@ def figure_hero() -> None:
            label="per calendar year")
     ax.bar(x + 0.18, fv_evt, width=0.34, color=TEAL,
            label="per variance year (solved clock)")
-    for xi, (_, n_days) in zip(x, events):
+    for te, n_days in events:
+        xi = int(np.searchsorted(ts, te))  # the interval the event sits in
         ax.annotate(f"+{n_days:.1f}d", xy=(xi, max(fv_cal[xi], fv_evt[xi])),
                     xytext=(0, 4), textcoords="offset points", ha="center",
                     fontsize=8.5, color=PALETTE["ink"])
@@ -233,7 +238,12 @@ def figure_interp() -> None:
 
 def figure_ident() -> None:
     t_nodes = np.array([0.10, 0.20, 0.35, 0.60])
-    planted = np.array([1.0, 2.0, 3.0, 5.0, 8.0])
+    planted = np.array([0.5, 1.0, 2.0, 3.0, 5.0, 8.0])
+    # Materiality floor on the audit's interval (0.10, 0.20]: half a day, or
+    # the relative floor times the interval's 36.5 day-weights — the larger.
+    interval_days = (0.20 - 0.10) * DAYS_PER_YEAR
+    floor = max(MIN_EVENT_DAYS, MIN_REL_EXCESS * interval_days)
+    material = planted >= floor
 
     def sweep(sigma: float) -> np.ndarray:
         rec = []
@@ -247,20 +257,28 @@ def figure_ident() -> None:
 
     rec_hi = sweep(0.40)
     rec_lo = sweep(0.20)
-    macro("emcidentshrink", "%.2f", float(np.max(planted - rec_hi)))
+    # Recovery error over the material sizes, at both vol levels (the peak
+    # rule compares ratios, so the vol level cancels: round-off only).
+    err = np.abs(planted - rec_hi)[material].max()
+    err = max(err, np.abs(planted - rec_lo)[material].max())
+    macro("emcidentshrink", "%.2f", float(err))
+    macro("emcidentfloor", "%.1f", floor)
     macro("emcidentlowfloor", "%.0f",
-          float(planted[rec_lo <= 0.0].max()) if np.any(rec_lo <= 0.0) else 0)
+          float(planted[~material].max()) if np.any(~material) else 0)
+    macro("emcminrel", "%s", "%d" % round(100 * MIN_REL_EXCESS) + r"\%")
 
     ev_flat = autocalibrate_events(t_nodes, 0.40**2 * t_nodes, n_events=3)
     macro("emcidentflat", "%d", len(ev_flat))
 
     fig, ax = plt.subplots(figsize=(6.6, 3.9))
     lim = (-0.3, planted.max() * 1.1)
+    ax.axvspan(lim[0], floor, color=SLATE, alpha=0.12, lw=0,
+               label=f"below the materiality floor ({floor:.1f} d)")
     ax.plot(lim, lim, color=PALETTE["ink"], lw=0.8, ls=":")
-    ax.plot(planted, rec_hi, "o", ms=7, color=TEAL, mfc="none", mew=1.8,
-            label=r"$\sigma=40\%$: recovered (mild shrinkage)")
+    ax.plot(planted, rec_hi, "o", ms=8, color=TEAL, mfc="none", mew=1.8,
+            label=r"$\sigma=40\%$: recovered")
     ax.plot(planted, rec_lo, "x", ms=7, color=RUST, mew=1.8,
-            label=r"$\sigma=20\%$: below materiality until large")
+            label=r"$\sigma=20\%$: recovered (identical)")
     ax.plot([0.0], [len(ev_flat)], "s", ms=7, color=SLATE,
             label="flat term structure: no events")
     ax.set_xlabel("planted event size (extra days)")

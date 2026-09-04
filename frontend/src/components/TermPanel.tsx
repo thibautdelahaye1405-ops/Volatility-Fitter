@@ -237,8 +237,9 @@ export default function TermPanel() {
         <div className="mt-3 border-t border-slate-800 pt-3">
           <h3 className="mb-1 text-sm font-semibold text-slate-100">Auto-calibrate events</h3>
           <p className="mb-2 text-[11px] text-slate-500">
-            Places an event before each expiry up to the horizon so the event-time
-            forward variance is flat &amp; monotone with small, sparse events.
+            Reads events off the ATM ladder up to the horizon: an interval hotter
+            than both its neighbours gets one event sized to the excess. Ramps,
+            backwardation and dips yield none; the last interval is the reference.
           </p>
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-slate-500">Horizon</span>
@@ -258,7 +259,7 @@ export default function TermPanel() {
               className={buttonClass}
               disabled={!live || autoBusy || !effMaxExpiry}
               onClick={runAutocalibrate}
-              title="Solve events that flatten the event-time forward variance up to the horizon"
+              title="Read the forward-variance peaks up to the horizon as events (replaces the calendar)"
             >
               {autoBusy ? "…" : "Calibrate"}
             </button>

@@ -40,12 +40,14 @@ with sharp limits, all measured here: the dense term-structure curve must
 be interpolated linearly in $\tau$, not $T$ (the calendar-clock
 interpolation smears the worked event into a \emcinterpgapbp-vol-bp
 artifact between quoted expiries); the auto-calibrator recovers a planted
-event to \emcidentshrink\ extra days at single-name vol but is blind
-below its materiality threshold at index vol (a deliberate sparsity
-prior), and a flat term structure yields exactly no events.  Run on the
-live AAPL term structure it installs \emcheroeventcount\ events worth
-\emcherodays\ extra days --- most of them against the earnings-bearing
-interval --- flattening the forward-variance ladder's spread from
+event to round-off at index and single-name vol alike --- it reads
+peaks of the forward-variance ladder as exactly sized events --- and is
+blind only below a materiality floor (\emcidentfloor\ extra days on the
+audit's interval), while a flat term structure, a contango ramp, a smooth
+backwardation and an isolated dip all yield exactly no events.  Run on
+the live AAPL term structure it installs one event worth \emcherodays\
+extra days against the earnings-bearing interval and nothing elsewhere,
+tightening the forward-variance ladder's spread from
 \emcherospreadbefore\ to \emcherospreadafter\ variance bp.  With an empty
 calendar the clock is the identity and the entire pipeline is
 byte-identical.
@@ -297,56 +299,69 @@ clock knows it is there.}
 \label{fig:interp}
 \end{figure}
 
-\subsection{The auto-calibrator: an inverse problem with a sparsity prior}
+\subsection{The auto-calibrator: reading peaks off the ladder}
 
 The calendar need not be typed in.  The term workspace's auto-calibrate
-action infers it from the ATM term structure: place one candidate event
-before each quoted expiry up to a chosen horizon, and solve for
-non-negative extra days $\{N_i\}$ minimizing
+action infers it from the ATM term structure.  Write the forward
+variance of quoted interval $i$ per unit of day-weight, and the same
+ladder read after an event of $N_i$ extra days,
 \begin{equation}
-J(N)=\sum_i\big(f_{i+1}-f_i\big)^{2}
-+\lambda_{\mathrm{mono}}\sum_i\big(\min(f_{i+1}-f_i,0)\big)^{2}
-+\lambda_{1}\sum_i\frac{N_i}{365}
-+\lambda_{2}\sum_i\Big(\frac{N_i}{365}\Big)^{2},
+f_i=\frac{\tvar_i-\tvar_{i-1}}{d_i},\qquad
+g_i(N_i)=\frac{\tvar_i-\tvar_{i-1}}{d_i+N_i}=\frac{f_i\,d_i}{d_i+N_i},
 \label{eq:autocal}
 \end{equation}
-where $f_i=\Delta \tvar_i/\Delta\tau_i(N)$ is the \emph{event-time}
-forward variance of interval $i$ (a bounded quasi-Newton solve; events
-under half a day are thresholded away; the first interval past the
-horizon carries no candidate and anchors the tail).  Three structural
-facts make \eqref{eq:autocal} sound.  The calendar-time forward
-variance is event-\emph{invariant} --- prices fix $\tvar$
-(\cref{prop:gauge}) --- so the objective must work on the dilated
-clock, the only one events move.  An event can only \emph{lengthen} its
-interval's weighted time, so it can only pull a forward-variance spike
-\emph{down} toward its neighbours: the solver reads the calendar off
-exactly the kinks the clock was built to explain.  And the asymmetric
-monotonicity term spends its budget on \emph{decreases} of forward
-variance --- the shape a genuine pre-event interval produces --- rather
-than on an ordinary upward-sloping term structure.
+where $d_i$ is the interval's day-weight: calendar days, or the session
+clock's base (\cref{sec:sessionclock}) when that clock is on, so a
+weekend never reads as a hot Monday-to-Wednesday interval.  Three
+structural facts fix the estimator.  The calendar ladder $f$ is
+event-\emph{invariant} --- prices fix $\tvar$ (\cref{prop:gauge}) --- so
+events are read off $f$, and only $g$ moves.  An event can only
+\emph{lengthen} its interval's weighted time, so it can only pull $g_i$
+\emph{down}: the one shape an event produces is an interval running
+hotter than \emph{both} its neighbours.  And a monotone ramp, a smooth
+backwardation and an isolated dip are shapes no event can produce, so
+they must yield none.  The solver is therefore a \emph{detector}, not a
+smoother: every candidate interval up to the horizon whose ladder value
+exceeds the higher of its two neighbours, $r_i=\max(g_{i-1},g_{i+1})$,
+is clipped to it, and the excess is one event,
+\begin{equation}
+N_i=d_i\Big(\frac{f_i}{r_i}-1\Big)\ \text{extra days},
+\label{eq:autocal-size}
+\end{equation}
+exact rather than shrunk by a penalty.  Clipping one peak lowers the
+reference of its neighbours, so the rule runs as a monotone fixed point
+from the calendar ladder until no candidate exceeds its reference; the
+feasible set is closed under the componentwise maximum, hence the
+iteration converges to its greatest element --- the smallest events that
+leave no peak --- in at most one pass per interval.  Two conventions
+close the ends.  The last interval of the ladder has no right neighbour
+and is never a candidate: it is the tail reference whatever horizon is
+chosen.  The first has no left neighbour: its reference is the second
+interval's level, continued one step by the back ladder's own log-slope
+when that ladder is backwardated, so a mean-reverting vol-spike front
+that decays smoothly is not read as an event.  Materiality closes the
+rule: an event counts only when it adds at least half a day \emph{and}
+at least \emcminrel\ of its interval's variance; fit noise between
+adjacent expiries sits below both floors, an earnings day far above.
 
-What can such an estimator promise?  \Cref{fig:ident} is the audit.  At
-single-name vol ($40\%$) a planted event is recovered at the correct
-interval to within \emcidentshrink\ extra days across sizes ---
-the small downward bias is the $\ell_1$ term's shrinkage, the standard
-price of a sparsity prior.  At index vol ($20\%$) the same planted
-events sit \emph{below the solver's materiality threshold} up to
-\emcidentlowfloor\ extra days: the flatness gain a small event offers
-scales with $\sigma^{4}$ while the sparsity charge does not, so quiet
-names keep empty calendars unless the kink is large --- a deliberate
-design, not a failure.  A flat term structure returns exactly
-\emcidentflat\ events.
+What can such an estimator promise?  \Cref{fig:ident} is the audit.  A
+planted event is recovered at the correct interval to round-off
+(\emcidentshrink\ extra days) at index vol ($20\%$) and single-name vol
+($40\%$) alike --- the rule compares ratios, so the vol level cancels
+--- and its only blindness is the materiality floor, \emcidentfloor\
+extra days on the audit's interval: a planted \emcidentlowfloor-day
+event is dropped at either vol.  A flat term structure returns exactly
+\emcidentflat\ events, and so do a contango ramp, a smooth backwardation
+and an isolated dip (the locked tests of \cref{app:trace}).
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.80\textwidth]{fig_emc_ident.pdf}
 \caption{What the inverse problem can promise (production solver).
-Planted events are recovered on the diagonal at single-name vol, with
-the $\ell_1$ shrinkage visible as a downward bias of at most
-\emcidentshrink\ days; at index vol the same events fall below the
-materiality threshold until they are large --- the sparsity prior
-working as designed.  A flat term structure solves to an empty
-calendar.}
+Planted events are recovered on the diagonal at index and single-name
+vol alike, to \emcidentshrink\ extra days; below the materiality floor
+of \emcidentfloor\ days (shaded) they are dropped at either vol.  A
+flat term structure solves to an empty calendar.}
 \label{fig:ident}
 \end{figure}
 
@@ -356,9 +371,10 @@ calendar.}
 structure of the standing export (\emcheronodes\ expiries, valuation
 date 2026-07-18).  Per \emph{calendar} year, the forward-variance
 ladder is uneven --- the interval containing the late-October earnings
-runs visibly hot.  The solver installs \emcheroeventcount\ events worth
-\emcherodays\ extra days in total, the bulk against the
-earnings-bearing interval, and the ladder's spread tightens from
+runs visibly hot.  The solver installs a single event worth
+\emcherodays\ extra days against that interval and touches nothing else
+--- the December-to-June dip is a shape no event can produce, and the
+rising tail is contango --- so the ladder's spread tightens from
 \emcherospreadbefore\ to \emcherospreadafter\ variance bp.  Two honest
 readings of that exhibit.  The solver has recovered, from prices alone,
 that this interval contains materially more than its share of calendar
@@ -399,8 +415,8 @@ event, $N_e=4$, $t_e=\emcte$), compute the working vol of a six-month
 expiry relative to the un-normalized clock, and verify the one-year
 reading is exactly the no-event one.  Then say in one sentence why
 normalization cannot affect the auto-calibrator's solved events (hint:
-one global factor cancels in every forward-variance ratio the flatness
-term compares).
+one global factor cancels in every forward-variance ratio the peak rule
+compares).
 
 %======================================================================
 \section{One clock through the whole pipeline}
@@ -501,9 +517,9 @@ day-weighted parametrization}: one intuitive number per event (extra
 equivalent days) a desk can quote, with the normalization
 \eqref{eq:normalize} cleanly separating ``extra variance'' from
 ``reallocated budget.''  \emph{The solver as a disciplined inverse}:
-flatten event-time forward variance under a sparsity prior, with the
+read the ladder's peaks as exactly sized events, with the
 identifiability limits measured rather than hidden
-(\cref{fig:ident}) --- shrinkage quantified, materiality threshold
+(\cref{fig:ident}) --- vol-level independence shown, materiality floor
 explicit, flat input provably eventless.  And the byte-identical empty
 calendar makes the whole feature strictly additive.  The payoff is
 comparability: pre- and post-earnings surfaces line up across names and
@@ -524,10 +540,13 @@ solver reads ATM only}: the auto-calibrator consumes the ATM
 total-variance ladder; the smile's event signature (strangle richness)
 is unused information.  \emph{Placement is a convention}: within a
 quoted interval an event's date is unidentified (Exercise~2), and the
-midpoint is a choice.  \emph{Sizes are shrunk and thresholded}: the
-$\ell_1$ prior biases solved days downward by up to
-\emcidentshrink\ on the audit and zeroes sub-materiality events
-entirely on quiet names (\cref{fig:ident}) --- review the installed
+midpoint is a choice.  \emph{Peaks only, above a floor}: an event is
+read only where an interval runs hotter than both neighbours by the
+materiality floor (\cref{fig:ident}), so two adjacent events of equal
+size form a plateau the rule cannot see, and the front interval --- with
+one neighbour --- cannot separate a scheduled event from a vol-spike
+front that decays faster than the back ladder's own slope --- review the
+installed
 calendar rather than trusting it.  \emph{Kinks have no fingerprint}:
 the solver cannot distinguish an earnings kink from genuine
 term-structure shape (the AAPL exhibit's honest reading).  And
@@ -564,20 +583,18 @@ clock is on.\\
 per-ticker calendar & empty & \texttt{EventSpec}$(t_e>0,\ N_e\ge0,$
 label$)$, $N_e$ in \emph{extra equivalent days}; persisted per ticker
 (its own endpoint and version), not in the global options.\\
-\texttt{maxExpiry} & --- & Auto-calibrate horizon (per request): one
-candidate event per expiry at or before it.\\
+\texttt{maxExpiry} & --- & Auto-calibrate horizon (per request): every
+interval at or before it is a candidate; the ladder's last interval is
+the tail reference and never one.\\
 \midrule
 \multicolumn{3}{l}{\emph{Hidden}}\\ \midrule
 \texttt{DAYS\_PER\_YEAR} & $\emcdays$ & Calendar-to-variance day
 conversion.\\
-\texttt{mono\_weight} & $1.0$ & Auto-calibrate penalty on
-\emph{decreasing} event-time forward variance \eqref{eq:autocal}.\\
-\texttt{sparse\_weight} / \texttt{ridge\_weight} & $10^{-3}$ /
-$10^{-4}$ & The $\ell_1$/$\ell_2$ priors keeping solved events small
-and sparse.\\
-\texttt{min\_event\_days} & $0.5$ & Sparsity threshold: smaller solved
-events are dropped.\\
-\texttt{max\_event\_days} & $1825$ & Solver box bound per event.\\
+\texttt{min\_event\_days} & $0.5$ & Auto-calibrate materiality floor in
+days: a smaller excess is not an event.\\
+\texttt{min\_rel\_excess} & $0.03$ & Auto-calibrate materiality floor
+relative to the interval's variance \eqref{eq:autocal-size}: an interval
+must run at least this much hotter than its reference.\\
 \texttt{base\_days} & \texttt{None} & Internal carrier of
 \texttt{intradayClock}: the session-profile day-weights that replace the
 calendar base (\cref{sec:sessionclock}).\\
@@ -586,8 +603,8 @@ calendar base (\cref{sec:sessionclock}).\\
 
 \noindent\textbf{Performance.}  The clock is a scalar sum per node ---
 negligible; with no events $\tau=T$ and the feature costs exactly
-nothing.  The auto-calibrator is one bounded quasi-Newton solve over a
-handful of variables, interactive.  A calendar edit refits one ticker
+nothing.  The auto-calibrator is a monotone clip of the ladder, at most
+one pass per interval --- microseconds.  A calendar edit refits one ticker
 (per-ticker events version in the fit key).  Figures and macros were
 generated at commit \texttt{\emcgencommit} on \emcgendate; the session
 clock's weekend evidence (\cref{sec:sessionclock}) is quoted from the
@@ -653,13 +670,23 @@ confined to its tests &
 \nolinkurl{volfit/calib/event_time.py}\newline
 \nolinkurl{tests/test_event_time.py::test_interpolation_lumps_event_variance}\\
 \addlinespace
-Auto-calibrate flattens the dilated forward variance; flat input stays
-eventless; horizon respected; endpoint installs the shared calendar &
-\eqref{eq:autocal} &
+Auto-calibrate reads the ladder's peaks as exactly sized events; flat
+input, a contango ramp, a smooth backwardation and an isolated dip stay
+eventless; a planted event is recovered to round-off at $20\%$ and
+$40\%$ vol; the last interval is the tail reference; the session-clock
+day base removes the weekend artefact; horizon respected; endpoint
+installs the shared calendar &
+\eqref{eq:autocal}--\eqref{eq:autocal-size} &
 \nolinkurl{volfit/calib/event_autocalib.py},
 \nolinkurl{volfit/api/event_autocalib.py}\newline
 \nolinkurl{tests/test_event_autocalib.py::test_spike_is_flattened};
 \nolinkurl{::test_flat_input_stays_eventless};
+\nolinkurl{::test_contango_ramp_yields_no_events};
+\nolinkurl{::test_smooth_backwardation_yields_no_events};
+\nolinkurl{::test_dip_is_not_an_event};
+\nolinkurl{::test_planted_event_is_recovered_exactly};
+\nolinkurl{::test_last_interval_is_the_tail_reference};
+\nolinkurl{::test_intraday_base_days_remove_the_weekend_artefact};
 \nolinkurl{::test_horizon_limits_events};
 \nolinkurl{::test_autocalibrate_endpoint_sets_calendar}\\
 \bottomrule

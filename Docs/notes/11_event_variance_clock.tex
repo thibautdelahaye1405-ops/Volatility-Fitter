@@ -27,9 +27,9 @@ and is clock-independent, so the working implied volatility $\sqrt{w/\tau}$
 overnight-vol-crush traders expect. An optional normalization rescales all days so
 the one-year variance budget is unchanged, making events \emph{redistribute}
 variance within the year rather than add it. The calendar can be typed in or
-\emph{auto-calibrated}: a solver places events so the event-time forward
-variance is as flat as possible, inferring the calendar from the term
-structure's kinks, after which it is editable. Below one day the clock
+\emph{auto-calibrated}: a solver reads the term structure's peaks --- an
+interval running hotter than both its neighbours --- as exactly sized events,
+after which the calendar is editable. Below one day the clock
 continues: an opt-in \emph{intraday session clock} values each node from the
 snapshot timestamp to the expiry's exact settlement instant and splits each
 trading day's variance between session and overnight --- at its default
@@ -200,22 +200,26 @@ forcing a refit of only that name; with an empty calendar the whole pipeline is
 byte-identical to calendar time.
 
 Nor must the calendar be hand-entered. The Term workspace's
-\emph{auto-calibrate} action infers it from the ATM term structure: placing
-one candidate event before each expiry up to a chosen horizon
-(\texttt{maxExpiry}), it solves for the non-negative extra days $N_e$ that
-make the \emph{event-time} forward variance between consecutive expiries,
-$(w_i-w_{i-1})/(\tau_i-\tau_{i-1})$, as flat and as monotone-increasing as
-possible while keeping the events small and sparse (a bounded L-BFGS-B solve;
-events under half a day are thresholded away, so the result is a short list).
-The calendar-time forward variance $(w_i-w_{i-1})/(t_i-t_{i-1})$ is
-event-\emph{invariant} --- prices fix $w$ --- so the objective works on the
-dilated clock, the one events actually move: since an event can only
-\emph{lengthen} an interval's weighted time, it pulls \emph{down} the
-forward-variance spike an earnings-packed interval produces, toward its
-neighbours. The calendar is thus read off exactly the kinks the clock was
-built to explain, installed as the shared per-ticker calendar, and edited
-like any hand-entered one (\nolinkurl{calib/event_autocalib.py},
-\nolinkurl{api/event_autocalib.py}).
+\emph{auto-calibrate} action infers it from the ATM term structure. The
+calendar-time forward variance of interval $i$ per day-weight,
+$f_i=(w_i-w_{i-1})/d_i$ (calendar days, or the session clock's base of
+\cref{sec:intraday} when it is on), is event-\emph{invariant} --- prices fix
+$w$ --- and an event can only \emph{lengthen} its interval's weighted time,
+so the one shape an event produces is an interval running hotter than
+\emph{both} its neighbours. The solver is a detector of exactly that shape:
+every interval at or before the horizon (\texttt{maxExpiry}) whose $f_i$
+exceeds the higher of its two neighbours by the materiality floors (half a
+day and $3\%$ of the interval's variance) is clipped to that neighbour, and
+the excess is one event of $N_i=d_i\,(f_i/r_i-1)$ extra days, sized exactly.
+Clipping one peak lowers its neighbours' reference, so the rule runs as a
+monotone fixed point until no peak is left. A contango ramp, a smooth
+backwardation and an isolated dip are shapes no event can produce and yield
+none; the ladder's last interval is the tail reference and never a candidate;
+the first interval's reference is its right neighbour continued by the back
+ladder's own log-slope when that ladder is backwardated. The calendar is thus
+read off exactly the peaks the clock was built to explain, installed as the
+shared per-ticker calendar, and edited like any hand-entered one
+(\nolinkurl{calib/event_autocalib.py}, \nolinkurl{api/event_autocalib.py}).
 
 %======================================================================
 \section{Below one day: the intraday session clock}
@@ -311,11 +315,12 @@ Legacy clock confined to term interpolation &
 remark &
 \nolinkurl{calib/event_time.py} &
 \nolinkurl{test_event_time.py::test_interpolation_lumps_event_variance}\\
-Auto-calibrate flattens event-time forward variance; flat input stays
-eventless &
+Auto-calibrate reads the ladder's peaks as exactly sized events; flat
+input, ramps, backwardation and dips stay eventless; planted events
+recovered at any vol &
 \cref{sec:thread} &
 \nolinkurl{calib/event_autocalib.py}, \nolinkurl{api/event_autocalib.py} &
-\nolinkurl{test_event_autocalib.py::test_spike_is_flattened}, \nolinkurl{::test_flat_input_stays_eventless}\\
+\nolinkurl{test_event_autocalib.py::test_spike_is_flattened}, \nolinkurl{::test_flat_input_stays_eventless}, \nolinkurl{::test_contango_ramp_yields_no_events}, \nolinkurl{::test_planted_event_is_recovered_exactly}\\
 \addlinespace
 Intraday clock nests the legacy convention at defaults; sub-day settlement
 valuation (cert.\ \texttt{0dte\_exit\_gates}) &
@@ -354,12 +359,11 @@ convention.\\
 \midrule
 \multicolumn{3}{l}{\emph{Hidden}}\\ \midrule
 \texttt{DAYS\_PER\_YEAR} & $\evtdays$ & Calendar-to-variance day conversion.\\
-\texttt{mono\_weight} & $1.0$ & Auto-calibrate: penalty on decreasing
-event-time forward variance.\\
-\texttt{sparse\_weight} / \texttt{ridge\_weight} & $10^{-3}$ / $10^{-4}$ &
-Auto-calibrate: keep solved events small and sparse.\\
-\texttt{min\_event\_days} & $0.5$ & Auto-calibrate sparsity threshold:
-smaller solved events are dropped.\\
+\texttt{min\_event\_days} & $0.5$ & Auto-calibrate materiality floor in
+days: a smaller excess is not an event.\\
+\texttt{min\_rel\_excess} & $0.03$ & Auto-calibrate materiality floor
+relative to the interval's variance: an interval must run at least this much
+hotter than its reference.\\
 \bottomrule
 \end{longtable}
 
