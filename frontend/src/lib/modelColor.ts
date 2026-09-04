@@ -22,5 +22,31 @@ export const MODEL_LABELS: Record<CompareModelId, string> = {
   essvi: "eSSVI",
 };
 
-/** Book ordering of the comparable families (the comparator last). */
+/** Wire / book ordering of every comparable family (the reference last).
+ *  This is the order the compare endpoint is asked in and the chart draws. */
 export const MODEL_ORDER: readonly CompareModelId[] = ["lqd", "svi", "sigmoid", "essvi"];
+
+/** REFERENCE families: compare-only yardsticks that are never a displayed
+ *  (calibrated) model — FitSettings.model does not know them. They are not
+ *  in the default chip set: the Compare strip reveals them behind a
+ *  "+ reference" affordance, the table tags their row and the chart dashes
+ *  their curve. Today: eSSVI (three handles, the belly tied to the wings),
+ *  the yardstick the five-parameter SVI-JW row is measured against. */
+export const REFERENCE_MODELS: ReadonlySet<CompareModelId> = new Set<CompareModelId>(["essvi"]);
+
+export function isReferenceModel(id: CompareModelId): boolean {
+  return REFERENCE_MODELS.has(id);
+}
+
+/** Why a family is a reference row (hover text of the pill and the chip). */
+export const REFERENCE_NOTE: Partial<Record<CompareModelId, string>> = {
+  essvi:
+    "Reference family — the Gatheral–Jacquier SSVI slice with a per-expiry ρ (Hendriks–Martini): " +
+    "a three-handle yardstick fitted on the same quotes, never a calibrated / displayed model",
+};
+
+/** The DEFAULT chip set: the families a user can calibrate and display. */
+export const CHIP_MODELS: readonly CompareModelId[] = MODEL_ORDER.filter((m) => !REFERENCE_MODELS.has(m));
+
+/** The reference families, in wire order (the hidden-by-default chips). */
+export const REFERENCE_ORDER: readonly CompareModelId[] = MODEL_ORDER.filter((m) => REFERENCE_MODELS.has(m));

@@ -4,14 +4,23 @@
 import { describe, expect, it } from "vitest";
 import { getMockComparison } from "./mockData";
 import type { CompareModelFit } from "./mockData";
-import { MODEL_COLORS, MODEL_LABELS } from "./modelColor";
 import {
+  CHIP_MODELS,
+  MODEL_COLORS,
+  MODEL_LABELS,
+  MODEL_ORDER,
+  REFERENCE_ORDER,
+  isReferenceModel,
+} from "./modelColor";
+import {
+  REFERENCE_DASH,
   compareSeries,
   formatExp,
   formatFitMs,
   formatMetric,
   formatTailPair,
   formatVolPct,
+  orderCompareRows,
   validityChip,
 } from "./modelCompare";
 
@@ -45,11 +54,37 @@ describe("compareSeries", () => {
     expect(MODEL_LABELS.essvi).toBe("eSSVI"); // the compare-only comparator, last
   });
 
+  it("dashes the reference family's curve and leaves the models solid", () => {
+    const series = compareSeries(getMockComparison());
+    expect(series.map((s) => s.dash)).toEqual([undefined, undefined, undefined, REFERENCE_DASH]);
+  });
+
+
   it("skips failed rows and degenerate curves (table still lists them)", () => {
     const data = getMockComparison();
     data.models[1] = baseFit({ ok: false, error: "boom", curve: [] });
     data.models[2] = baseFit({ model: "sigmoid", label: "MCS", curve: [{ k: 0, vol: 0.2 }] });
     expect(compareSeries(data).map((s) => s.label)).toEqual(["LQD", "eSSVI"]);
+  });
+});
+
+describe("reference families", () => {
+  it("keeps eSSVI out of the default chip set but in the wire order, last", () => {
+    expect(isReferenceModel("essvi")).toBe(true);
+    expect(isReferenceModel("lqd")).toBe(false);
+    expect(CHIP_MODELS).toEqual(["lqd", "svi", "sigmoid"]);
+    expect(REFERENCE_ORDER).toEqual(["essvi"]);
+    expect([...CHIP_MODELS, ...REFERENCE_ORDER]).toEqual([...MODEL_ORDER]);
+  });
+
+  it("orders table rows models-first, reference last, stably", () => {
+    const rows = [
+      baseFit({ model: "essvi", label: "eSSVI" }),
+      baseFit({ model: "svi", label: "SVI-JW" }),
+      baseFit({ model: "lqd", label: "LQD" }),
+    ];
+    expect(orderCompareRows(rows).map((m) => m.model)).toEqual(["svi", "lqd", "essvi"]);
+    expect(orderCompareRows([]).length).toBe(0);
   });
 });
 

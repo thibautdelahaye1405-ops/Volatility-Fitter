@@ -6,11 +6,13 @@
 // (fit_key, model) cache makes re-toggles free). Keyed on the node, the fit
 // mode and the smile reload key (spot transports / recalibrations), the same
 // refetch triggers as the sibling surface views. Backendless mode falls back
-// to the built-in mock comparison so the app keeps working offline.
+// to the built-in mock comparison (cut to the requested models, so the chips
+// behave the same offline) so the app keeps working without a server.
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { getMockComparison } from "../lib/mockData";
 import type { CompareResponse } from "../lib/mockData";
+import { CHIP_MODELS } from "../lib/modelColor";
 import type { FitMode } from "./useSmile";
 
 export interface UseModelComparisonResult {
@@ -26,7 +28,7 @@ export function useModelComparison(
   expiry: string,
   fitMode: FitMode,
   reloadKey = 0,
-  models: readonly string[] = ["lqd", "svi", "sigmoid", "essvi"],
+  models: readonly string[] = CHIP_MODELS, // reference families only when asked
 ): UseModelComparisonResult {
   const modelsKey = models.join(",");
   const [data, setData] = useState<CompareResponse | null>(null);
@@ -36,7 +38,11 @@ export function useModelComparison(
   useEffect(() => {
     if (!enabled) return; // lazy: fetch nothing until the Compare view opens
     if (!live || ticker === "" || expiry === "") {
-      setData(getMockComparison()); // backendless: the app must still work
+      // Backendless: the app must still work — the mock, cut to the
+      // requested families so the chips (incl. the reference reveal) behave.
+      const mock = getMockComparison();
+      const wanted = new Set(modelsKey.split(","));
+      setData({ ...mock, models: mock.models.filter((m) => wanted.has(m.model)) });
       setLoading(false);
       setError(null);
       return;

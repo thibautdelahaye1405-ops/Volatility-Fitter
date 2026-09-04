@@ -1030,6 +1030,43 @@ universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
 
+### 🧭 SESSION WRAP (2026-09-04b) — COMPARE: eSSVI IS A REFERENCE ROW, NOT A FOURTH MODEL
+
+User question: "why do we have eSSVI in there? It is nowhere else in the app."
+Answer recorded: it is the Note 02 committee's comparator rider (wrap
+2026-08-27d, 0ad4139) — the Gatheral–Jacquier SSVI slice with a per-expiry ρ,
+three handles, the yardstick the five-parameter SVI-JW row is measured
+against on the same quotes; compare-only by design (`models/essvi`
+docstring: never a displayed model, FitSettings.model does not know it).
+User ruling: **mark it as a reference row in the Compare UI and drop it
+from the default chip set** — a comparator must never read as a product
+model. Frontend-only; the backend, the wire schema and the endpoint's
+default CSV are untouched.
+
+- `lib/modelColor.ts`: `REFERENCE_MODELS` (= {essvi}) / `isReferenceModel`
+  / `REFERENCE_NOTE`; `CHIP_MODELS` (lqd, svi, sigmoid — the default chip
+  set) and `REFERENCE_ORDER` split `MODEL_ORDER`, which stays the wire /
+  chart order. A future constrained-spline comparator joins the set here.
+- `parametric/CompareChips.tsx`: the strip shows the three calibratable
+  chips; a **+ reference** affordance after a divider reveals the reference
+  chips (dashed border, amber *ref* tag); **− reference** hides them AND
+  deselects them (a hidden reference is never fitted). A tab that remembers
+  eSSVI in `compareExtra` shows its chip without the reveal.
+- `ModelCompareTable.tsx`: rows go through `orderCompareRows` (models
+  first, reference last, stable whatever order the endpoint answered in);
+  the first reference row carries a top divider, muted text and a
+  *reference* pill whose hover text says what the family is.
+- `OverlayCurvesChart.tsx`: `OverlaySeries.dash` (SVG dasharray) on the
+  path and the legend swatch; `compareSeries` dashes reference curves.
+- `useModelComparison.ts`: default models = `CHIP_MODELS`; the backendless
+  mock is cut to the requested families so the chips behave offline too.
+- Help: tip `compare-chips-lazy` reworded, glossary term `essvi`, What's
+  new entry 2026-09-04. Tests: `CompareChips.test.tsx` (default set, reveal,
+  remembered selection, hide-deselects, prevailing disabled),
+  `ModelCompareTable.test.tsx` (out-of-order payload → reference last with
+  the pill; no pill without it), modelCompare.test.ts (dash, chip set, row
+  order). tsc clean · vitest 67 files / 455 tests · build green.
+
 ### 🧭 SESSION WRAP (2026-09-04a) — RIGHT-HAND COLUMN: THREE CARD SIZES, ONE EXPANDED AT A TIME, THE COLUMN NEVER SCROLLS
 
 User request: the Spot move and Variance swap cards expandable like Fit

@@ -203,7 +203,7 @@ export const TIPS: Tip[] = [
   {
     id: "compare-chips-lazy",
     title: "Compare fits the other families only when you ask",
-    body: "The Compare view shows the prevailing model at once; LQD, SVI-JW, MCS and eSSVI chips fit lazily when clicked (server-cached, so toggling back is free). The Tails column shows each family's wing law.",
+    body: "The Compare view shows the prevailing model at once; the LQD, SVI-JW and MCS chips fit lazily when clicked (server-cached, so toggling back is free). **+ reference** reveals eSSVI — a compare-only yardstick (dashed curve, *reference* row), never a model you can calibrate. The Tails column shows each family's wing law.",
     scope: "parametric", level: "basic",
     action: { command: "lens.parametric", label: "Go to the Parametric lens" },
   },

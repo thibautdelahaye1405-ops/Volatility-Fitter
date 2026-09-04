@@ -32,6 +32,9 @@ export interface OverlaySeries {
   /** Fill sub-zero excursions of this series in red (arb evidence: Δ-mode
    *  calendar crossings, signed density dips). Off by default. */
   fillNegative?: boolean;
+  /** SVG stroke-dasharray ("5 3") — a reference curve drawn dashed so it
+   *  never reads as one of the calibrated families. Solid when absent. */
+  dash?: string;
 }
 
 /** One circle marker on the shared axes with a native hover tooltip —
@@ -295,7 +298,7 @@ export default function OverlayCurvesChart({
                 })}
               {/* Curves, near→far (the linked curve reads bolder) */}
               {series.map((s, i) => (
-                <path key={s.label} d={pathOf(s)} fill="none" stroke={s.color}
+                <path key={s.label} d={pathOf(s)} fill="none" stroke={s.color} strokeDasharray={s.dash}
                   strokeWidth={i === linkedIdx ? 2.75 : 1.5} opacity={linkedIdx === null || i === linkedIdx ? 0.95 : 0.45} />
               ))}
               {/* Linked hover marker (a point published by a surface chart) */}
@@ -346,7 +349,7 @@ export default function OverlayCurvesChart({
             <g transform={`translate(${innerW - 4},6)`}>
               {series.map((s, i) => (
                 <g key={s.label} transform={`translate(0,${i * 14})`}>
-                  <line x1={-26} x2={-12} y1={0} y2={0} stroke={s.color} strokeWidth={2} />
+                  <line x1={-26} x2={-12} y1={0} y2={0} stroke={s.color} strokeWidth={2} strokeDasharray={s.dash} />
                   <text x={-30} y={0} dy="0.32em" textAnchor="end" className="fill-slate-400 text-[10px]">
                     {s.label}
                   </text>

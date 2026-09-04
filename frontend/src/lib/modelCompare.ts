@@ -4,11 +4,15 @@
 // consumer (file-size policy).
 import type { OverlaySeries } from "../components/OverlayCurvesChart";
 import type { CompareModelFit, CompareResponse } from "./mockData";
-import { MODEL_COLORS, MODEL_LABELS } from "./modelColor";
+import { MODEL_COLORS, MODEL_LABELS, isReferenceModel } from "./modelColor";
+
+/** Stroke dash of a reference family's curve (never solid like the models). */
+export const REFERENCE_DASH = "5 3";
 
 /** One OverlayCurvesChart series per successfully fitted model, in the
- *  response's (book) order, coloured by family. Failed rows and degenerate
- *  curves are skipped — the table still lists them with their error. */
+ *  response's (book) order, coloured by family; reference families (eSSVI)
+ *  are dashed. Failed rows and degenerate curves are skipped — the table
+ *  still lists them with their error. */
 export function compareSeries(data: CompareResponse): OverlaySeries[] {
   return data.models
     .filter((m) => m.ok && m.curve.length > 1)
@@ -17,7 +21,17 @@ export function compareSeries(data: CompareResponse): OverlaySeries[] {
       xs: m.curve.map((p) => p.k),
       ys: m.curve.map((p) => p.vol),
       color: MODEL_COLORS[m.model] ?? "#94a3b8",
+      ...(isReferenceModel(m.model) ? { dash: REFERENCE_DASH } : {}),
     }));
+}
+
+/** Table row order: the calibratable families first (wire order kept), the
+ *  reference rows after them — so a reference never sits between two
+ *  models whatever order the endpoint answered in. Stable. */
+export function orderCompareRows(models: readonly CompareModelFit[]): CompareModelFit[] {
+  const head = models.filter((m) => !isReferenceModel(m.model));
+  const tail = models.filter((m) => isReferenceModel(m.model));
+  return [...head, ...tail];
 }
 
 /** Validity chip content: certified ⇒ green "clean", breach ⇒ rose with the

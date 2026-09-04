@@ -7,6 +7,14 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-04",
+    title: "Compare: eSSVI is a reference row, not a fourth model",
+    items: [
+      "The Compare strip shows the three families you can calibrate — LQD, SVI-JW, MCS. eSSVI, the compare-only SSVI yardstick (three handles, the belly tied to the wings), is no longer a default chip: **+ reference** at the end of the strip reveals it, tagged *ref*; **− reference** hides it and drops it from the comparison.",
+      "When it is on, its curve is dashed and its table row sits last under a divider with a *reference* pill, so it never reads as a model you could select in Options. A tab that had eSSVI selected keeps it.",
+    ],
+  },
+  {
+    date: "2026-09-04",
     title: "Right-hand column: three cards that always fit, one expanded at a time",
     items: [
       "The Spot move, Variance swap and Fit diagnostics cards of the Parametric and Local Vol lenses now share the column without scrolling it. Each card has three sizes — **compact** (one row: the title and a live readout), **standard** (the working controls, the default) and **expanded** (everything the card knows).",
