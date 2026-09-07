@@ -269,7 +269,7 @@ def test_sse_without_a_stream_says_so_and_never_reads_the_book(rig):
     assert frame == {
         "type": "status", "streaming": False, "ready": False, "full": False, "ts": None,
         "spot": None, "forward": None, "liveSpot": None, "rows": [], "gone": [], "nLive": 0,
-            "model": None,
+        "model": None, "inferred": None,
     }
     assert prov.live_reads == 0
 

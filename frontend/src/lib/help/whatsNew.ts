@@ -7,6 +7,15 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-07",
+    title: "The smile inferred from the graph is drawn on every node of the Run",
+    items: [
+      "After a Graph **Run**, every node of the solved universe shows its inferred smile on the Smile chart: violet dash-dot, an **INFERRED · GRAPH** badge naming the Run time, the prior tier and the posterior ATM ± sd. On a dark node it is the only curve, so you can read it against the live quotes; on a calibrated node it sits beside the fit.",
+      "It is transported with the spot exactly like a calibrated smile — the market frame rolls it to the prevailing spot and the live tick stream re-rolls it on every spot move. It is never a calibration: not committed, not a prior, never calibration input.",
+      "The **Graph** entry in the chart's layer rail hides or shows it (per tab); the ✕ on the badge does the same.",
+    ],
+  },
+  {
+    date: "2026-09-07",
     title: "One prior per node, active on save — no Fetch step, and the Graph starts from it",
     items: [
       "**Save prior** (visible tab, all open tabs, all calibrated) now makes the saved fit the node's prior at once: the next calibration's persistence rows pull toward it, the Compare **+ Prior** cell reads it, the dotted prior draws on the Smile, and the Graph uses it as the node's starting point. A restart restores the saved priors from the store.",

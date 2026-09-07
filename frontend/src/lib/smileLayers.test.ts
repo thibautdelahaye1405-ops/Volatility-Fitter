@@ -42,6 +42,26 @@ describe("marketLayerKey", () => {
   });
 });
 
+describe("graph-inferred smile in the market frame", () => {
+  const inferred = [{ k: -0.1, vol: 0.25 }, { k: 0.1, vol: 0.23 }];
+  const gi = { curve: inferred, runTs: "2026-09-07T14:32:00+00:00", fitMode: "mid", priorSource: "active_transported",
+    postAtmVol: 0.24, sd: 0.01, model: "lqd", lit: false, calibrated: false };
+  it("reads the payload's inferred curve, the market layer's rolled one first, the stream's first of all", () => {
+    expect(composeFrames(smile({ graphInferred: gi }), null).market.inferred).toEqual(inferred);
+    const rolled = [{ k: -0.1, vol: 0.26 }, { k: 0.1, vol: 0.22 }];
+    const withLayer = smile({ graphInferred: gi, market: { forward: 101, quotes: [], model: [], inferred: rolled } });
+    expect(composeFrames(withLayer, null).market.inferred).toEqual(rolled);
+    const live: LiveTicksState = { ...EMPTY_LIVE, streaming: true, ready: true, forward: 102,
+      rows: new Map([["100.0000", row(100, 0.2)]]), inferred: [{ k: 0, vol: 0.27 }] };
+    expect(composeFrames(withLayer, live).market.inferred).toEqual([{ k: 0, vol: 0.27 }]);
+    expect(composeFrames(withLayer, { ...live, inferred: null }).market.inferred).toEqual(rolled);
+  });
+  it("is null when the node has no inferred smile", () => {
+    expect(composeFrames(smile(), null).market.inferred).toBeNull();
+    expect(composeFrames(smile({ market: { forward: 100, quotes: [], model: [] } }), null).market.inferred).toBeNull();
+  });
+});
+
 describe("smile frames", () => {
   it("frameK / calibByStrike", () => {
     expect(frameK(110, 100)).toBeCloseTo(Math.log(1.1), 12);

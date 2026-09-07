@@ -552,10 +552,15 @@ def extrapolate(
     state: AppState, request: GraphExtrapolateRequest
 ) -> GraphExtrapolateResponse:
     """Bulk ATM-summary response over every selected node (plan Phase 3, Amendment E:
-    summaries only; full curves are fetched per node via the node-smile route)."""
+    summaries only; full curves are fetched per node via the node-smile route).
+    The solved field is kept as the LAST RUN (api/graph_inferred): the node
+    views then draw every node's inferred smile, transported with the spot."""
     sol = solve(state, request)
     if sol is None:
         return GraphExtrapolateResponse(nodes=[])
+    from volfit.api import graph_inferred  # lazy: it imports the reconstruction
+
+    graph_inferred.record_run(state, sol)
     universe, field = sol.universe, sol.field
     base_breakdowns, obs_breakdowns = sol.base_breakdowns, sol.obs_breakdowns
     obs_value_by_idx = sol.obs_value_by_idx

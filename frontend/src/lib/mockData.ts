@@ -58,6 +58,26 @@ export interface MarketLayer {
   live?: boolean;
   quotes: QuoteBand[];
   model: SmilePoint[];
+  /** The graph-INFERRED smile of the last Run rolled to the prevailing spot
+   *  like `model` (null / absent when the node has none). */
+  inferred?: SmilePoint[] | null;
+}
+
+/** The last Graph Run's posterior on one node, drawn as its INFERRED smile:
+ *  never a fit (not committed, not a prior); a dark node's only curve. */
+export interface GraphInferredSmile {
+  curve: SmilePoint[];
+  /** ISO UTC wall clock of the Run. */
+  runTs: string;
+  fitMode: string;
+  /** active_transported | nearest_expiry_transported | today_bootstrap | none */
+  priorSource: string;
+  postAtmVol: number;
+  /** Posterior ATM sd (vol units). */
+  sd: number;
+  model: string;
+  lit: boolean;
+  calibrated: boolean;
 }
 
 /** The CALIBRATION frame (layers 2 + 4): the fit on its own calibration spot
@@ -207,6 +227,9 @@ export interface SmileData {
   /** Displayed model family + hyperparameters (degree / cores). Optional for
    *  older payloads; always present from the current backend. */
   modelInfo?: ModelInfo;
+  /** The graph-inferred smile of the last Run on this node (null before a
+   *  Run or when the node is not in it). */
+  graphInferred?: GraphInferredSmile | null;
   /** The node's anchoring-axis report (lib/anchoring): which shadow cells
    *  exist and which one production coincides with. Present once fitted. */
   anchoring?: AnchoringInfo | null;

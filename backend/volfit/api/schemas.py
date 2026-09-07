@@ -1147,6 +1147,10 @@ class MarketLayer(BaseModel):
     spot: float | None = None
     timestamp: str | None = None  # ISO UTC of the prevailing chain
     live: bool = False
+    #: The graph-INFERRED smile (api/graph_inferred) rolled to the prevailing
+    #: spot like ``model`` — the last Run's posterior on this node; None when
+    #: the node has none.
+    inferred: list[SmilePoint] | None = None
     quotes: list[QuoteBand] = Field(default_factory=list)
     model: list[SmilePoint] = Field(default_factory=list)
 
@@ -1218,6 +1222,29 @@ class SmileData(BaseModel):
     #: node + the production cell, so the node views can offer the Fit
     #: switch (Production / Free / + Prior / + Filter). None before a fit.
     anchoring: AnchoringInfo | None = None
+    #: The graph-INFERRED smile of the last Run on this node (api/
+    #: graph_inferred): drawn distinct on the Smile chart, transported with
+    #: the spot like a fit — a dark node's only curve. None before a Run or
+    #: when the node is not in it.
+    graphInferred: GraphInferredSmile | None = None
+
+
+class GraphInferredSmile(BaseModel):
+    """The last Graph Run's posterior on one node, drawn as its INFERRED
+    smile (api/graph_inferred): the curve at the active spot shift, the Run
+    stamp, the prior tier the baseline came from, the posterior ATM ± sd, the
+    family it is drawn in, and whether the node was lit / calibrated in the
+    Run. Never a fit: not committed, not a prior, never calibration input."""
+
+    curve: list[SmilePoint]
+    runTs: str  # ISO UTC wall clock of the Run
+    fitMode: str  # the fit target the Run solved under
+    priorSource: str  # active_transported | nearest_expiry_transported | today_bootstrap | none
+    postAtmVol: float
+    sd: float  # posterior ATM sd (vol units)
+    model: str  # "lqd" | "svi" | "sigmoid"
+    lit: bool
+    calibrated: bool
 
 
 # ------------------------------------------------------------------ universe

@@ -6,6 +6,7 @@
 // SmileViewer so the view stays under the file-size policy.
 import type { GraphNodeSmile } from "../../state/useGraphNodeSmile";
 import type { FilterDiagnostics } from "../../state/useObservationFilter";
+import type { GraphInferredSmile } from "../../lib/mockData";
 
 export function GraphOverlayBadge({
   overlay,
@@ -79,6 +80,34 @@ export function FilterBadge({ diag }: { diag: FilterDiagnostics }) {
         </span>
       )}
       {diag.contaminated && <span className="font-semibold">cont.</span>}
+    </span>
+  );
+}
+
+/** "HH:MM" of an ISO UTC stamp (the Run's wall clock), for the badge / legend. */
+export function runClock(ts: string): string {
+  const m = /T(\d{2}:\d{2})/.exec(ts);
+  return m ? `${m[1]} UTC` : ts;
+}
+
+/** The INFERRED · GRAPH badge: the last Run's posterior is drawn on this
+ *  node (dash-dot violet), transported with the spot like a fit — never a
+ *  calibration. Names the Run, the prior tier and the posterior ATM ± sd. */
+export function GraphInferredBadge({ info, onHide }: { info: GraphInferredSmile; onHide: () => void }) {
+  const source = info.priorSource.replace(/_/g, " ");
+  return (
+    <span
+      title={`Smile inferred from the graph — Run ${runClock(info.runTs)} (${info.fitMode}), prior tier ${source}, posterior ATM ${(info.postAtmVol * 100).toFixed(2)}% ± ${(info.sd * 100).toFixed(2)}% · ${info.lit ? "lit" : "dark"} node · drawn in ${info.model.toUpperCase()}, transported with the spot. Not a calibration.`}
+      className="flex items-center gap-1.5 rounded border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-300"
+    >
+      <span className="font-semibold tracking-wider">INFERRED · GRAPH</span>
+      <span className="text-violet-400/90">run {runClock(info.runTs)}</span>
+      <span className="font-mono text-violet-200/90">
+        ATM {(info.postAtmVol * 100).toFixed(1)}±{(info.sd * 100).toFixed(1)}%
+      </span>
+      <button title="Hide the inferred smile (the Graph layer toggle)" className="ml-0.5 text-violet-400 hover:text-violet-200" onClick={onHide}>
+        ✕
+      </button>
     </span>
   );
 }

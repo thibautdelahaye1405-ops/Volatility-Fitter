@@ -81,6 +81,10 @@ interface SmileChartProps {
   graphPost?: SmilePoint[] | null;
   graphBandLo?: SmilePoint[] | null;
   graphBandHi?: SmilePoint[] | null;
+  /** The graph-INFERRED smile of the last Run (market frame, transported
+   *  like the fit): violet dash-dot, labelled; `inferredLabel` names the Run. */
+  inferred?: SmilePoint[] | null;
+  inferredLabel?: string | null;
   /** Observation-filter overlay (Note 15 Phase 4): solid teal filtered
    *  posterior with a shaded ±1.96σ (95%) band, plus a dashed prediction. */
   filterPost?: SmilePoint[] | null;
@@ -163,6 +167,8 @@ export default function SmileChart({
   graphPost = null,
   graphBandLo = null,
   graphBandHi = null,
+  inferred = null,
+  inferredLabel = null,
   filterPost = null,
   filterBandLo = null,
   filterBandHi = null,
@@ -252,6 +258,7 @@ export default function SmileChart({
     if (graphPost) scan(graphPost);
     if (graphBandLo) scan(graphBandLo);
     if (graphBandHi) scan(graphBandHi);
+    if (inferred) scan(inferred);
     if (filterPost) scan(filterPost);
     if (filterBandLo) scan(filterBandLo);
     if (filterBandHi) scan(filterBandHi);
@@ -262,7 +269,7 @@ export default function SmileChart({
     const pad = Math.max(1e-4, (yMax - yMin) * 0.08);
     const yView = zoom.viewY([yMin - pad, yMax + pad]);
     return { xScale: xs, yScale: linearScale(yView, [plotH, 0]), xView: view };
-  }, [model, prior, scenario, calib, showCalibFit, showCalibQuotes, graphPost, graphBandLo, graphBandHi, filterPost, filterBandLo, filterBandHi, filterPred, quotes, varSwapLevel, kLo, kHi, plotW, plotH, tx, zoom]);
+  }, [model, prior, scenario, calib, showCalibFit, showCalibQuotes, graphPost, graphBandLo, graphBandHi, inferred, filterPost, filterBandLo, filterBandHi, filterPred, quotes, varSwapLevel, kLo, kHi, plotW, plotH, tx, zoom]);
 
   /** Build an SVG path for a curve in display coordinates (clip handles overflow). */
   const pathOf = (curve: SmilePoint[], txf: (k: number) => number = tx): string => {
@@ -279,6 +286,7 @@ export default function SmileChart({
   const scenarioPath = useMemo(() => (scenario ? pathOf(scenario) : ""), [scenario, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const calibFitPath = useMemo(() => (calib && showCalibFit ? pathOf(calib.model, txCalib) : ""), [calib, showCalibFit, xScale, yScale, txCalib]); // eslint-disable-line react-hooks/exhaustive-deps
   const graphPostPath = useMemo(() => (graphPost ? pathOf(graphPost) : ""), [graphPost, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  const inferredPath = useMemo(() => (inferred && inferred.length > 1 ? pathOf(inferred) : ""), [inferred, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const filterPostPath = useMemo(() => (filterPost ? pathOf(filterPost) : ""), [filterPost, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const filterPredPath = useMemo(() => (filterPred ? pathOf(filterPred) : ""), [filterPred, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   // Credible-band area: forward along the high edge, back along the low edge.
@@ -452,6 +460,11 @@ export default function SmileChart({
             <span className="h-0.5 w-5 rounded" style={{ background: "rgb(167 139 250)" }} /> Graph extrapolation
           </span>
         )}
+        {inferredPath !== "" && (
+          <span className="flex items-center gap-1.5" title="The last Graph Run's posterior on this node, transported with the spot like a fit — never a calibration">
+            <span className="h-0 w-5 border-t-2 border-dashed border-violet-400" /> Inferred from graph{inferredLabel ? ` · ${inferredLabel}` : ""}
+          </span>
+        )}
         {filterPostPath !== "" && (
           <span className="flex items-center gap-1.5">
             <span className="h-0.5 w-5 rounded" style={{ background: "rgb(20 184 166)" }} /> Filter
@@ -601,6 +614,14 @@ export default function SmileChart({
                     strokeWidth={2} strokeLinejoin="round" pointerEvents="none" />
                 )}
 
+                {/* The graph-INFERRED smile of the last Run (market frame, rolled
+                    with the spot like the fit): violet dash-dot, so it never
+                    reads as a calibration. */}
+                {inferredPath !== "" && (
+                  <path d={inferredPath} fill="none" stroke="rgb(167 139 250 / 0.95)"
+                    strokeWidth={2} strokeDasharray="8 3 2 3" strokeLinejoin="round" pointerEvents="none" />
+                )}
+
                 {/* Observation-filter overlay (Note 15): shaded ±1.96σ (95%)
                     band, a dashed lighter one-step prediction and a solid
                     teal filtered-posterior curve. */}
@@ -635,14 +656,16 @@ export default function SmileChart({
                     x={plotW / 2}
                     y={18}
                     textAnchor="middle"
-                    className={degraded ? "fill-amber-500" : "fill-slate-500"}
+                    className={degraded ? "fill-amber-500" : inferredPath !== "" ? "fill-violet-300" : "fill-slate-500"}
                     style={{ fontSize: 11 }}
                   >
                     {degraded
                       ? `Degraded market (${DEGRADED_LABELS[degraded] ?? degraded}) — showing transported prior`
-                      : quotes.length === 0
-                        ? "No quotes — press Fetch"
-                        : "No fit yet — press Calibrate"}
+                      : inferredPath !== ""
+                        ? `No calibration — showing the smile inferred from the graph${inferredLabel ? ` (${inferredLabel})` : ""}`
+                        : quotes.length === 0
+                          ? "No quotes — press Fetch"
+                          : "No fit yet — press Calibrate"}
                   </text>
                 )}
 

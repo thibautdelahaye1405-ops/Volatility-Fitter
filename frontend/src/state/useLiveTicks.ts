@@ -52,6 +52,9 @@ export interface LiveTableFrame {
   /** The fit ROLLED to the live spot (k relative to `forward`); sent when the
    *  forward moved / the calibration changed; absent = unchanged. */
   model?: { k: number; vol: number }[] | null;
+  /** The graph-inferred smile rolled to the live spot (same occasions, and
+   *  after a new Run); absent = unchanged. */
+  inferred?: { k: number; vol: number }[] | null;
 }
 
 export interface LiveTicksState {
@@ -70,6 +73,8 @@ export interface LiveTicksState {
   liveSpot: number | null;
   /** The fit rolled to the live spot (last received); null before the first. */
   model: { k: number; vol: number }[] | null;
+  /** The graph-inferred smile rolled to the live spot (last received). */
+  inferred: { k: number; vol: number }[] | null;
   /** Keys whose band moved in the LAST frame (cell flash); cleared shortly after. */
   flash: Set<string>;
   /** Frame counter — alternates the flash class so consecutive ticks re-animate. */
@@ -87,6 +92,7 @@ export const EMPTY_LIVE: LiveTicksState = {
   forward: null,
   liveSpot: null,
   model: null,
+  inferred: null,
   flash: new Set(),
   seq: 0,
   connected: false,
@@ -107,7 +113,7 @@ export function applyFrame(prev: LiveTicksState, frame: LiveTableFrame): LiveTic
     if (!frame.streaming) {
       return {
         ...prev, rows: new Map(), streaming: false, ready: false, flash: new Set(),
-        ts: null, spot: null, forward: null, liveSpot: null, model: null,
+        ts: null, spot: null, forward: null, liveSpot: null, model: null, inferred: null,
       };
     }
     return { ...prev, streaming: true, ready: frame.ready, rows: frame.ready ? prev.rows : new Map() };
@@ -136,6 +142,7 @@ export function applyFrame(prev: LiveTicksState, frame: LiveTableFrame): LiveTic
     forward: frame.forward ?? prev.forward,
     liveSpot: frame.liveSpot ?? prev.liveSpot,
     model: frame.model ?? prev.model,
+    inferred: frame.inferred ?? prev.inferred,
     flash,
     seq: prev.seq + 1,
   };

@@ -5,7 +5,7 @@
 // with an icon; the label is the tooltip and appears inline on hover of the
 // rail. Which entries apply depends on the view (the table only has the
 // calibration-quotes toggle).
-import { Crosshair, Layers, Scale, SquareDashed } from "lucide-react";
+import { Crosshair, Layers, Scale, SquareDashed, Waypoints } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export interface LayerRailProps {
@@ -18,6 +18,10 @@ export interface LayerRailProps {
   onShowCalibFit: () => void;
   showWeights: boolean;
   onShowWeights: () => void;
+  /** The graph-inferred smile layer (shown only when the node has one). */
+  showInferred?: boolean;
+  onShowInferred?: () => void;
+  hasInferred?: boolean;
 }
 
 interface Entry {
@@ -57,6 +61,14 @@ export default function LayerRail(p: LayerRailProps) {
       on: p.showWeights, tone: "border-accent-500/50 bg-accent-500/10 text-accent-300",
       onClick: p.onShowWeights, views: ["smile"],
     },
+    ...(p.hasInferred && p.onShowInferred
+      ? [{
+          key: "inferred", icon: Waypoints, label: "Graph",
+          title: "Show the smile inferred from the last Graph Run on this node (violet dash-dot, transported with the spot) — never a calibration",
+          on: p.showInferred ?? true, tone: "border-violet-500/50 bg-violet-500/10 text-violet-300",
+          onClick: p.onShowInferred, views: ["smile"] as const,
+        } satisfies Entry]
+      : []),
   ];
   return (
     <div

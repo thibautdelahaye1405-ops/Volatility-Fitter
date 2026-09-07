@@ -42,6 +42,7 @@ from pydantic import BaseModel, Field
 
 from volfit.api.quotes import prepare_quotes
 from volfit.api.schemas import SmilePoint
+from volfit.api import graph_inferred
 from volfit.api.service import displayed_base, node_clock, spot_forward_shift, variance_time
 from volfit.api.smile_layers import model_iv_at, rolled_record, stream_frame, strike_key
 from volfit.api.state import AppState
@@ -91,6 +92,10 @@ class LiveTableFrame(BaseModel):
     rows: list[LiveTickRow] = Field(default_factory=list)
     gone: list[str] = Field(default_factory=list)  # keys no longer two-sided
     nLive: int = 0  # live two-sided rows in the slice after this frame
+    #: The graph-INFERRED smile of the last Run (api/graph_inferred) ROLLED to
+    #: the live spot, sent on the same occasions as ``model`` (and after a new
+    #: Run); None = unchanged (or no inferred smile).
+    inferred: list[SmilePoint] | None = None
     #: The displayed fit ROLLED to the live spot (k relative to ``forward``),
     #: sent whenever the live forward moved / the calibration changed; None =
     #: unchanged (or no fit).
@@ -265,6 +270,9 @@ class LiveTableTracker:
         self._base_id: int | None = None  # identity of the calibration record last seen
         self._rolled = None  # the rolled FitRecord at (_base_id, _rolled_shift)
         self._rolled_shift: float | None = None
+        #: The graph-inferred smile last sent: (run stamp, shift) — re-sent on
+        #: a spot move, a new Run, or a full repaint.
+        self._inferred_at: tuple[str | None, float] | None = None
 
     def _status(self, streaming: bool, ready: bool) -> LiveTableFrame | None:
         """A status frame if (streaming, ready) changed since the last push."""
@@ -322,7 +330,14 @@ class LiveTableTracker:
         else:
             self._rolled = None
         self._base_id = id(base)
-        if not (changed or gone or full or model is not None):
+        # The graph-inferred smile (api/graph_inferred), rolled to the live
+        # spot on the same occasions as the fit — and after a new Run.
+        inferred: list[SmilePoint] | None = None
+        run = graph_inferred.graph_run(state)
+        if run is not None and (full or self._inferred_at != (run.ts, sl.shift)):
+            inferred = graph_inferred.inferred_rolled(state, ticker, iso, self._fit_mode, sl.shift)
+            self._inferred_at = (run.ts, sl.shift)
+        if not (changed or gone or full or model is not None or inferred is not None):
             return None
         return LiveTableFrame(
             type="ticks",
@@ -337,6 +352,7 @@ class LiveTableTracker:
             gone=gone,
             nLive=len(current),
             model=model,
+            inferred=inferred,
         )
 
 

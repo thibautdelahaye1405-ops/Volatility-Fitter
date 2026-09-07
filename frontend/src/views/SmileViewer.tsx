@@ -26,22 +26,18 @@ import SmileChart from "../components/SmileChart";
 import QuoteToolbar from "../components/QuoteToolbar";
 import DistributionChart from "../components/DistributionChart";
 import type { DistKind } from "../components/DistributionChart";
-import StackedDensityChart from "../components/StackedDensityChart";
-import StackedVarianceChart from "../components/StackedVarianceChart";
 import OverlayCurvesChart from "../components/OverlayCurvesChart";
 import ModelCompareTable from "../components/ModelCompareTable";
-import TermPanel from "../components/TermPanel";
-import SurfaceChart from "../components/SurfaceChart";
-import QuoteTable from "../components/QuoteTable";
 import WeightStrip from "../components/WeightStrip";
 import SmileAside from "../components/SmileAside";
 import AxisModeSelect from "../components/charts/AxisModeSelect";
 import ParametricToolbar, { AXIS_MODE_VIEWS, VIEW_HINTS } from "../components/parametric/ParametricToolbar";
 import type { ChartView } from "../components/parametric/ParametricToolbar";
 import LayerRail from "../components/parametric/LayerRail";
+import TickerViewBody from "../components/parametric/TickerViewBody";
 import CompareChips from "../components/parametric/CompareChips";
 import FitAnchoringSwitch from "../components/parametric/FitAnchoringSwitch";
-import { FilterBadge, GraphOverlayBadge } from "../components/parametric/SmileOverlayBadges";
+import { FilterBadge, GraphInferredBadge, GraphOverlayBadge, runClock } from "../components/parametric/SmileOverlayBadges";
 import { useSmileSession } from "../state/smileSession";
 import { useGraphFocus } from "../state/graphFocus";
 import { useGraphNodeSmile } from "../state/useGraphNodeSmile";
@@ -82,6 +78,8 @@ interface ParametricView extends CompareViewState {
   /** The Fit switch (lib/anchoring): production, or a shadow cell drawn
    *  instead on the Smile / Density views. */
   fitAnchoring: FitAnchoring;
+  /** The graph-inferred smile layer (the last Run's posterior on the node). */
+  showInferred: boolean;
 }
 
 export default function SmileViewer() {
@@ -109,7 +107,7 @@ export default function SmileViewer() {
     view: "smile", densityKind: "density", axisMode: "logmoneyness",
     showTarget: true, showCalibQuotes: false, showCalibFit: true, showWeights: false,
     autoScaleY: readSmileAutoScale(), compareExtra: [], compareTails: [], compareAnchoring: [],
-    fitAnchoring: "production",
+    fitAnchoring: "production", showInferred: true,
   }));
   const { view, densityKind, axisMode, showTarget, showCalibQuotes, showCalibFit, showWeights, autoScaleY } = vs;
   const setDensityKind = (densityKind: DistKind) => patchView({ densityKind });
@@ -210,11 +208,15 @@ export default function SmileViewer() {
       return chartMessage("Loading market data…");
     }
     const fr = frames ?? composeFrames(smile, liveTicks);
+    const inferredInfo = smile.graphInferred ?? null;
+    const showInferred = (vs.showInferred ?? true) && inferredInfo !== null;
     switch (view) {
       case "smile":
         return (
           <SmileChart
             market={fr.market} calib={fr.calib}
+            inferred={showInferred ? fr.market.inferred : null}
+            inferredLabel={inferredInfo ? `run ${runClock(inferredInfo.runTs)}` : null}
             showCalibQuotes={showCalibQuotes} showCalibFit={showCalibFit}
             liveFlash={liveTicks.flash} liveSeq={liveTicks.seq}
             quoteKind={smile.quoteKind ?? "quotes"}
@@ -290,26 +292,12 @@ export default function SmileViewer() {
           </div>
         );
       }
-      case "table":
-        return live
-          ? <QuoteTable ticker={ticker} expiry={expiry} fitMode={fitMode} smile={smile} ticks={liveTicks} showCalib={showCalibQuotes} />
-          : chartMessage("Table view requires the live backend.");
-      case "term":
-        return live ? <TermPanel /> : chartMessage("Term-structure view requires the live backend.");
-      case "stackeddensity":
-        return live
-          ? <StackedDensityChart ticker={ticker} fitMode={fitMode} smile={smile} axisMode={axisMode}
-              autoScaleY={autoScaleY} onToggleAutoScale={toggleAutoScale} />
-          : chartMessage("Densities require the live backend.");
-      case "stackedvar":
-        return live
-          ? <StackedVarianceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} axisMode={axisMode}
-              autoScaleY={autoScaleY} onToggleAutoScale={toggleAutoScale} />
-          : chartMessage("Stacked IV requires the live backend.");
-      case "surface":
-        return live
-          ? <SurfaceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} axisMode={axisMode} />
-          : chartMessage("Surface view requires the live backend.");
+      default:  // the ticker views + the node Table (parametric/TickerViewBody)
+        return (
+          <TickerViewBody view={view} live={live} ticker={ticker} expiry={expiry} fitMode={fitMode} smile={smile}
+            liveTicks={liveTicks} showCalibQuotes={showCalibQuotes} axisMode={axisMode}
+            autoScaleY={autoScaleY} onToggleAutoScale={toggleAutoScale} spotVersion={spotVersion} />
+        );
     }
   };
 
@@ -336,10 +324,13 @@ export default function SmileViewer() {
         >
           {/* Header: node title · overlay badges · Fit switch · quote-editing toolbar */}
           <div className="mb-2 flex shrink-0 items-center gap-2">
-            <h2 className="text-sm font-semibold text-slate-100">
+            <h2 className="whitespace-nowrap text-sm font-semibold text-slate-100">
               {smile ? `${smile.ticker} · ${formatExpiry(smile.expiry, smile.T, format)}` : "Smile"}
             </h2>
             {graphOverlay !== null && <GraphOverlayBadge overlay={graphOverlay} onDismiss={() => setFocus(null)} />}
+            {view === "smile" && smile?.graphInferred && (vs.showInferred ?? true) && (
+              <GraphInferredBadge info={smile.graphInferred} onHide={() => patchView({ showInferred: false })} />
+            )}
             {filterDiag !== null && <FilterBadge diag={filterDiag} />}
             {error !== null && source === "live" && (
               <span className="truncate text-[10px] text-amber-400/80">{error}</span>
@@ -375,6 +366,8 @@ export default function SmileViewer() {
                 showCalibQuotes={showCalibQuotes} onShowCalibQuotes={() => patchView({ showCalibQuotes: !showCalibQuotes })}
                 showCalibFit={showCalibFit} onShowCalibFit={() => patchView({ showCalibFit: !showCalibFit })}
                 showWeights={showWeights} onShowWeights={() => patchView({ showWeights: !showWeights })}
+                hasInferred={smile?.graphInferred != null} showInferred={vs.showInferred ?? true}
+                onShowInferred={() => patchView({ showInferred: !(vs.showInferred ?? true) })}
               />
             )}
           </div>

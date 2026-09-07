@@ -103,3 +103,21 @@ describe("live ticks reducer · spot frames", () => {
     expect(off.spot).toBeNull();
   });
 });
+
+describe("live ticks reducer · graph-inferred smile", () => {
+  const first = applyFrame(EMPTY_LIVE, {
+    type: "ticks", streaming: true, ready: true, full: true, forward: 100,
+    rows: [row("C", 100, 0.2)], inferred: [{ k: 0, vol: 0.24 }],
+  });
+  it("keeps the last rolled inferred curve until a frame re-sends it", () => {
+    expect(first.inferred).toEqual([{ k: 0, vol: 0.24 }]);
+    const quiet = applyFrame(first, { type: "ticks", streaming: true, ready: true, rows: [row("C", 100, 0.21)] });
+    expect(quiet.inferred).toEqual([{ k: 0, vol: 0.24 }]); // absent = unchanged
+    const moved = applyFrame(quiet, { type: "ticks", streaming: true, ready: true, forward: 101, inferred: [{ k: 0, vol: 0.235 }] });
+    expect(moved.inferred).toEqual([{ k: 0, vol: 0.235 }]);
+  });
+  it("drops it with the overlay when the stream goes off", () => {
+    expect(applyFrame(first, { type: "status", streaming: false, ready: false }).inferred).toBeNull();
+    expect(EMPTY_LIVE.inferred).toBeNull();
+  });
+});

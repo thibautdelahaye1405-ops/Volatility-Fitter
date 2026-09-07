@@ -24,6 +24,9 @@ export interface SmileFrame {
 }
 
 export interface MarketFrame extends SmileFrame {
+  /** The graph-INFERRED smile of the last Run, in this frame's moneyness
+   *  (rolled by the stream / the payload like the fit); null when none. */
+  inferred: SmilePoint[] | null;
   /** Fed by the live stream (vs the latest fetched chain). */
   live: boolean;
   /** Stream up but the book has not served this node yet. */
@@ -106,6 +109,7 @@ export function composeFrames(smile: SmileData, ticks: LiveTicksState | null): S
         // Rolled fit at the live spot when the stream has sent one; else the
         // payload's (≤ one spot-poll stale) until the first frame carries it.
         model: ticks.model ?? smile.market?.model ?? smile.model,
+        inferred: ticks.inferred ?? smile.market?.inferred ?? smile.graphInferred?.curve ?? null,
         live: true,
         warming: false,
         spot: ticks.spot,
@@ -121,6 +125,7 @@ export function composeFrames(smile: SmileData, ticks: LiveTicksState | null): S
           forward: m.forward,
           quotes: m.quotes,
           model: m.model,
+          inferred: m.inferred ?? smile.graphInferred?.curve ?? null,
           live: !!(ticks && ticks.streaming),
           warming: !!(ticks && ticks.streaming && !ticks.ready),
           spot: m.spot ?? null,
@@ -130,6 +135,7 @@ export function composeFrames(smile: SmileData, ticks: LiveTicksState | null): S
           forward: smile.forward,
           quotes: smile.quotes,
           model: smile.model,
+          inferred: smile.graphInferred?.curve ?? null,
           live: false,
           warming: false,
           spot: null,

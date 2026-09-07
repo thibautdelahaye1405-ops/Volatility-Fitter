@@ -1657,8 +1657,14 @@ def _no_fit_smile_payload(
             )
     forward = float(prepared.forward) if prepared is not None else 0.0
     # No fit: the market frame still carries the prevailing quotes + target (no
-    # rolled curve); no calibration frame.
-    market = smile_layers.market_layer(state, ticker, iso, fit_mode, None, quotes, prepared)
+    # rolled curve); no calibration frame. The graph-INFERRED smile of the
+    # last Run rides along, rolled to the prevailing spot (a dark node's curve).
+    from volfit.api import graph_inferred
+
+    inferred = graph_inferred.inferred_record(state, ticker, iso, fit_mode)
+    market = smile_layers.market_layer(
+        state, ticker, iso, fit_mode, None, quotes, prepared, inferred=inferred
+    )
     prior, prior_transported = _no_fit_prior(state, ticker, iso, forward)
     if prepared is not None:
         k_min = float(prepared.k.min()) - K_PAD
@@ -1700,6 +1706,7 @@ def _no_fit_smile_payload(
         quoteKind=quote_kind(state, ticker),
         market=market,
         calib=None,
+        graphInferred=graph_inferred.inferred_payload(state, ticker, iso, fit_mode, inferred),
     )
 
 
@@ -1834,9 +1841,14 @@ def smile_payload(
         )
     # The two comparable frames (api/smile_layers): the calibration frame is
     # the UN-transported base (the fit on its own spot); the market frame is
-    # the latest fetched chain + the fit rolled to the prevailing spot.
+    # the latest fetched chain + the fit rolled to the prevailing spot, plus
+    # the graph-inferred smile of the last Run rolled the same way.
+    from volfit.api import graph_inferred
+
+    inferred = graph_inferred.inferred_record(state, ticker, iso, fit_mode)
     market = smile_layers.market_layer(
-        state, ticker, iso, fit_mode, base, quotes, prepare_slice(state, ticker, iso), model
+        state, ticker, iso, fit_mode, base, quotes, prepare_slice(state, ticker, iso), model,
+        inferred=inferred,
     )
     return SmileData(
         ticker=ticker,
@@ -1859,6 +1871,7 @@ def smile_payload(
         # its hyperparameters (a transported record only wraps the slice).
         modelInfo=model_info(base).model_copy(update={"anchoring": drawn_cell}),
         anchoring=compare_anchoring.resolve_anchoring(state, ticker, iso, fit_mode, prepared).info(),
+        graphInferred=graph_inferred.inferred_payload(state, ticker, iso, fit_mode, inferred),
         varSwap=varswap_info(state, ticker, iso, record, fit_mode),
         canUndo=session.can_undo if session is not None else False,
         canRedo=session.can_redo if session is not None else False,

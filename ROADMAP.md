@@ -1030,6 +1030,56 @@ universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
 
+### 🧭 SESSION WRAP (2026-09-07e) — THE GRAPH-INFERRED SMILE ON EVERY NODE OF THE RUN, TRANSPORTED LIKE A FIT
+
+User: "after graph Run propagating from SX5E to SIE, the smile charts on SIE
+do not show the inferred smile from the graph. I would like to see it, to
+compare with actual quotes. Different color or line-type than a calibrated
+smile, visible, saying explicitly that it is inferred from the graph, and
+continuously transported like a normally calibrated smile." Before: the
+posterior was only drawn on drill-in from the Graph lens (the focus overlay
+of GET /graph/extrapolate/nodes, re-solved on demand, at the node's forward
+of that moment, gone on tab change).
+
+- Backend `api/graph_inferred.py`: `record_run(state, sol)` keeps the LAST
+  RUN (called by graph_extrapolation.extrapolate — the user's Run — never
+  by the drill-in GET): per node the posterior handles + sd, the prior
+  tier, lit / calibrated. `inferred_record` retargets the handles onto the
+  node's own shape (graph_reconstruct._base_slice: today's fit, else the
+  transported prior backbone; the retarget at the NODE's tau) and wraps it
+  as a FitRecord(provenance "graph") — never committed, never a prior, kept
+  in its own cache keyed (run stamp, fit key). `inferred_payload` serves
+  `SmileData.graphInferred` (curve at the active shift via transport_record,
+  run stamp, fit mode, prior tier, posterior ATM +- sd, family, flags);
+  `MarketLayer.inferred` rolls it to the prevailing spot beside `model`;
+  the tick stream's `LiveTableFrame.inferred` re-rolls it on every spot move
+  (and after a new Run) — the "continuously transported" ask. Both smile
+  payloads carry it (a dark node: no model curve, the inferred one drawn).
+- Frontend: `MarketFrame.inferred` (stream > market layer > payload),
+  `applyFrame` keeps the last rolled curve; SmileChart draws it violet
+  dash-dot ("8 3 2 3") with the legend "Inferred from graph · run HH:MM UTC"
+  and, on a no-fit node, the cue "No calibration — showing the smile
+  inferred from the graph (run …)"; an INFERRED · GRAPH header badge (run
+  time, prior tier, ATM +- sd, family, lit/dark; tooltip says "not a
+  calibration"); a Graph entry in the layer rail (per-tab `showInferred`,
+  shown only when the node has one; the badge's x hides it too). The ticker
+  views moved out of SmileViewer into parametric/TickerViewBody.tsx
+  (SmileViewer 410 -> 392 lines).
+- Tests: tests/test_graph_inferred.py (5: none before a Run; every node of
+  the Run — dark flagged, prior tier, ATM of the curve = posterior ATM, the
+  market frame equal, a lit node beside its fit, no "graph" record in the
+  fit cache; transport under a 2 % spot shift + the stream roller; the
+  no-fit payload; cache per Run, a node outside the Run); frontend locks
+  in smileLayers.test.ts (precedence) and useLiveTicks.test.ts (reducer);
+  LIVE headless `scripts/inferred_check.mjs` (synthetic server :4193:
+  darken the auto-opened node, Save priors, Run → badge + legend + dash-dot
+  path on the Smile, the rail toggle hides / shows). What's new entry.
+- Riders: the credible band is not transported (drill-in overlay only);
+  a dark node WITHOUT quotes has no forward / clock to build the record
+  (no inferred curve — the drill-in overlay still draws it at the current
+  forward); the Table view's Model IV stays empty on a dark node (the
+  inferred IV per strike is a natural follow-on).
+
 ### 🧭 SESSION WRAP (2026-09-07d) — LIVE BEAMS PILING UP ON AN UNCALIBRATED NODE: A CHROMIUM REPAINT GHOST, REMOUNT THE LAYER PER FRAME
 
 User: "when nothing is calibrated yet (for instance for a dark node) and

@@ -193,6 +193,7 @@ def market_layer(
     prepared_market: PreparedQuotes | None,
     active_model: list[SmilePoint] | None = None,
     calib_index: dict[str, int] | None = None,
+    inferred: FitRecord | None = None,
 ) -> MarketLayer | None:
     """The market frame for a node, or None when no chain is loaded.
 
@@ -200,10 +201,12 @@ def market_layer(
     caller resolves it — it is memoized). ``active_model`` is the payload's
     displayed (active-shift) curve: reused as the rolled model when the
     prevailing shift IS the active one, so the common case costs no second
-    transport."""
+    transport. ``inferred`` is the node's graph-inferred record (api/
+    graph_inferred), rolled to the prevailing spot like the fit."""
     if prepared_market is None:
         return None
     shift, spot = prevailing_shift(state, ticker)
+    inferred_curve = rolled_model(state, ticker, iso, inferred, shift) if inferred is not None else None
     if base is not None:
         forward = rolled_forward(state, ticker, iso, base, shift)
         if active_model is not None and shift == state.spot_shift(ticker):
@@ -228,4 +231,5 @@ def market_layer(
         live=bool(state.is_streaming(ticker)),
         quotes=quotes,
         model=model,
+        inferred=inferred_curve,
     )
