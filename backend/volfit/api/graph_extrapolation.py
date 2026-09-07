@@ -307,7 +307,7 @@ def solve(
         return None
 
     fit_mode = state.last_fit_mode
-    priors_meta = resolve_priors(state, universe, flat_atm=request.flatAtm)
+    priors_meta = resolve_priors(state, universe, flat_atm=request.flatAtm, fit_mode=fit_mode)
     baseline = np.vstack([p.handles for p in priors_meta])
 
     # Data-derived baseline precision per node (plan Phase 4): provenance tier x

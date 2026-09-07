@@ -1257,9 +1257,13 @@ class UniverseResponse(BaseModel):
 
 
 class PriorSavedResponse(BaseModel):
-    """Acknowledgement of a prior-curve save."""
+    """Acknowledgement of a per-node prior save (priors.save_node): the node
+    joined the ticker's ACTIVE prior snapshot — ``activeNodes`` expiries now
+    carry a prior — captured under ``fitMode``."""
 
     saved: bool = True
+    activeNodes: int = 0
+    fitMode: str | None = None
 
 
 # --------------------------------------------------------------- quote edits

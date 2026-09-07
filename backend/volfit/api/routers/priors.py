@@ -28,15 +28,24 @@ router = APIRouter()
 
 
 @router.post("/priors/save-all", response_model=PriorSaveResult)
-def save_all_priors(request: Request, fitMode: FitMode = "mid") -> PriorSaveResult:
-    return priors.save_all(request.app.state.volfit, fitMode)
+def save_all_priors(request: Request, fitMode: FitMode | None = None) -> PriorSaveResult:
+    """Snapshot every calibrated fit and make it the ticker's active prior
+    (save = activate). ``fitMode`` defaults to the fit target on screen — the
+    committed fits are per mode, so a haircut session snapshots its haircut
+    fits."""
+    state = request.app.state.volfit
+    return priors.save_all(state, fitMode or state.last_fit_mode)
 
 
 @router.post("/priors/fetch", response_model=PriorFetchResult)
-def fetch_priors(request: Request, fitMode: FitMode = "mid") -> PriorFetchResult:
+def fetch_priors(request: Request, fitMode: FitMode | None = None) -> PriorFetchResult:
     """Resolve each ticker's prior via the freshness ladder (Saved -> 15-min-before
-    -previous-close -> previous-close) and set it active (the dotted overlay/anchor)."""
-    return priors.fetch_all(request.app.state.volfit, fitMode)
+    -previous-close -> previous-close) and set it active (the dotted overlay/anchor).
+    A saved prior is already active (save = activate); Fetch re-reads the store
+    and seeds tickers that have nothing saved. ``fitMode`` defaults to the fit
+    target on screen."""
+    state = request.app.state.volfit
+    return priors.fetch_all(state, fitMode or state.last_fit_mode)
 
 
 @router.get("/priors", response_model=PriorStatus)

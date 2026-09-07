@@ -134,9 +134,12 @@ def test_graph_nodes_serves_the_lattice_before_calibration():
 
 def test_graph_nodes_membership_survives_calibration_mode():
     """A haircut-mode gated session keeps its full lattice: membership never
-    depends on which mode (or whether) a node was calibrated, and the baseline
-    stays PRIOR-anchored (flat here — no saved prior) rather than flipping to
-    today's fit. The calibrated mark lives on /graph/extrapolate, not here."""
+    depends on which mode (or whether) a node was calibrated. The baseline
+    follows the locked prior hierarchy under the fit target ON SCREEN
+    (2026-09-07): with no saved prior, today's haircut fit is the bootstrap
+    tier — it used to be read under mid only, which sent a haircut session
+    to the flat 20 % baseline. The calibrated mark lives on
+    /graph/extrapolate, not here."""
     with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
         tk = "ALPHA"
         iso = client.get("/universe").json()["expiries"][tk][1]["expiry"]
@@ -145,9 +148,11 @@ def test_graph_nodes_membership_survives_calibration_mode():
         # View + calibrate in a NON-mid mode (viewing records last_fit_mode).
         client.get(f"/smiles/{tk}/{iso}", params={"fit_mode": "haircut"})
         client.post(f"/calibrate/{tk}/{iso}", params={"fit_mode": "haircut"})
+        atm = client.get(f"/smiles/{tk}/{iso}", params={"fit_mode": "haircut"}).json()["diagnostics"]["atmVol"]
         nodes = client.get("/graph/nodes").json()["nodes"]
         node = next(n for n in nodes if (n["ticker"], n["expiry"]) == (tk, iso))
-        assert node["atmVol"] == pytest.approx(0.20)  # still the prior baseline
+        assert node["priorSource"] == "today_bootstrap"  # today's HAIRCUT fit, not flat
+        assert node["atmVol"] == pytest.approx(atm, rel=1e-6)
         assert {(n["ticker"], n["expiry"]) for n in nodes} == before
 
 

@@ -210,18 +210,21 @@ export function useNodeSmile(o: NodeSmileOptions): NodeSmileResult {
   const undoVarSwap = useCallback(() => post("varswap/undo"), [post]);
   const redoVarSwap = useCallback(() => post("varswap/redo"), [post]);
 
-  /** Persist the current fit as the prior, then refetch through the regular path. */
+  /** Save the current fit as the node's prior — active at once (calibration,
+   *  the anchoring axis, the Graph baseline read it; no Fetch step) — then
+   *  refetch through the regular path so the dotted prior draws. The
+   *  committed fit is per fit mode, so the session's mode rides along. */
   const savePrior = useCallback(async (): Promise<void> => {
     if (!live || ticker === "" || expiry === "") return;
     try {
-      await api.post<{ saved: boolean }>(`/smiles/${ticker}/${expiry}/prior`);
+      await api.post<{ saved: boolean }>(`/smiles/${ticker}/${expiry}/prior`, { params: { fit_mode: fitMode } });
     } catch (err: unknown) {
       setEditError(editMessageOf(err));
       throw err;
     }
     setEditError(null);
     setReloadNonce((n) => n + 1);
-  }, [live, ticker, expiry]);
+  }, [live, ticker, expiry, fitMode]);
 
   const { spotReturn, spotState, setSpotReturn, setFollow, recalibrate, probeLive, spotNote } =
     useSpot(live, ticker, fitMode, refreshViews, spotVersion);

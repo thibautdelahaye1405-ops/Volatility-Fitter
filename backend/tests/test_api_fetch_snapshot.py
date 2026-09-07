@@ -114,33 +114,39 @@ def test_flag_off_auto_calibrate_still_kicks(client):
 
 # ---------------------------------------------------------------- flag ON: roll
 def test_flag_on_rolls_saved_prior_once(client):
-    """A saved snapshot becomes the active prior: version bump + exactly ONE
-    prior_selection event; the second snapshot fetch is a no-op."""
+    """SAVE = ACTIVATE (2026-09-07): the save itself makes the snapshot the
+    active prior — version bump + exactly ONE prior_selection event at save
+    time; the snapshot fetch's roll then finds it active and is a no-op (no
+    as-of flip, no second event), and so is a second fetch."""
     _put_options(client, autoCalibrate=False, autoRollPriorOnFetch=True)
     state = client.app.state.volfit
+    ver_before = state.active_prior_version(TICKER)
+    ev_before = len(_prior_events(state))
     snap = _saved_snapshot(client, state)
+    active = state.active_prior(TICKER)
+    assert active is not None  # saving activates
+    assert (active.savedTs, active.dataTs) == (snap.savedTs, snap.dataTs)
+    assert state.active_prior_source(TICKER) == "saved"
+    assert state.active_prior_version(TICKER) == ver_before + 1
+    events = _prior_events(state)
+    assert len(events) == ev_before + 1  # exactly one governance event
+    assert events[0]["scope"] == TICKER
+    assert events[0]["payload"]["source"] == "saved"
     asof0 = state.as_of
     ver0 = state.active_prior_version(TICKER)
     ev0 = len(_prior_events(state))
-    assert state.active_prior(TICKER) is None  # saving does not activate
 
     assert client.post("/fetch/snapshot", json={"tickers": [TICKER]}).status_code == 200
-    active = state.active_prior(TICKER)
-    assert active is not None
-    assert (active.savedTs, active.dataTs) == (snap.savedTs, snap.dataTs)
-    assert state.active_prior_source(TICKER) == "saved"
-    assert state.active_prior_version(TICKER) == ver0 + 1
-    events = _prior_events(state)
-    assert len(events) == ev0 + 1  # exactly one governance event
-    assert events[0]["scope"] == TICKER
-    assert events[0]["payload"]["source"] == "saved"
+    assert state.active_prior(TICKER) is active  # the roll found it active: no-op
+    assert state.active_prior_version(TICKER) == ver0
+    assert len(_prior_events(state)) == ev0
     # The CHEAP branch only: no as-of flip (the prev-close ladder never ran).
     assert state.as_of == asof0
 
-    # Second call: the saved snapshot is already active — a full no-op.
+    # Second call: still a full no-op.
     assert client.post("/fetch/snapshot", json={"tickers": [TICKER]}).status_code == 200
-    assert state.active_prior_version(TICKER) == ver0 + 1
-    assert len(_prior_events(state)) == ev0 + 1
+    assert state.active_prior_version(TICKER) == ver0
+    assert len(_prior_events(state)) == ev0
 
 
 def test_flag_on_without_saved_snapshot_noops(client):

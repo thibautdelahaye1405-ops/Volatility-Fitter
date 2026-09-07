@@ -184,8 +184,8 @@ export const COMMAND_DOCS_FILE: CommandDoc[] = [
   // -------------------------------------------------------------- Priors
   {
     id: "priors.saveVisible",
-    summary: "Save the visible tab's fit as that node's prior.",
-    details: "Posts the active tab's current fit as its prior (`POST /smiles/{ticker}/{expiry}/prior`). The dashed prior curve on the Smile chart refreshes to it, and the prior-anchor rows of the next calibration pull toward it (see [Options ▸ Prior](help:settings:priorPersistenceMode)). The **Last** chip reads \"Saved prior (visible tab)\".",
+    summary: "Save the visible tab's fit as that node's prior — active at once.",
+    details: "Posts the active tab's current fit as its prior (`POST /smiles/{ticker}/{expiry}/prior`, under the session's fit target). The node joins the ticker's active prior at once: the dotted prior on the Smile chart draws it, the next calibration's persistence rows pull toward it (see [Options ▸ Prior](help:settings:priorPersistenceMode)), the Compare **+ Prior** cell and the Graph baseline read it — no Fetch step, and a restart restores it. The **Last** chip reads \"Saved prior (visible tab)\".",
     example: "SPY 18-Dec-26 fits cleanly at 14:30. Save it as the prior; at 15:45 the wings of a thinner chain stay anchored to that shape.",
     enabledWhen: "Live backend, a tab is active",
     guide: "priors",
@@ -193,8 +193,8 @@ export const COMMAND_DOCS_FILE: CommandDoc[] = [
   },
   {
     id: "priors.saveOpen",
-    summary: "Save the fit of every open tab as its prior.",
-    details: "Runs the per-node save for each open tab, one after another; a failure is counted, never fatal. The **Last** chip tallies \"Saved priors (3 tabs, 1 failed)\" and the charts' dashed priors refresh.",
+    summary: "Save the fit of every open tab as its prior — active at once.",
+    details: "Runs the per-node save for each open tab, one after another; each node joins its ticker's active prior as it lands, a failure is counted, never fatal. The **Last** chip tallies \"Saved priors (3 tabs, 1 failed)\" and the charts' dotted priors refresh.",
     example: "Three SPY tabs open (18-Dec-26, 20-Mar-27, 19-Jun-26): one command snapshots the three fits you have been looking at, and nothing else.",
     enabledWhen: "Live backend, at least one tab open",
     guide: "priors",
@@ -202,8 +202,8 @@ export const COMMAND_DOCS_FILE: CommandDoc[] = [
   },
   {
     id: "priors.saveAll",
-    summary: "Save every calibrated fit in the universe as a prior.",
-    details: "Runs `POST /priors/save-all`: every ticker's current calibration becomes its saved prior (persisted when the server has a store). The Priors ▾ face flashes \"Saved N ✓\"; the **Last** chip reads \"Saved priors (N nodes)\".",
+    summary: "Save every calibrated fit in the universe as its prior — active at once.",
+    details: "Runs `POST /priors/save-all` under the session's fit target: every ticker's current calibration becomes its saved AND active prior (persisted when the server has a store). The Priors ▾ face flashes \"Saved N ✓\"; the **Last** chip reads \"Saved priors (N nodes)\".",
     example: "End of day, twelve nodes publish-ready: Save priors — all calibrated. Tomorrow's first fetch can roll them forward automatically.",
     enabledWhen: "Live backend, workflow idle",
     guide: "priors",
@@ -211,9 +211,9 @@ export const COMMAND_DOCS_FILE: CommandDoc[] = [
   },
   {
     id: "priors.fetch",
-    summary: "Resolve and activate each ticker's prior along the freshness ladder.",
-    details: "Runs `POST /priors/fetch`: for each ticker the freshest available prior is activated — the saved snapshot, else the 15-minutes-before-close fit, else the close fit. The Priors ▾ face flashes \"Activated N ✓\"; the **Last** chip reads \"Fetched priors (N active)\". Disabled until some prior has been saved.",
-    example: "New session, empty fits: Fetch priors activates yesterday's saved SPY and NVDA surfaces so the first calibration starts anchored instead of cold.",
+    summary: "Re-read the saved priors and seed the tickers that have none from the previous close.",
+    details: "Runs `POST /priors/fetch`: for each ticker the saved prior is re-read from the store (a saved prior is already active — save = activate), else a prior is calibrated from the 15-minutes-before-close chain, else from the close. The Priors ▾ face flashes \"Activated N ✓\"; the **Last** chip reads \"Fetched priors (N active)\".",
+    example: "A new ticker in the universe with nothing saved: Fetch priors seeds it from yesterday's close so its first calibration starts anchored instead of cold.",
     enabledWhen: "Live backend, workflow idle",
     guide: "priors",
     related: ["priors.saveAll", "help:settings:autoLoadPrior"],

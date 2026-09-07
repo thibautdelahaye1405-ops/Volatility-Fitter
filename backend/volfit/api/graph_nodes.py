@@ -188,12 +188,18 @@ def resolve_node_prior(
     allow_bootstrap: bool = True,
     flat_atm: bool = False,
     flat_atm_vol: float = DEFAULT_FLAT_ATM_VOL,
+    fit_mode: str | None = None,
 ) -> NodePrior:
     """Resolve one node's baseline by the locked prior hierarchy (plan Phase 2).
 
     ``flat_atm=True`` is an explicit diagnostic/stress override: it short-circuits
     the hierarchy and returns a flat ATM-only baseline at every node, ignoring any
     saved prior (so the whole universe can be stressed off a flat surface).
+    ``fit_mode`` is the fit target the bootstrap tier reads today's committed
+    fit in — the target on screen (``state.last_fit_mode``) by default, with
+    mid as the fallback: the committed record is PER MODE, and the old
+    mid-only read sent a haircut / bid-ask session straight to the flat 20 %
+    baseline (2026-09-07 finding).
     """
     f_now = current_forward(state, ticker, iso)
     if flat_atm:
@@ -216,9 +222,14 @@ def resolve_node_prior(
                 near, f_now, regime, "nearest_expiry_transported", as_of
             )
 
-    # 3. today_bootstrap — today's mid fit; weak, NOT valid for validation.
+    # 3. today_bootstrap — today's committed fit (the fit target on screen,
+    #    then mid); weak, NOT valid for validation.
     if allow_bootstrap:
-        record = fit_or_get(state, ticker, iso, "mid")
+        record = None
+        for mode in dict.fromkeys([fit_mode or state.last_fit_mode, "mid"]):
+            record = fit_or_get(state, ticker, iso, mode)
+            if record is not None:
+                break
         if record is not None:
             handles = _lqd_handles(record, record.prepared.tau)
             return NodePrior(
@@ -292,7 +303,7 @@ def baseline_node_infos(state: AppState) -> list[GraphNodeInfo]:
     from volfit.api.graph_extrapolation import _prior_age_days
 
     universe = build_selected_universe(state)
-    priors = resolve_priors(state, universe)
+    priors = resolve_priors(state, universe, fit_mode=state.last_fit_mode)
     # Per-node effective as-of (volfit.api.node_asof) — one cached-chain read
     # per ticker; the same triple the universe payload's ExpiryInfo carries.
     asof = ticker_asof_map(state, (node.ticker for node in universe.nodes))

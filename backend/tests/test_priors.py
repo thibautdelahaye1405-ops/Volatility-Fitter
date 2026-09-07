@@ -242,3 +242,76 @@ def test_transported_prior_identity_and_shift():
     # A forward move changes the curve (transport actually moved it).
     moved = transported_prior_points(pnode, pnode.forward * 1.05, "sticky_strike", grid)
     assert not np.allclose([p.vol for p in moved], expect)
+
+
+# -- ONE PRIOR PER NODE, ACTIVE ON SAVE (user ruling 2026-09-07) ----------------
+
+
+def _iso_at(client, ix: int) -> str:
+    return client.get("/universe").json()["expiries"][TICKER][ix]["expiry"]
+
+
+def test_per_node_save_upserts_into_the_active_prior(client):
+    """Saving one node activates a one-node snapshot; saving a second node
+    ADDS it (the first is kept); re-saving a node replaces it in place."""
+    state = client.app.state.volfit
+    a, b = _iso_at(client, 0), _iso_at(client, 1)
+    for iso in (a, b):
+        client.get(f"/smiles/{TICKER}/{iso}")  # committed fits (ungated app)
+    state.set_active_prior(TICKER, None, "none")  # a clean slate for the lock
+    v0 = state.active_prior_version(TICKER)
+
+    r1 = client.post(f"/smiles/{TICKER}/{a}/prior").json()
+    assert r1 == {"saved": True, "activeNodes": 1, "fitMode": "mid"}
+    snap = state.active_prior(TICKER)
+    assert snap is not None and [n.expiry for n in snap.nodes] == [a]
+    assert state.active_prior_source(TICKER) == "saved"
+    assert state.active_prior_version(TICKER) == v0 + 1  # the fit keys refresh
+    assert state.latest_prior_snapshot(TICKER) is snap  # saved AND active
+
+    r2 = client.post(f"/smiles/{TICKER}/{b}/prior").json()
+    assert r2["activeNodes"] == 2
+    assert [n.expiry for n in state.active_prior(TICKER).nodes] == sorted([a, b])
+
+    r3 = client.post(f"/smiles/{TICKER}/{a}/prior").json()
+    assert r3["activeNodes"] == 2  # replaced in place, never duplicated
+    # the dotted, transported prior now draws on the Smile (mode hybrid)
+    smile = client.get(f"/smiles/{TICKER}/{a}").json()
+    assert smile["priorTransported"] is True and len(smile["prior"]) > 0
+    assert client.get("/priors").json()["tickers"][0]["activeSource"] == "saved"
+
+
+def test_per_node_save_defaults_to_the_fit_mode_on_screen(client):
+    """The committed record is per fit mode: a node viewed under haircut is
+    saved under haircut when the route gets no fit_mode."""
+    iso = _iso_at(client, 2)
+    assert client.get(f"/smiles/{TICKER}/{iso}", params={"fit_mode": "haircut"}).status_code == 200
+    res = client.post(f"/smiles/{TICKER}/{iso}/prior").json()
+    assert res["saved"] is True and res["fitMode"] == "haircut"
+    assert client.get(f"/smiles/{TICKER}/{iso}").status_code == 200  # back on mid for the module
+
+
+def test_save_all_activates_without_fetch(client):
+    state = client.app.state.volfit
+    state.set_active_prior(TICKER, None, "none")
+    result = client.post("/priors/save-all").json()
+    assert TICKER in result["tickers"]
+    assert state.active_prior(TICKER) is not None
+    assert state.active_prior_source(TICKER) == "saved"
+
+
+def test_saved_prior_is_restored_after_a_restart(db_path):
+    """A restart keeps the store, not the in-memory activation: the latest
+    saved snapshot is the active prior again on first use, no Fetch."""
+    iso = None
+    with TestClient(create_app(reference_date=REF_DATE, store_path=db_path)) as c:
+        iso = _iso_at(c, 0)
+        c.get(f"/smiles/{TICKER}/{iso}")
+        assert c.post(f"/smiles/{TICKER}/{iso}/prior").json()["activeNodes"] == 1
+    with TestClient(create_app(reference_date=REF_DATE, store_path=db_path)) as c:
+        state = c.app.state.volfit
+        assert state.active_prior_source(TICKER) is None  # nothing activated yet
+        snap = state.active_prior(TICKER)
+        assert snap is not None and [n.expiry for n in snap.nodes] == [iso]
+        assert state.active_prior_source(TICKER) == "saved"
+        assert state.active_prior_version(TICKER) >= 1

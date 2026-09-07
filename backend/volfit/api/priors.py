@@ -121,25 +121,41 @@ def capture_snapshot(
             continue
         if record is None:
             continue  # uncalibrated node (gated, pre-Calibrate): not in the snapshot
-        prepared = record.prepared
-        nodes.append(
-            PriorNode(
-                expiry=iso,
-                tCal=float(prepared.t),
-                tau=float(prepared.tau),
-                forward=float(prepared.forward),
-                discount=float(prepared.discount),
-                model=record.display.model if record.display is not None else "lqd",
-                lqd=[float(v) for v in record.result.params.to_vector()],
-                alphaL=float(record.result.params.alpha_left),
-                alphaR=float(record.result.params.alpha_right),
-                display=_dump_display(record.display),
-                atmVol=float(displayed_atm_vol(record)),
-                skew=float(displayed_skew(record)),
-            )
-        )
+        nodes.append(prior_node_from_record(iso, record))
     if not nodes:
         return None
+    return _snapshot_envelope(
+        state, ticker, nodes,
+        lv_surface=_lv_surface_snapshot(state, ticker, fit_mode) if lv else None,
+    )
+
+
+def prior_node_from_record(iso: str, record) -> PriorNode:
+    """One expiry's PriorNode from its committed (un-transported) FitRecord:
+    the displayed model + params, the LQD backbone and the market it was
+    calibrated in — the single builder every save path shares."""
+    prepared = record.prepared
+    return PriorNode(
+        expiry=iso,
+        tCal=float(prepared.t),
+        tau=float(prepared.tau),
+        forward=float(prepared.forward),
+        discount=float(prepared.discount),
+        model=record.display.model if record.display is not None else "lqd",
+        lqd=[float(v) for v in record.result.params.to_vector()],
+        alphaL=float(record.result.params.alpha_left),
+        alphaR=float(record.result.params.alpha_right),
+        display=_dump_display(record.display),
+        atmVol=float(displayed_atm_vol(record)),
+        skew=float(displayed_skew(record)),
+    )
+
+
+def _snapshot_envelope(
+    state: AppState, ticker: str, nodes: list[PriorNode], lv_surface=None
+) -> PriorSurfaceSnapshot:
+    """A snapshot of ``nodes`` stamped with the CURRENT market state (data
+    moment, save time, as-of label, ref spot, market settings, events)."""
     return PriorSurfaceSnapshot(
         ticker=ticker,
         dataTs=_data_ts(state).isoformat(),
@@ -148,9 +164,44 @@ def capture_snapshot(
         refSpot=float(state.anchor_spot(ticker)),
         market=state.market_settings(ticker).model_dump(),
         events=[e.model_dump() for e in state.events(ticker)],
-        nodes=nodes,
-        lvSurface=_lv_surface_snapshot(state, ticker, fit_mode) if lv else None,
+        nodes=sorted(nodes, key=lambda n: n.expiry),
+        lvSurface=lv_surface,
     )
+
+
+def save_node(
+    state: AppState, ticker: str, iso: str, fit_mode: str
+) -> PriorSurfaceSnapshot | None:
+    """Save ONE node's committed fit as its prior — and make it the prior.
+
+    ONE PRIOR PER NODE, ACTIVE ON SAVE (user ruling 2026-09-07): the node's
+    PriorNode is UPSERTED into the ticker's prior snapshot — the active one,
+    else the latest saved one, else a fresh envelope — which is then saved
+    (persisted with history) and, through ``state.save_prior_snapshot``,
+    ACTIVATED: calibration persistence, the anchoring axis, the dotted Smile
+    overlay and the Graph baseline all read it at once, no Fetch step. The
+    other nodes of the snapshot are kept as they were (each node carries its
+    own forward / clock; the envelope is re-stamped to the current market).
+    The legacy per-node PriorRecord (the Density view's prior) is written
+    beside it. Returns None when the node has no committed fit."""
+    from volfit.api import service
+    from volfit.api.state import PriorRecord
+
+    record = service.displayed_base(state, ticker, iso, fit_mode)
+    if record is None:
+        return None
+    node = prior_node_from_record(iso, record)
+    base = state.active_prior(ticker) or state.latest_prior_snapshot(ticker)
+    kept = [n for n in base.nodes if n.expiry != iso] if base is not None else []
+    snap = _snapshot_envelope(
+        state, ticker, [*kept, node],
+        lv_surface=base.lvSurface if base is not None else None,
+    )
+    state.save_prior((ticker, iso), PriorRecord(
+        curve=service.model_curve(record), params=record.result.params, t=record.prepared.t,
+    ))
+    state.save_prior_snapshot(snap)  # persist + ACTIVATE
+    return snap
 
 
 def _asof_label(state: AppState) -> str:
@@ -164,7 +215,9 @@ def _asof_label(state: AppState) -> str:
 
 
 def save_all(state: AppState, fit_mode: str = "mid") -> PriorSaveResult:
-    """Snapshot every active ticker that has lit, calibrated nodes; persist each.
+    """Snapshot every active ticker that has lit, calibrated nodes; persist each
+    and make it the ticker's ACTIVE prior (save = activate, the 2026-09-07
+    ruling — ``state.save_prior_snapshot`` does the activation).
 
     Returns the tickers captured, the total node count, and whether a store is
     configured (so the priors survive a restart)."""

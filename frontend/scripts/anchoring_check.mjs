@@ -1,8 +1,11 @@
 // Headless-Edge LIVE check of the ANCHORING AXIS (2026-09-07) on the synthetic
 // single-origin smoke server (backend/smoke_server.py, throw-away DB):
 //   1. through the API: read every node of the first ticker (bootstraps the
-//      fits), Save priors, Fetch priors — the node now has a prior cell that
-//      IS production ("+ Prior" tagged prod), so "Free" is the shadow to ask;
+//      fits), then SAVE ONE NODE's prior through the per-node route — no
+//      Fetch (one prior per node, active on save): the node now has a prior
+//      cell that IS production ("+ Prior" tagged prod), and the Graph
+//      lattice starts from it (priorSource active_transported), so "Free" is
+//      the shadow to ask;
 //   2. Parametric → Compare: light the Free chip, expect a shadow table row
 //      (data-shadow="free") and a measured Pull on the plain row;
 //   3. Parametric → Smile: the Fit switch ([data-fit-anchoring]) shows
@@ -86,13 +89,17 @@ try {
   const ticker = universe.tickers[0];
   const expiries = universe.expiries[ticker].map((e) => e.expiry);
   for (const e of expiries) await api("GET", `/smiles/${ticker}/${e}`);
-  const saved = await api("POST", "/priors/save-all");
-  const fetched = await api("POST", "/priors/fetch");
   const node = expiries[Math.min(2, expiries.length - 1)];
+  const saved = await api("POST", `/smiles/${ticker}/${node}/prior`); // ONE node, no Fetch
   const smile = await api("GET", `/smiles/${ticker}/${node}`);
-  console.log(`priors: saved ${JSON.stringify(saved.tickers ?? saved)} · fetched ${JSON.stringify(fetched.tickers ?? fetched).slice(0, 120)}`);
+  console.log(`per-node save: ${JSON.stringify(saved)} · priors status ${JSON.stringify((await api("GET", "/priors")).tickers[0]).slice(0, 160)}`);
   console.log(`axis on ${ticker} ${node}: ${JSON.stringify(smile.anchoring)}`);
-  if (!smile.anchoring || smile.anchoring.production !== "prior") throw new Error("the prior cell is not production after Fetch priors");
+  if (!smile.anchoring || smile.anchoring.production !== "prior") throw new Error("the prior cell is not production right after a per-node save");
+  if (!smile.priorTransported) throw new Error("the dotted transported prior is not drawn after the save");
+  const lattice = (await api("GET", "/graph/nodes")).nodes.filter((n) => n.ticker === ticker);
+  const src = Object.fromEntries(lattice.map((n) => [n.expiry, n.priorSource]));
+  console.log(`graph lattice prior sources: ${JSON.stringify(src)}`);
+  if (src[node] !== "active_transported") throw new Error(`the Graph does not start from the saved node (${src[node]})`);
 
   const page = await browser.newPage();
   await page.setViewport({ width: 1400, height: 900 });

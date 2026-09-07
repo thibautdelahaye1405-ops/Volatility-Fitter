@@ -4,9 +4,16 @@
 //   · every calibrated fit POST /priors/save-all (useWorkflow.savePriors)
 // plus Fetch priors (the freshness ladder, useWorkflow.fetchPriors).
 //
-// Per-node saves go straight through `api` (they are not workflow verbs);
+// ONE PRIOR PER NODE, ACTIVE ON SAVE (2026-09-07): a saved node IS its prior
+// from that moment — calibration persistence, the Compare anchoring axis,
+// the dotted Smile overlay and the Graph baseline all read it, no Fetch
+// step; a restart restores it from the store. Fetch priors re-reads the
+// saved priors and seeds the tickers that have none from the previous close.
+//
+// Per-node saves go straight through `api` (they are not workflow verbs)
+// and carry the session's fit mode (the committed fit is per mode);
 // individual failures are counted, never fatal, and the session smile is
-// reloaded afterwards so the chart's dashed prior refreshes. Every action
+// reloaded afterwards so the chart's dotted prior refreshes. Every action
 // acknowledges on the button face with a transient "… ✓" flash (no toast
 // system); the workflow verbs also show the indeterminate WORKING bar.
 import { useRef, useState } from "react";
@@ -38,14 +45,19 @@ interface NodeRef {
   expiry: string;
 }
 
-/** Save each node's current fit as its prior, one POST after another.
- *  Resolves to the (saved, failed) tally — a failure never aborts the run. */
-export async function saveNodePriors(nodes: NodeRef[]): Promise<{ saved: number; failed: number }> {
+/** Save each node's current fit as its prior (active at once), one POST
+ *  after another under the session's fit mode. Resolves to the (saved,
+ *  failed) tally — a failure never aborts the run. */
+export async function saveNodePriors(
+  nodes: NodeRef[], fitMode: string,
+): Promise<{ saved: number; failed: number }> {
   let saved = 0;
   let failed = 0;
   for (const { ticker, expiry } of nodes) {
     try {
-      await api.post<{ saved: boolean }>(`/smiles/${ticker}/${encodeURIComponent(expiry)}/prior`);
+      await api.post<{ saved: boolean }>(`/smiles/${ticker}/${encodeURIComponent(expiry)}/prior`, {
+        params: { fit_mode: fitMode },
+      });
       saved++;
     } catch {
       failed++;
@@ -63,7 +75,7 @@ export default function PriorsMenu({
   live: boolean;
 }) {
   const { pending, busy, priors, savePriors, fetchPriors } = workflow;
-  const { reload } = useSmileSession();
+  const { reload, fitMode } = useSmileSession();
   const wb = useOptionalWorkbench();
   const activeTab = wb?.activeTab ?? null;
   const tabs = wb?.tabs ?? [];
@@ -89,9 +101,9 @@ export default function PriorsMenu({
     setOpen(false);
     if (nodes.length === 0) return;
     setSaving(true);
-    void saveNodePriors(nodes)
+    void saveNodePriors(nodes, fitMode)
       .then(({ saved, failed }) => {
-        reload(); // the chart's dashed prior follows the new snapshot
+        reload(); // the chart's dotted prior follows the new snapshot
         showFlash(
           saved > 0
             ? `Saved ${saved} ✓${failed > 0 ? ` · ${failed} failed` : ""}`
@@ -133,7 +145,7 @@ export default function PriorsMenu({
       <MenuPanel open={open} onClose={() => setOpen(false)} width="w-72">
         <MenuItem
           label="Save prior — visible tab"
-          detail={activeTab ? `${activeTab.ticker} ${activeTab.expiry}` : "no tab open"}
+          detail={activeTab ? `${activeTab.ticker} ${activeTab.expiry} · becomes its prior now` : "no tab open"}
           disabled={itemsDisabled || !live || activeTab === null}
           onClick={() => onSaveNodes(activeTab ? [activeTab] : [])}
         />
@@ -145,7 +157,7 @@ export default function PriorsMenu({
         />
         <MenuItem
           label="Save priors — all calibrated"
-          detail={savedTickers > 0 ? `${savedTickers} ticker(s) saved` : "snapshot all fits"}
+          detail={savedTickers > 0 ? `${savedTickers} ticker(s) saved · active` : "snapshot all fits · active at once"}
           disabled={itemsDisabled}
           onClick={onSaveAll}
         />
@@ -153,13 +165,11 @@ export default function PriorsMenu({
         <MenuItem
           label="Fetch priors"
           detail={
-            savedTickers === 0
-              ? "save priors first"
-              : activePriors > 0
-                ? `${activePriors} active`
-                : "saved → 15m-before-close → close"
+            activePriors > 0
+              ? `${activePriors} active · reload saved, seed the rest`
+              : "saved → 15m-before-close → close"
           }
-          disabled={itemsDisabled || savedTickers === 0}
+          disabled={itemsDisabled}
           onClick={onFetchPriors}
         />
       </MenuPanel>

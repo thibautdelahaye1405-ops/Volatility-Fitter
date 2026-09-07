@@ -117,15 +117,18 @@ def test_density_before_any_prior(client, universe):
 
 def test_density_prior_save_then_diverge(client, universe):
     expiry = expiry_of(universe, "BETA", 1)
-    assert client.post(f"/smiles/BETA/{expiry}/prior").json() == {"saved": True}
+    assert client.post(f"/smiles/BETA/{expiry}/prior").json()["saved"] is True  # (+ activeNodes / fitMode: save = activate)
 
     data = client.get(f"/smiles/BETA/{expiry}/density").json()
     prior, current = data["prior"], data["current"]
     assert prior is not None
     keys = ("x", "density", "u", "quantile")
     assert all(len(prior[key]) == len(current[key]) for key in keys)
-    # Prior rebuilt from its saved LQDParams == the still-current fit.
-    assert prior["density"] == current["density"]
+    # Prior rebuilt from its saved LQDParams ~ the still-current fit. SAVE =
+    # ACTIVATE (2026-09-07): the save also re-anchors the auto-calibrated fit
+    # to the prior it just became, so the refit agrees to solver tolerance
+    # rather than bit-for-bit (the anchor is centred on the fit itself).
+    assert np.allclose(prior["density"], current["density"], rtol=1e-3, atol=1e-6)
 
     # Amend the nearest-ATM quote up 2 vol points: the refit's density must
     # now differ from the frozen prior by a meaningful margin.
@@ -192,7 +195,7 @@ def test_prior_round_trip_in_smile_payload_unchanged(client, universe):
     base = client.get(f"/smiles/GAMMA/{expiry}").json()
     assert base["prior"] == base["model"]  # unsaved: prior defaults to fit
 
-    assert client.post(f"/smiles/GAMMA/{expiry}/prior").json() == {"saved": True}
+    assert client.post(f"/smiles/GAMMA/{expiry}/prior").json()["saved"] is True  # (+ activeNodes / fitMode: save = activate)
 
     # The saved curve (mid fit) is served verbatim under any fit mode.
     later = client.get(f"/smiles/GAMMA/{expiry}", params={"fit_mode": "bidask"}).json()

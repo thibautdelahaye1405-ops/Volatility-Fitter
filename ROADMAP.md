@@ -1030,6 +1030,51 @@ universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
 
+### 🧭 SESSION WRAP (2026-09-07c) — ONE PRIOR PER NODE, ACTIVE ON SAVE; THE GRAPH STARTS FROM IT
+
+User: "When one saves a prior for a given node, then this prior is the prior
+for this node, right? No need to fetch it to 'activate' it, correct? Then in
+'Graph' something is awkward: saved priors are not the starting points,
+instead it is using flat 20.0% volatility." Finding: there were TWO prior
+objects — the per-node PriorRecord (Smile dashed line, Density prior,
+prev-close seeding check only) and the per-ticker surface snapshot, which
+only became the ticker's prior after Fetch (calibration persistence, the
+axis, the Graph baseline). A node-level save never reached the Graph, and
+the Graph's bootstrap tier read today's fit under MID only, so a haircut
+session fell to `_flat_baseline` (source "none", `DEFAULT_FLAT_ATM_VOL`
+0.20). RULING (user: "Yes build this"): one prior per node, active on save.
+
+- `priors.save_node` (the per-node route): the node's PriorNode
+  (`prior_node_from_record`, the builder capture_snapshot now shares) is
+  UPSERTED into the ticker's snapshot — the active one, else the latest
+  saved, else a fresh envelope (`_snapshot_envelope`, re-stamped to the
+  current market; the other nodes and the LV surface kept) — then saved.
+  `state.save_prior_snapshot` = persist + ACTIVATE (`set_active_prior`,
+  source "saved", version bump → the fit keys refresh); `save_all` inherits
+  it. The legacy PriorRecord is still written beside (Density prior).
+- Restart: `state._restore_active_prior` lazily makes the latest SAVED
+  snapshot active on the first `active_prior` / `active_prior_version` read
+  of a ticker that was never set this session (a ladder "none" marks it
+  checked) — the version accessor restores FIRST so the fit key already
+  counts it. Fetch priors keeps two jobs: re-read the saved priors, seed the
+  tickers with nothing saved (menu item no longer disabled without a save).
+- Fit mode: the per-node route, /priors/save-all and /priors/fetch default
+  to `state.last_fit_mode` (the target on screen); the frontend passes it on
+  every save (the visible-tab / open-tabs saves silently 409'd under
+  haircut before — the command swallowed the error). PriorSavedResponse
+  carries `activeNodes` + `fitMode`.
+- Graph: `resolve_node_prior(fit_mode=)` — the bootstrap tier reads today's
+  committed fit under the target on screen, then mid; `baseline_node_infos`
+  and the solve pass `state.last_fit_mode`.
+- Frontend: Priors ▾ copy ("becomes its prior now", "active at once", Fetch
+  "reload saved, seed the rest"); Help: the four command docs, the glossary
+  "prior" term, the priors guide (First use step 2), What's new 2026-09-07.
+- Tests: test_priors (+4: per-node upsert keeps / replaces nodes, version
+  bump, dotted overlay; route default fit mode; save-all activates; restart
+  restore with a store), test_graph_node_priors (+1: gated haircut session
+  → bootstrap, mid → "none", GET /graph/nodes priorSource), the anchoring
+  test rewritten (save one node → production "prior" at once).
+
 ### 🧭 SESSION WRAP (2026-09-07b) — TWO LIVE FINDINGS ON THE AXIS: THE SVI-JW LABEL UNDER A SPOT TRANSPORT, AND "+ PRIOR" LIGHTS FROM A SAVED SNAPSHOT
 
 User (live SX5E INDEX, Bloomberg stream, haircut session): "the Compare tab

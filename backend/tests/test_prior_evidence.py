@@ -126,7 +126,8 @@ def test_priors_status_reports_ages(client):
     row = _status(client)[TICKER]
     # save-all's dataTs is the live wall clock — never negative, clamped to 0.
     assert row["ageDays"] == 0.0
-    assert row["activeSource"] is None and row["activeAgeDays"] is None
+    # save = activate (2026-09-07): the saved snapshot is the active prior at once
+    assert row["activeSource"] == "saved" and row["activeAgeDays"] == 0.0
 
     # Backdate the latest snapshot 3 days: the age must follow the dataTs.
     state = client.app.state.volfit
@@ -136,7 +137,9 @@ def test_priors_status_reports_ages(client):
     assert row["dataTs"] == STALE_TS
     assert row["ageDays"] == float((REF_DATE - date(2026, 6, 7)).days) == 3.0
 
-    client.post("/priors/fetch")  # the saved snapshot becomes the active prior
+    row = _status(client)[TICKER]  # the backdated save is active at once
+    assert row["activeDataTs"] == STALE_TS and row["activeAgeDays"] == 3.0
+    client.post("/priors/fetch")  # re-reads the saved snapshot: unchanged
     row = _status(client)[TICKER]
     assert row["activeSource"] == "saved"
     assert row["activeDataTs"] == STALE_TS

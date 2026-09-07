@@ -133,3 +133,28 @@ def test_resolve_priors_aligns_with_universe(primed):
     for node, prior in zip(universe.nodes, resolved):
         if node.ticker == ticker and node.expiry in isos:
             assert prior.source == "active_transported"
+
+
+# -- the bootstrap tier reads the fit target on screen (2026-09-07) ------------
+
+
+def test_bootstrap_reads_the_fit_mode_on_screen_not_only_mid():
+    """A gated haircut session used to fall to the flat 20 % baseline: the
+    bootstrap read today's fit under mid only, and there was none."""
+    from fastapi.testclient import TestClient
+
+    from volfit.api import create_app
+
+    with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
+        state = client.app.state.volfit
+        ticker = state.active_tickers()[0]
+        iso = client.get("/universe").json()["expiries"][ticker][0]["expiry"]
+        client.post("/fetch/options", json={})
+        assert client.post(f"/calibrate/{ticker}/{iso}", params={"fit_mode": "haircut"}).status_code == 200
+        assert client.get(f"/smiles/{ticker}/{iso}", params={"fit_mode": "haircut"}).json()["hasFit"] is True
+        assert state.last_fit_mode == "haircut"
+        prior = resolve_node_prior(state, ticker, iso)  # no active prior: the bootstrap tier
+        assert prior.source == "today_bootstrap"
+        assert resolve_node_prior(state, ticker, iso, fit_mode="mid").source == "none"  # mid has no fit
+        nodes = {n["expiry"]: n for n in client.get("/graph/nodes").json()["nodes"] if n["ticker"] == ticker}
+        assert nodes[iso]["priorSource"] == "today_bootstrap"

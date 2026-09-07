@@ -24,6 +24,7 @@ from fastapi.responses import Response, StreamingResponse
 
 from volfit.api import (
     analytics,
+    priors,
     filter_history,
     observation_filter,
     service,
@@ -44,7 +45,7 @@ from volfit.api.schemas import (
     TableResponse,
 )
 from volfit.api.schemas_weights import WeightsData
-from volfit.api.state import PriorRecord, UnknownNodeError
+from volfit.api.state import UnknownNodeError
 
 router = APIRouter()
 
@@ -95,24 +96,22 @@ def get_smile(
 
 @router.post("/smiles/{ticker}/{expiry}/prior", response_model=PriorSavedResponse)
 def save_prior(
-    ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid"
+    ticker: str, expiry: str, request: Request, fit_mode: FitMode | None = None
 ) -> PriorSavedResponse:
+    """Save ONE node's committed fit as its prior — and make it the ticker's
+    active prior at once (priors.save_node: one prior per node, active on
+    save). ``fit_mode`` defaults to the fit target on screen (the committed
+    record is per mode). 409 when the node has no committed fit."""
     state = request.app.state.volfit
+    mode = fit_mode or state.last_fit_mode
     try:
-        record = service.fit_or_get(state, ticker, expiry, fit_mode)
+        iso = state.resolve_expiry(ticker, expiry).isoformat()
+        snap = priors.save_node(state, ticker, iso, mode)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
-    if record is None:  # gated, never calibrated: nothing to snapshot as a prior
+    if snap is None:  # gated, never calibrated: nothing to snapshot as a prior
         raise HTTPException(status_code=409, detail="calibrate the node before saving a prior")
-    state.save_prior(
-        (ticker, expiry),
-        PriorRecord(
-            curve=service.model_curve(record),
-            params=record.result.params,
-            t=record.prepared.t,
-        ),
-    )
-    return PriorSavedResponse(saved=True)
+    return PriorSavedResponse(saved=True, activeNodes=len(snap.nodes), fitMode=mode)
 
 
 @router.get("/smiles/{ticker}/{expiry}/prior-diagnostics", response_model=PriorDiagnostics)

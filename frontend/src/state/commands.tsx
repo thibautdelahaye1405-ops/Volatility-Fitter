@@ -124,7 +124,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       bind("calibrate.parametric", () => void workflow.calibrateParametric(), live && !busy),
       bind("calibrate.lv", () => void workflow.calibrateLv(), live && !busy),
       bind("priors.saveVisible", () => void session.savePrior().then(() => workflow.noteAction("Saved prior (visible tab)")).catch(() => {}), live && wb.activeTab !== null),
-      bind("priors.saveOpen", () => void saveNodePriors(tabs).then((r) => { workflow.noteAction(`Saved priors (${r.saved} tab${r.saved === 1 ? "" : "s"}${r.failed ? `, ${r.failed} failed` : ""})`, r.failed === 0); session.reload(); }), live && tabs.length > 0),
+      bind("priors.saveOpen", () => void saveNodePriors(tabs, session.fitMode).then((r) => { workflow.noteAction(`Saved priors (${r.saved} tab${r.saved === 1 ? "" : "s"}${r.failed ? `, ${r.failed} failed` : ""})`, r.failed === 0); session.reload(); }), live && tabs.length > 0),
       bind("priors.saveAll", () => void workflow.savePriors(), live && !busy),
       bind("priors.fetch", () => void workflow.fetchPriors(), live && !busy),
       // Lenses

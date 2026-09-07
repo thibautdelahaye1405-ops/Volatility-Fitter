@@ -109,21 +109,27 @@ def test_unknown_cell_is_422_and_production_name_is_plain(client, node):
 # -- (b) with an active prior: the prior cell exists and is production ------------
 
 
-def test_saved_unfetched_prior_is_a_preview_cell(client, node):
-    """Save priors alone lights "+ Prior" (from the latest saved snapshot);
-    production stays free until the prior is FETCHED, and the remark says
-    what the cell assumes."""
-    assert client.post("/priors/save-all").status_code == 200
+def test_saving_one_node_makes_it_the_prior_at_once(client, node):
+    """ONE PRIOR PER NODE, ACTIVE ON SAVE: a per-node save lights "+ Prior"
+    and, under a calibration-prior mode, IS production — no Fetch step."""
+    ticker, expiry = node
+    state = client.app.state.volfit
+    assert state.active_prior(ticker) is None
+    res = client.post(f"/smiles/{ticker}/{expiry}/prior").json()
+    assert res["saved"] is True and res["activeNodes"] == 1 and res["fitMode"] == "mid"
+    assert state.active_prior_source(ticker) == "saved"
     info = _smile(client, node).json()["anchoring"]
-    assert info["available"] == ["free", "prior"] and info["production"] == "free"
-    assert "prior" not in info["notes"]
-    assert "saved snapshot" in info["preview"]["prior"]
-    rows = _compare(client, node, anchoring="prior").json()["models"]
-    assert [r["anchoring"] for r in rows] == ["free", "prior"]
-    assert rows[1]["ok"] and rows[1]["reused"] is False and rows[1]["pullCurveBp"] is not None
+    assert info["available"] == ["free", "prior"] and info["production"] == "prior"
+    assert "prior" not in info["notes"] and "prior" not in info["preview"]
+    rows = _compare(client, node, anchoring="free").json()["models"]
+    assert [r["anchoring"] for r in rows] == ["prior", "free"]
+    assert rows[0]["reused"] is True and rows[1]["ok"] and rows[1]["pullCurveBp"] is not None
 
 
 def test_prior_cell_appears_after_fetch_and_is_production(client, node):
+    """Save priors (all) + Fetch keep the same answer — Fetch is idempotent
+    on a saved prior."""
+    assert client.post("/priors/save-all").status_code == 200
     assert client.post("/priors/fetch").status_code == 200
     smile = _smile(client, node).json()
     info = smile["anchoring"]

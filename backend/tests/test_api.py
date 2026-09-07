@@ -149,7 +149,7 @@ def test_prior_save_round_trip(client, universe):
     first = client.get(f"/smiles/GAMMA/{expiry}").json()
     assert first["prior"] == first["model"]
 
-    assert client.post(f"/smiles/GAMMA/{expiry}/prior").json() == {"saved": True}
+    assert client.post(f"/smiles/GAMMA/{expiry}/prior").json()["saved"] is True  # (+ activeNodes / fitMode: save = activate)
 
     # The saved prior (mid fit) is now served verbatim with *any* fit mode.
     later = client.get(f"/smiles/GAMMA/{expiry}", params={"fit_mode": "bidask"}).json()

@@ -7,6 +7,15 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-07",
+    title: "One prior per node, active on save — no Fetch step, and the Graph starts from it",
+    items: [
+      "**Save prior** (visible tab, all open tabs, all calibrated) now makes the saved fit the node's prior at once: the next calibration's persistence rows pull toward it, the Compare **+ Prior** cell reads it, the dotted prior draws on the Smile, and the Graph uses it as the node's starting point. A restart restores the saved priors from the store.",
+      "**Fetch priors** keeps its two jobs — re-read the saved priors, and seed the tickers that have nothing saved from the previous close — and is no longer required to activate what you saved.",
+      "Every save runs under the fit target on screen (mid, bid-ask or haircut): a haircut session used to snapshot nothing because the save looked under mid. The Graph's fallback baseline also reads today's fit under the target on screen, so a haircut session no longer starts from a flat 20 % surface.",
+    ],
+  },
+  {
+    date: "2026-09-07",
     title: "Compare and the node views: the anchoring axis — what the prior and the filter bought",
     items: [
       "A fourth chip group in the Compare strip — **Free**, **+ Prior**, **+ Filter** — refits the prevailing model with its anchoring blocks removed or added: no prior and no filter (the pure market fit), the persistence prior alone, or the filter's prediction from the kept state. Each cell lands as a dashed row of the same family, and the new **Pull** column reads its distance to the free fit in ATM vol bp (skew and curve RMS on hover), so a node tells what each block bought.",

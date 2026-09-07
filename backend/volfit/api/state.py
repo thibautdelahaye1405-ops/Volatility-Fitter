@@ -1618,30 +1618,55 @@ class AppState(SourcesMixin, UniverseMixin):
 
     # ----------------------------------------------- prior surface snapshots
     def save_prior_snapshot(self, snapshot: "PriorSurfaceSnapshot") -> bool:
-        """Cache a ticker's latest prior snapshot and persist it (history kept).
+        """Cache a ticker's latest prior snapshot, persist it (history kept) and
+        make it the ticker's ACTIVE prior.
 
-        Returns whether it was persisted to a store (False = in-memory only, so it
-        would not survive a restart). Persistence is best-effort and never raises."""
+        SAVE = ACTIVATE (user ruling 2026-09-07): a saved prior is the prior
+        from that moment — calibration persistence, the anchoring axis, the
+        Smile overlay and the Graph baseline read it with no Fetch step (Fetch
+        keeps its role as the freshness ladder for tickers with nothing
+        saved). Returns whether it was persisted to a store (False =
+        in-memory only, so it would not survive a restart). Persistence is
+        best-effort and never raises."""
         from datetime import datetime
 
         with self._lock:
             self._prior_snapshots[snapshot.ticker] = snapshot
-        if self.store_path is None:
-            return False
-        try:
-            from volfit.data.store import VolStore
+        persisted = False
+        if self.store_path is not None:
+            try:
+                from volfit.data.store import VolStore
 
-            with VolStore(self.store_path) as store:
-                store.save_prior_snapshot(
-                    snapshot.ticker,
-                    datetime.fromisoformat(snapshot.dataTs),
-                    datetime.fromisoformat(snapshot.savedTs),
-                    snapshot.model_dump(),
-                )
-            return True
-        except Exception as exc:  # noqa: BLE001 — persistence must never break a save
-            warnings.warn(f"prior-snapshot persist failed: {exc}")
-            return False
+                with VolStore(self.store_path) as store:
+                    store.save_prior_snapshot(
+                        snapshot.ticker,
+                        datetime.fromisoformat(snapshot.dataTs),
+                        datetime.fromisoformat(snapshot.savedTs),
+                        snapshot.model_dump(),
+                    )
+                persisted = True
+            except Exception as exc:  # noqa: BLE001 — persistence must never break a save
+                warnings.warn(f"prior-snapshot persist failed: {exc}")
+        self.set_active_prior(snapshot.ticker, snapshot, "saved")
+        return persisted
+
+    def _restore_active_prior(self, ticker: str) -> None:
+        """Lazily make the latest SAVED snapshot the active prior of a ticker
+        that has never had one set this session (a restart keeps the store,
+        not the in-memory activation) — so a saved prior stays the prior
+        across restarts. A ticker whose activation was set (or cleared to
+        "none" by the ladder) is never re-restored."""
+        with self._lock:
+            if ticker in self._active_prior or ticker in self._active_prior_source:
+                return
+        snap = self.latest_prior_snapshot(ticker)
+        with self._lock:
+            if ticker in self._active_prior or ticker in self._active_prior_source:
+                return
+            if snap is None:
+                self._active_prior_source[ticker] = "none"  # checked: nothing saved
+                return
+        self.set_active_prior(ticker, snap, "saved")
 
     def latest_prior_snapshot(self, ticker: str) -> "PriorSurfaceSnapshot | None":
         """The most recently saved prior snapshot for a ticker (cache, then store)."""
@@ -1715,12 +1740,17 @@ class AppState(SourcesMixin, UniverseMixin):
         )
 
     def active_prior_version(self, ticker: str) -> int:
-        """Per-ticker active-prior version (folded into fit / affine cache keys)."""
+        """Per-ticker active-prior version (folded into fit / affine cache keys).
+        Restores the latest saved snapshot first so the key already counts it."""
+        self._restore_active_prior(ticker)
         with self._lock:
             return self._active_prior_version.get(ticker, 0)
 
     def active_prior(self, ticker: str) -> "PriorSurfaceSnapshot | None":
-        """The active fetched prior for a ticker (the dotted overlay / anchor)."""
+        """The active prior for a ticker (the dotted overlay / anchor / graph
+        baseline): the last saved or fetched snapshot, restored from the store
+        on first use after a restart."""
+        self._restore_active_prior(ticker)
         with self._lock:
             return self._active_prior.get(ticker)
 
