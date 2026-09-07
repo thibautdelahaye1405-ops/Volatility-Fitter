@@ -14,10 +14,19 @@ the anchoring blocks ALONE:
 
 The axis is derived by SUBTRACTION from the live Options — never a settings
 surface: the production fit is whatever Options says, and a cell exists only
-when its input exists (an active prior node for ``prior``, a usable filter
-state for ``filter``; ``free`` always). The cell that coincides with
-production is tagged (``AnchoringPlan.production``) and, when the committed
-record is fresh, REUSED rather than refit.
+when its input exists (a prior node for ``prior``, a usable filter state for
+``filter``; ``free`` always). The cell that coincides with production is
+tagged (``AnchoringPlan.production``) and, when the committed record is
+fresh, REUSED rather than refit.
+
+PREVIEW cells (``AnchoringPlan.preview``): a cell whose inputs exist but
+whose block production does not carry. "+ Prior" reads the ACTIVE (fetched)
+prior, else the latest SAVED snapshot — "Save priors" alone lights it — and
+persists under the live mode when that mode adds a calibration prior, else
+under the recommended ``hybrid`` mode (a persistence mode of off / overlay /
+graph_only never blocks the experiment; production stays free). "+ Filter"
+under mode ``overlay`` previews ``active``. The remark names what the cell
+assumes; the chip shows a "preview" tag.
 
 Every other cell is a pure function call through the production task
 builder (service.single_node_task with ``anchoring=cell``): the same edited
@@ -71,7 +80,8 @@ def parse_anchoring(csv: str) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class AnchoringPlan:
-    """Which cells exist on a node, which one is production, and why not."""
+    """Which cells exist on a node, which one is production, why a cell is
+    missing (``notes``) and what a preview cell assumes (``preview``)."""
 
     available: tuple[str, ...]
     production: str | None  # the cell the production fit coincides with
@@ -79,13 +89,34 @@ class AnchoringPlan:
     filter_mode: str
     prior_mode: str
     notes: dict[str, str] = field(default_factory=dict)  # cell -> why unavailable
+    preview: dict[str, str] = field(default_factory=dict)  # cell -> what it assumes
 
     def info(self, requested: tuple[str, ...] = ()) -> AnchoringInfo:
         return AnchoringInfo(
             requested=list(requested), available=list(self.available),
             production=self.production, family=self.family,
             filterMode=self.filter_mode, priorMode=self.prior_mode, notes=dict(self.notes),
+            preview=dict(self.preview),
         )
+
+
+#: The persistence mode a "+ Prior" cell previews when the live mode adds no
+#: calibration prior (off / overlay / graph_only): the recommended default.
+PREVIEW_PRIOR_MODE = "hybrid"
+
+
+def prior_cell_context(state: AppState, ticker: str, options):
+    """(options, snapshot) the "+ Prior" cell persists under: the given
+    options when their mode adds a calibration prior, else the same options
+    under ``PREVIEW_PRIOR_MODE``; the ACTIVE prior surface when one is
+    fetched, else the latest SAVED snapshot (None when nothing is saved —
+    the persistence targets then resolve empty)."""
+    if not resolve_prior_mode(options).any_calibration_prior:
+        options = options.model_copy(update={"priorPersistenceMode": PREVIEW_PRIOR_MODE})
+    snapshot = state.active_prior(ticker)
+    if snapshot is None:
+        snapshot = state.latest_prior_snapshot(ticker)
+    return options, snapshot
 
 
 def resolve_anchoring(
@@ -103,25 +134,38 @@ def resolve_anchoring(
     opts = state.options()
     fplan = resolve_filter_mode(opts)
     notes: dict[str, str] = {}
-    # + Prior: a calibration-prior mode AND an active prior node for this expiry.
+    preview: dict[str, str] = {}
+    # + Prior: a prior node for this expiry — fetched, else the latest saved
+    # snapshot (a preview); the live mode, else hybrid (a preview).
     off_opts = opts.model_copy(update={"observationFilterMode": "off"})
-    if not resolve_prior_mode(off_opts).any_calibration_prior:
-        notes["prior"] = f"prior persistence mode '{opts.priorPersistenceMode}' adds no calibration prior"
-        prior_ok = False
-    elif prior_transport.prior_node(state.active_prior(ticker), iso) is None:
-        notes["prior"] = "no active prior for this node — save or fetch a prior first"
+    mode_adds = resolve_prior_mode(off_opts).any_calibration_prior
+    active_node = prior_transport.prior_node(state.active_prior(ticker), iso)
+    _cell_opts, snapshot = prior_cell_context(state, ticker, off_opts)
+    if prior_transport.prior_node(snapshot, iso) is None:
+        notes["prior"] = "no saved prior for this node — Priors ▾ Save priors, then Fetch priors"
         prior_ok = False
     else:
         prior_ok = True
+        remarks = []
+        if not mode_adds:
+            remarks.append(
+                f"persistence mode is '{opts.priorPersistenceMode}' — previews the {PREVIEW_PRIOR_MODE} mode"
+            )
+        if active_node is None:
+            remarks.append("no fetched prior — reads the latest saved snapshot")
+        if remarks:
+            preview["prior"] = " · ".join(remarks)
     # + Filter: a kept state with a usable prediction (mode gate lifted).
     if not fplan.enabled:
-        notes["filter"] = "observation filter is off — no per-node state is kept"
+        notes["filter"] = "filter is off — Options ▸ Observation filter ▸ Overlay, then Calibrate"
         filter_ok = False
     elif ofilt.active_prediction_target(state, ticker, iso, fit_mode, prepared, force=True) is None:
-        notes["filter"] = "no usable filter state for this node yet — calibrate once with the filter on (a due reset also clears it)"
+        notes["filter"] = "no filter state for this node yet — Calibrate once with the filter on"
         filter_ok = False
     else:
         filter_ok = True
+        if not fplan.active:
+            preview["filter"] = f"filter mode is '{opts.observationFilterMode}' — previews active mode"
     available = ("free",) + (("prior",) if prior_ok else ()) + (("filter",) if filter_ok else ())
 
     if fplan.active:
@@ -140,10 +184,13 @@ def resolve_anchoring(
                     "fit carries the surviving deep-tail persistence alone — no cell coincides"
                 )
     else:
-        production = "prior" if prior_ok else "free"
+        # Production carries the prior only under a calibration-prior mode
+        # AND a FETCHED (active) prior — a saved-only snapshot is a preview.
+        production = "prior" if (mode_adds and active_node is not None) else "free"
     return AnchoringPlan(
         available=available, production=production, family=state.fit_settings().model,
-        filter_mode=opts.observationFilterMode, prior_mode=opts.priorPersistenceMode, notes=notes,
+        filter_mode=opts.observationFilterMode, prior_mode=opts.priorPersistenceMode,
+        notes=notes, preview=preview,
     )
 
 

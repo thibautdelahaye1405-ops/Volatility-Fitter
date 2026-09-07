@@ -134,13 +134,27 @@ describe("anchoring axis", () => {
     const filter = screen.getByRole("button", { name: /\+ Filter/ }) as HTMLButtonElement;
     expect(filter.disabled).toBe(true);
     expect(filter.getAttribute("aria-pressed")).toBe("false");
-    expect(filter.getAttribute("title")).toContain("observation filter is off");
+    expect(filter.getAttribute("title")).toContain("filter is off");
+    // The missing cell's reason also reads inline, no hover needed.
+    expect(screen.getByText(/\+ Filter: filter is off/).tagName).toBe("SPAN");
     const free = screen.getByRole("button", { name: /^Free/ }) as HTMLButtonElement;
     expect(free.disabled).toBe(false);
     expect(free.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(free);
     expect(p.onToggleAnchoring).toHaveBeenCalledWith("free");
     expect(p.onToggleAnchoring).toHaveBeenCalledTimes(1);
+  });
+
+  it("a preview cell is tagged and its title says what it assumes", () => {
+    renderAxis(anchorProps([], {
+      ...getMockAnchoring(), production: "free",
+      preview: { prior: "no fetched prior — reads the latest saved snapshot" },
+    }));
+    const prior = screen.getByRole("button", { name: /\+ Prior/ }) as HTMLButtonElement;
+    expect(prior.disabled).toBe(false);
+    expect(prior.textContent).toContain("preview");
+    expect(prior.getAttribute("title")).toContain("Preview: no fetched prior");
+    expect(screen.getByRole("button", { name: /^Free/ }).textContent).toContain("prod");
   });
 
   it("a selected cell is lit and spins while its row is in flight", () => {

@@ -337,7 +337,9 @@ export function useWorkflow(
     setPending("savePriors");
     pendingRef.current = "savePriors";
     try {
-      const res = await api.post<PriorSaveResult>("/priors/save-all", { timeoutMs: 300_000 });
+      // The session's fit mode: the committed fits are per mode, so a haircut
+      // session must snapshot its haircut fits (the route defaults to mid).
+      const res = await api.post<PriorSaveResult>("/priors/save-all", { params: { fitMode }, timeoutMs: 300_000 });
       await refreshPriors();
       noteAction(`Saved priors (${res.nodes} node${res.nodes === 1 ? "" : "s"})`);
       return res;
@@ -348,13 +350,13 @@ export function useWorkflow(
       pendingRef.current = null;
       setPending(null);
     }
-  }, [refreshPriors, noteAction]);
+  }, [refreshPriors, noteAction, fitMode]);
 
   const fetchPriors = useCallback(async () => {
     setPending("fetchPriors");
     pendingRef.current = "fetchPriors";
     try {
-      const res = await api.post<PriorFetchResult>("/priors/fetch", { timeoutMs: 300_000 });
+      const res = await api.post<PriorFetchResult>("/priors/fetch", { params: { fitMode }, timeoutMs: 300_000 });
       await refreshPriors();
       refreshViews(); // the dotted, spot-updated prior overlays change on every view
       const active = res.tickers.filter((t) => t.source !== "none").length;

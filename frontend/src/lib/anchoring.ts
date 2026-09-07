@@ -63,6 +63,8 @@ export interface AnchoringChipState {
   available: boolean;
   /** The production fit coincides with this cell. */
   production: boolean;
+  /** What a PREVIEW cell assumes beyond the live Options (null = none). */
+  preview: string | null;
   title: string;
 }
 
@@ -76,13 +78,23 @@ export function anchoringChipState(
   const available = info == null || info.available.includes(cell);
   // A remembered selection of a cell THIS node lacks never reads as lit.
   const on = production || (available && selected.has(cell));
+  const preview = available && !production ? (info?.preview?.[cell] ?? null) : null;
   let title = ANCHORING_TITLES[cell];
   if (production) title += "\nProduction fit — the prevailing row";
   else if (!available) {
     const note = info?.notes?.[cell];
     title += `\nUnavailable on this node${note ? `: ${note}` : ""}`;
-  }
-  return { on, available, production, title };
+  } else if (preview !== null) title += `\nPreview: ${preview}`;
+  return { on, available, production, preview, title };
+}
+
+/** The inline hints of the cells this node lacks: "+ Prior: no saved prior —
+ *  …" in wire order, so the strip says what to do without a hover. */
+export function unavailableHints(info: AnchoringInfo | null | undefined): string[] {
+  if (info == null) return [];
+  return ANCHORING_ORDER.filter((c) => !info.available.includes(c)).map(
+    (c) => `${ANCHORING_LABELS[c]}: ${info.notes?.[c] ?? "unavailable on this node"}`,
+  );
 }
 
 /** A SHADOW row: carries a cell that is not the production one (the plain

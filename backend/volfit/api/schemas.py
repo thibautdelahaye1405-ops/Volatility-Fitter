@@ -1059,6 +1059,10 @@ class AnchoringInfo(BaseModel):
     #: cell -> human reason it is unavailable ("production" -> why no cell
     #: coincides with the production fit).
     notes: dict[str, str] = {}
+    #: cell -> what a PREVIEW cell assumes beyond the live Options ("+ Prior"
+    #: under a non-calibrating persistence mode previews hybrid; from a saved,
+    #: unfetched snapshot; "+ Filter" under overlay previews active).
+    preview: dict[str, str] = {}
 
 
 class VarSwapInfo(BaseModel):

@@ -1030,6 +1030,57 @@ universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
 
+### 🧭 SESSION WRAP (2026-09-07b) — TWO LIVE FINDINGS ON THE AXIS: THE SVI-JW LABEL UNDER A SPOT TRANSPORT, AND "+ PRIOR" LIGHTS FROM A SAVED SNAPSHOT
+
+User (live SX5E INDEX, Bloomberg stream, haircut session): "the Compare tab
+shows SVI-JW as 'calibrated' while the model used is LQD, and even if priors
+are saved, '+Prior' and '+Filter' are greyed out". Diagnosed READ-ONLY
+against the running :8000 (the first reads used fit_mode=mid and saw no
+fit — the committed record is PER FIT MODE; the session runs haircut) and a
+headless peek of :5173 (`scripts/live_peek.mjs`, screenshots
+`.smoke/peek-*.png`).
+
+- FINDING 1 — a pre-existing label bug the axis made prominent: with the
+  Spot move card following the streaming market spot, every node is served
+  through `transport_record`, whose `_transported_display` wraps the slice
+  under `DisplayFit(model="transport")`; `model_info` read any non-sigmoid
+  overlay as SVI-JW (params []), so the Fit-diagnostics chip AND the Compare
+  "calibrated" tag said SVI-JW for an LQD calibration whenever the spot had
+  moved. FIX: `DisplayFit.base_model` (the calibrated family behind a
+  wrapper), threaded by `transport_record`; `model_info` routes on it (a
+  sigmoid behind the wrapper reports no cores rather than crashing); the
+  smile payload reads `model_info(base)` — the UN-transported record, with
+  its hyperparameters. Lock: `test_model_chip_keeps_its_family_under_a_
+  spot_transport` (PUT /spot spotReturn 0.02 → chip stays LQD · Degree N).
+- FINDING 2 — "+ Prior" had no input for two reasons. (a) The top bar's
+  Save priors / Fetch priors POSTed WITHOUT the session fit mode (the routes
+  default to mid), so a haircut session captured NOTHING (`/priors`:
+  nodeCount 0, history empty) while the status line said "Saved priors".
+  FIX: `useWorkflow.savePriors/fetchPriors` pass `fitMode`; lock
+  `test_save_all_snapshots_the_requested_fit_mode`. (b) By the first cut's
+  rule the cell needed a FETCHED prior under a calibration-prior persistence
+  mode — the user's mode was `off`. RULING (built): "+ Prior" is a PREVIEW
+  cell whenever a prior node exists — the fetched prior, else the latest
+  SAVED snapshot ("Save priors" alone lights it) — persisting under the
+  live mode when it adds a calibration prior, else under `hybrid`
+  (`compare_anchoring.prior_cell_context`, `PREVIEW_PRIOR_MODE`); production
+  stays `free` unless the mode adds a prior AND the prior is fetched.
+  `AnchoringInfo.preview` (cell → what it assumes) + a "preview" chip tag;
+  "+ Filter" under overlay is tagged the same way. Notes became short
+  actionable hints ("no saved prior — Priors ▾ Save priors, then Fetch
+  priors"; "filter is off — Options ▸ Observation filter ▸ Overlay, then
+  Calibrate") and read INLINE after the chips (`unavailableHints`), no hover
+  needed. "+ Filter" with the filter off stays uncomputable by nature (no
+  state to predict from) — the hint says what to do.
+- Tests: anchoring suite 8 → 12 (saved-unfetched preview, mode-off hybrid
+  preview, the transport chip, the fit-mode save); compare / spot /
+  calibration-workflow / priors / prior-mode / filter / gated suites 102
+  green; ruff clean; frontend locks for the preview state, the inline hints
+  and the chip tag; tsc + vitest + build + `anchoring_check.mjs` + workbench
+  smoke re-run.
+- The user's RUNNING backend still serves the old label until `.\restart.ps1`
+  (the Vite dev server hot-reloaded the frontend part).
+
 ### 🧭 SESSION WRAP (2026-09-07a) — THE ANCHORING AXIS: WHAT THE PRIOR AND THE FILTER BOUGHT, AS SHADOW FITS OF THE SELECTED NODE
 
 User: "Let's work on visualizing the prior persistence and the

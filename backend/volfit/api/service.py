@@ -506,7 +506,17 @@ def prior_targets(
     if anchoring in ("prior", "filter"):
         as_mode = "off" if anchoring == "prior" else "active"
         opts = state.options().model_copy(update={"observationFilterMode": as_mode})
-        targets = _persistence_targets(state, ticker, iso, k, weights, prepared, options=opts)
+        snapshot = None
+        if anchoring == "prior":
+            # The "+ Prior" cell previews persistence even when the live mode
+            # adds none (hybrid) and from the latest SAVED snapshot when none
+            # is fetched (compare_anchoring.prior_cell_context).
+            from volfit.api import compare_anchoring
+
+            opts, snapshot = compare_anchoring.prior_cell_context(state, ticker, opts)
+        targets = _persistence_targets(
+            state, ticker, iso, k, weights, prepared, options=opts, snapshot=snapshot
+        )
         if anchoring == "prior":
             return targets
     else:
@@ -553,7 +563,7 @@ def _prior_varswap(
 
 def _persistence_targets(
     state: AppState, ticker: str, iso: str, k: np.ndarray, weights: np.ndarray | None, prepared,
-    options=None,
+    options=None, snapshot=None,
 ) -> PriorTargets:
     """Resolve the active prior-persistence targets for a node (design note §10).
 
@@ -572,14 +582,18 @@ def _persistence_targets(
     is spot-consistent with the live quotes.
 
     ``options`` overrides the live OptionsSettings (the anchoring axis resolves
-    the persistence builders as if the filter were off / active); None = live."""
+    the persistence builders as if the filter were off / active); None = live.
+    ``snapshot`` overrides the ACTIVE prior surface the node is read from (the
+    "+ Prior" cell's saved-snapshot fallback); None = the active prior."""
     options = state.options() if options is None else options
     plan = resolve_prior_mode(options)
     if not plan.any_calibration_prior:
         return PriorTargets()
     from volfit.api import prior_transport
 
-    node = prior_transport.prior_node(state.active_prior(ticker), iso)
+    node = prior_transport.prior_node(
+        state.active_prior(ticker) if snapshot is None else snapshot, iso
+    )
     if node is None:
         return PriorTargets()
     moved = prior_transport.transported_prior_slice(
@@ -1126,13 +1140,18 @@ def _spot_transport_forward(
     )
 
 
-def _transported_display(slice_: TransportedSlice, prepared) -> DisplayFit:
+def _transported_display(
+    slice_: TransportedSlice, prepared, base_model: str = "lqd"
+) -> DisplayFit:
     """A DisplayFit overlay wrapping a transported slice, so every view reads the
-    moved smile through the standard displayed-fit path (numeric diagnostics)."""
+    moved smile through the standard displayed-fit path (numeric diagnostics).
+    ``base_model`` is the calibrated family the wrapper moves ("lqd" | "svi" |
+    "sigmoid") — what the model chip must keep saying (model_info)."""
     k, w, tau = prepared.k, prepared.w_mid, prepared.tau
     lee_left, lee_right = numeric_lee_slopes(slice_)
     return DisplayFit(
         model="transport",
+        base_model=base_model,
         slice=slice_,
         handles=numeric_handles(slice_, tau),
         var_swap_w=numeric_var_swap_w(slice_),
@@ -1175,7 +1194,10 @@ def transport_record(
     return FitRecord(
         prepared=new_prepared,
         result=record.result,
-        display=_transported_display(moved, new_prepared),
+        display=_transported_display(
+            moved, new_prepared, record.display.model if record.display is not None else "lqd"
+        ),
+        provenance=getattr(record, "provenance", "fit"),
     )
 
 
@@ -1520,18 +1542,25 @@ def model_info(record: FitRecord) -> ModelInfo:
     names the model the chart actually shows, not the (possibly newer) settings."""
     display = record.display
     provenance = getattr(record, "provenance", "fit")
-    if display is None:  # the analytic LQD backbone is displayed
+    # A spot-move transport wraps the displayed slice under model "transport":
+    # the family is the wrapper's base_model (never guessed — the historical
+    # fallback read every wrapper as SVI-JW whenever the spot had moved).
+    family = "lqd" if display is None else display.model
+    if family == "transport":
+        family = display.base_model or "lqd"
+    if family == "lqd":  # the analytic LQD backbone is displayed
         return ModelInfo(
             id="lqd",
             label="LQD",
             params=[ModelParam(label="Degree N", value=str(record.result.params.order))],
             provenance=provenance,
         )
-    if display.model == "sigmoid":
+    if family == "sigmoid":
+        cores = getattr(display.slice, "cores", None)  # None behind a transport wrapper
         return ModelInfo(
             id="sigmoid",
             label="Multi-Core Sigmoid",
-            params=[ModelParam(label="Cores R", value=str(len(display.slice.cores)))],
+            params=[ModelParam(label="Cores R", value=str(len(cores)))] if cores is not None else [],
             provenance=provenance,
         )
     return ModelInfo(id="svi", label="SVI-JW", provenance=provenance)  # 5 raw params, no hyperparameter
@@ -1826,7 +1855,9 @@ def smile_payload(
         kMin=float(prepared.k.min()) - K_PAD,
         kMax=float(prepared.k.max()) + K_PAD,
         diagnostics=diagnostics,
-        modelInfo=model_info(record).model_copy(update={"anchoring": drawn_cell}),
+        # The chip reads the UN-transported record: the calibrated family and
+        # its hyperparameters (a transported record only wraps the slice).
+        modelInfo=model_info(base).model_copy(update={"anchoring": drawn_cell}),
         anchoring=compare_anchoring.resolve_anchoring(state, ticker, iso, fit_mode, prepared).info(),
         varSwap=varswap_info(state, ticker, iso, record, fit_mode),
         canUndo=session.can_undo if session is not None else False,

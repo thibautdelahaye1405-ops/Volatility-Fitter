@@ -62,6 +62,10 @@ class DisplayFit:
     outside LQD, so the smile payload reports those as 0 for an overlay.
     ``belly_repaired`` (committee R2 rider): the first SVI fit failed the
     belly certificate and THIS slice is the certified repair refit.
+    ``base_model`` names the CALIBRATED family behind a wrapper whose
+    ``model`` is not a family — the spot-move transport ("transport",
+    api/service._transported_display) — so the model chip never guesses;
+    None for a plain overlay (``model`` is the family).
     """
 
     model: str
@@ -72,6 +76,7 @@ class DisplayFit:
     lee_right: float
     max_iv_error: float
     belly_repaired: bool = False
+    base_model: str | None = None
 
 
 def _max_iv_error(

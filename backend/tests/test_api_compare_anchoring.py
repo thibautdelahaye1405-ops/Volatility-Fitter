@@ -109,13 +109,26 @@ def test_unknown_cell_is_422_and_production_name_is_plain(client, node):
 # -- (b) with an active prior: the prior cell exists and is production ------------
 
 
-def test_prior_cell_appears_after_fetch_and_is_production(client, node):
+def test_saved_unfetched_prior_is_a_preview_cell(client, node):
+    """Save priors alone lights "+ Prior" (from the latest saved snapshot);
+    production stays free until the prior is FETCHED, and the remark says
+    what the cell assumes."""
     assert client.post("/priors/save-all").status_code == 200
+    info = _smile(client, node).json()["anchoring"]
+    assert info["available"] == ["free", "prior"] and info["production"] == "free"
+    assert "prior" not in info["notes"]
+    assert "saved snapshot" in info["preview"]["prior"]
+    rows = _compare(client, node, anchoring="prior").json()["models"]
+    assert [r["anchoring"] for r in rows] == ["free", "prior"]
+    assert rows[1]["ok"] and rows[1]["reused"] is False and rows[1]["pullCurveBp"] is not None
+
+
+def test_prior_cell_appears_after_fetch_and_is_production(client, node):
     assert client.post("/priors/fetch").status_code == 200
     smile = _smile(client, node).json()
     info = smile["anchoring"]
     assert info["available"] == ["free", "prior"] and info["production"] == "prior"
-    assert "prior" not in info["notes"]
+    assert "prior" not in info["notes"] and "prior" not in info["preview"]
 
 
 def test_shadow_free_fit_is_read_only_and_pulls_against_free(client, node):
@@ -192,6 +205,7 @@ def test_filter_cell_under_overlay_previews_without_touching_state(client, node)
     info = smile["anchoring"]
     assert info["available"] == ["free", "prior", "filter"], info
     assert info["production"] == "prior" and info["filterMode"] == "overlay"
+    assert "active mode" in info["preview"]["filter"]  # the overlay cell is a preview
 
     holder = state.filter_node((ticker, expiry, "mid"))
     assert holder is not None
@@ -221,3 +235,53 @@ def test_filter_active_production_is_filter_and_prior_is_shadow(client, node):
     assert rows[0]["reused"] is True
     assert rows[2]["reused"] is False and rows[2]["ok"]
     assert all(r["pullCurveBp"] is not None for r in rows)
+
+
+# -- (e) persistence mode off: "+ Prior" previews hybrid, production is free --
+
+
+def test_mode_off_prior_cell_previews_hybrid(client, node):
+    _set_options(client, priorPersistenceMode="off", observationFilterMode="off")
+    info = _smile(client, node).json()["anchoring"]
+    assert "prior" in info["available"] and info["production"] == "free"
+    assert "hybrid" in info["preview"]["prior"] and "prior" not in info["notes"]
+    assert "filter" in info["notes"] and "Overlay" in info["notes"]["filter"]
+    rows = _compare(client, node, anchoring="prior,free").json()["models"]
+    assert [r["anchoring"] for r in rows] == ["free", "prior"]
+    assert rows[0]["reused"] is True and rows[1]["ok"] and rows[1]["reused"] is False
+    _set_options(client, priorPersistenceMode="hybrid")
+
+
+# -- (f) the model chip under a spot transport --------------------------------
+
+
+def test_model_chip_keeps_its_family_under_a_spot_transport(client, node):
+    """A moved spot wraps the displayed slice in a transport overlay; the chip
+    must still name the calibrated family + degree (it used to say SVI-JW)."""
+    ticker, expiry = node
+    plain = _smile(client, node).json()
+    assert plain["modelInfo"]["id"] == "lqd" and plain["modelInfo"]["params"][0]["label"] == "Degree N"
+    assert client.put(f"/spot/{ticker}", json={"spotReturn": 0.02}).status_code == 200
+    try:
+        moved = _smile(client, node).json()
+        assert moved["forward"] != plain["forward"]  # the transport is on
+        assert moved["modelInfo"]["id"] == "lqd" and moved["modelInfo"]["label"] == "LQD"
+        assert moved["modelInfo"]["params"] == plain["modelInfo"]["params"]
+        # the axis report and the shadow switch survive the transport
+        assert moved["anchoring"]["available"] == plain["anchoring"]["available"]
+        free = _smile(client, node, anchoring="free").json()
+        assert free["modelInfo"]["anchoring"] == "free" and free["modelInfo"]["id"] == "lqd"
+    finally:
+        assert client.put(f"/spot/{ticker}", json={"spotReturn": 0.0}).status_code == 200
+
+
+# -- (g) the prior routes honour the session fit mode -------------------------
+
+
+def test_save_all_snapshots_the_requested_fit_mode(client, node):
+    """A haircut session must snapshot its haircut fits (the route's default
+    is mid — the top bar passes fitMode)."""
+    ticker, expiry = node
+    assert _smile(client, node, fit_mode="haircut").status_code == 200
+    res = client.post("/priors/save-all", params={"fitMode": "haircut"}).json()
+    assert ticker in res["tickers"] and res["nodes"] >= 1

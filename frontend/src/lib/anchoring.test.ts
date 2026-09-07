@@ -16,6 +16,7 @@ import {
   fitSwitchOptions,
   formatPull,
   isShadowRow,
+  unavailableHints,
 } from "./anchoring";
 
 /** The mock node: free + prior exist, production coincides with prior,
@@ -45,8 +46,29 @@ describe("anchoringChipState", () => {
 
   it("an unavailable cell is off and carries the node's reason, even when remembered as selected", () => {
     const s = anchoringChipState("filter", new Set(["filter"]), info());
-    expect(s).toMatchObject({ on: false, production: false, available: false });
-    expect(s.title).toContain("observation filter is off");
+    expect(s).toMatchObject({ on: false, production: false, available: false, preview: null });
+    expect(s.title).toContain("filter is off");
+  });
+
+  it("a preview cell carries the backend's remark; production and missing cells never do", () => {
+    const saved: AnchoringInfo = {
+      ...info(), production: "free",
+      preview: { prior: "no fetched prior — reads the latest saved snapshot" },
+    };
+    const s = anchoringChipState("prior", new Set(), saved);
+    expect(s).toMatchObject({ on: false, available: true, production: false });
+    expect(s.preview).toContain("saved snapshot");
+    expect(s.title).toMatch(/Preview: no fetched prior/);
+    expect(anchoringChipState("free", new Set(), saved).preview).toBeNull();
+    expect(anchoringChipState("prior", new Set(), { ...saved, production: "prior" }).preview).toBeNull();
+  });
+
+  it("unavailableHints names each missing cell with its reason, in wire order", () => {
+    expect(unavailableHints(info())).toEqual(["+ Filter: filter is off — Options ▸ Observation filter ▸ Overlay, then Calibrate"]);
+    expect(unavailableHints({ ...info(), available: ["free"], notes: {} })).toEqual([
+      "+ Prior: unavailable on this node", "+ Filter: unavailable on this node",
+    ]);
+    expect(unavailableHints(null)).toEqual([]);
   });
 
   it("a selected available cell is on; without a report every cell is assumed available", () => {

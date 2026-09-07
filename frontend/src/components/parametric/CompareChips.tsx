@@ -31,7 +31,7 @@ import {
   isReferenceModel,
 } from "../../lib/modelColor";
 import { TAIL_FLAG_LABELS, TAIL_FLAG_ORDER, tailChipState } from "../../lib/tailMatch";
-import { ANCHORING_LABELS, ANCHORING_ORDER, anchoringChipState } from "../../lib/anchoring";
+import { ANCHORING_LABELS, ANCHORING_ORDER, anchoringChipState, unavailableHints } from "../../lib/anchoring";
 import type {
   AnchoringCell, AnchoringInfo, CompareModelId, CompareResponse, CompareTailFlag, CompareTailInfo,
 } from "../../lib/mockData";
@@ -182,10 +182,13 @@ export default function CompareChips({
       >
         {ANCHORING_LABELS[cell]}
         {s.production && <span className="text-[9px] uppercase text-slate-500">prod</span>}
+        {s.preview !== null && <span className="text-[9px] uppercase text-sky-400/80">preview</span>}
         {pending && <span className={SPINNER} />}
       </button>
     );
   };
+  // The cells this node lacks say what to do, inline (no hover needed).
+  const hints = unavailableHints(anchoringInfo);
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-1.5">
@@ -232,6 +235,11 @@ export default function CompareChips({
             anchoring
           </span>
           {ANCHORING_ORDER.map(anchoringChip)}
+          {hints.map((h) => (
+            <span key={h} className="text-[10px] text-slate-500" title={h}>
+              · {h}
+            </span>
+          ))}
         </>
       )}
     </div>

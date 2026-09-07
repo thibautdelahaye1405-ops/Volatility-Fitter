@@ -134,6 +134,10 @@ export interface AnchoringInfo {
   priorMode: string;
   /** cell -> why it is unavailable; "production" -> why no cell coincides. */
   notes: Record<string, string>;
+  /** cell -> what a PREVIEW cell assumes beyond the live Options ("+ Prior"
+   *  under a non-calibrating persistence mode previews hybrid, or reads a
+   *  saved unfetched snapshot; "+ Filter" under overlay previews active). */
+  preview?: Record<string, string>;
 }
 
 /** Variance-swap quote state of a node (shared by Parametric & Local Vol). */
@@ -353,7 +357,8 @@ export function getMockAnchoring(): AnchoringInfo {
     family: "lqd",
     filterMode: "off",
     priorMode: "hybrid",
-    notes: { filter: "observation filter is off — no per-node state is kept" },
+    notes: { filter: "filter is off — Options ▸ Observation filter ▸ Overlay, then Calibrate" },
+    preview: {},
   };
 }
 
