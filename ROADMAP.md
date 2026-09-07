@@ -951,7 +951,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-04 (resume here)
+## STATUS — updated 2026-09-07 (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1029,6 +1029,83 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-07a) — THE ANCHORING AXIS: WHAT THE PRIOR AND THE FILTER BOUGHT, AS SHADOW FITS OF THE SELECTED NODE
+
+User: "Let's work on visualizing the prior persistence and the
+kalman-filtering impact, for comparison with 'free' calibration" — first
+idea "in Options select up to 3 calibrations … all performed at Calibrate,
+a toggle in the tabs"; alternative "on-demand calibration excluding kalman
+and / or prior, on the selected node". Ruling ("Agreed, go with the
+anchoring axis — build it"): the on-demand primitive, derived by
+SUBTRACTION from the live Options, never a settings surface. Why: the
+committed record has no variant dimension (the invasive `fit_key` rider);
+only one fit may drive the filter state, so the other two are shadow fits
+anyway; a "+ Kalman" cell cannot exist with the filter off — the cells must
+FOLLOW Options; Calibrate ×3 would triple the calendar-enforced sweep for a
+per-node question. Memory: `anchoring-axis.md`.
+
+- The AXIS (backend `api/compare_anchoring.py`, 282 lines): three cells of
+  the DISPLAYED family — `free` (no prior, no filter), `prior` (persistence
+  resolved with the filter OFF: the full body prior whatever the live mode),
+  `filter` (persistence resolved with the filter ACTIVE — §6.3 exclusion —
+  + the Kalman prediction block FORCED from the kept state; a PREVIEW of
+  active mode under `overlay`, production under `active`). Availability by
+  INPUT existence (an active prior node / a usable filter state; free
+  always), the production cell tagged and REUSED when the committed record
+  is fresh (else a production shadow — so the Compare LQD row is production
+  on a stale node too, closing the old "reused-anchored vs ad-hoc-free"
+  inconsistency). A shadow runs the production task builder
+  (`service.single_node_task(anchoring=cell)` — same quotes, band,
+  weights, var-swap quote, calendar-on-refit neighbours, prepass) INLINE and
+  is never committed: no pointer move, no fit-cache entry, no filter-state
+  update. Cached in the Compare FIFO keyed (fit_key, "anchoring", cell).
+  PULL columns against the free cell: ATM bp, skew, curve RMS bp over the
+  quoted range.
+- Plumbing: `service.prior_targets(anchoring=)` routes the blocks
+  (`_persistence_targets(options=)` override; `active_prediction_target(
+  force=)` lifts the mode gate only); `_compute_fit`'s neighbour context
+  factored into `single_node_calendar_context` (byte-identical). Wire:
+  `anchoring=free,prior,filter` on the compare route (rows carry
+  `anchoring` + `pullAtmBp/pullSkew/pullCurveBp`; the response carries
+  `AnchoringInfo` {available, production, family, modes, notes}) and
+  `anchoring=<cell>` on the smile + density routes (the payload draws the
+  shadow in BOTH frames, `modelInfo.anchoring` names it, no uncertainty
+  band; `SmileData.anchoring` = the node's axis report; 422 on an unknown
+  name, an unavailable / "production" name = production).
+- Frontend: `lib/anchoring.ts` (pure helpers + dashes), a fourth Compare
+  chip group "anchoring" (prod chip lit + disabled + tag; an unavailable
+  cell muted with the reason), shadow rows dashed in the family colour
+  under their plain row, a sky pill + a **Pull** column in the table; a
+  **fit** switch (Production / Free / + Prior / + Filter) in the Smile /
+  Density header with a SHADOW tag when a shadow is drawn — applied to the
+  session fetch ONLY on those two views (never an unannounced shadow in
+  Table / Compare). The Compare wiring moved out of SmileViewer into
+  `state/useCompareView.ts` (SmileViewer 419 → 400 lines). Help: tip,
+  glossary term, What's new 2026-09-07, VIEW_HINTS.
+- Tests: `tests/test_api_compare_anchoring.py` (8: parsing, availability,
+  production tag, read-only lock + byte-identical smile, cache hits, the
+  smile / density switch, the overlay PREVIEW without a state update, the
+  active-mode production flip); backend FULL suite 1374 + 867 passed / 7
+  skipped; ruff clean; frontend tsc + build green, vitest 74 files / 502
+  tests; headless WORKBENCH smoke re-run. LIVE-VERIFIED headless
+  (`scripts/anchoring_check.mjs`, synthetic smoke server on :4192): after
+  Save + Fetch priors through the API, Compare lights Free → a dotted
+  `LQD · free` series + a `free` table row with pulls beside the `prod`
+  row; Smile → the fit switch (Production / Free) draws the shadow with the
+  `SHADOW · free` tag, Density keeps it, Production clears it; screenshots
+  `.smoke/anchoring-*.png`.
+- Gotchas recorded: `state.set_options` off→overlay busts NO fit cache — the
+  filter state is seeded at the next genuine calibration (the test bumps
+  the data version); `mockData.ts` was already over 400 lines (655 now —
+  splitting it ripples imports, a follow-on).
+- Riders (none are gates): phase two = a **Free lane in the FilterTimeline /
+  filter-replay report** (the Kalman's value is temporal — one snapshot
+  shows the pull, not the damping); a ladder PREFETCH of the cells so the
+  switch is instant while scanning expiries (~40 ms per node); LV stays OUT
+  of the axis by design (seconds per surface); the Term view has no switch
+  (needs the ladder prefetch); under an ACTIVE filter with no prediction
+  yet no cell coincides with production (reported as `production: null`).
 
 ### 🧭 SESSION WRAP (2026-09-04e) — AUTO-CALIBRATE EVENTS: A PEAK DETECTOR REPLACES THE FLATNESS SOLVE
 

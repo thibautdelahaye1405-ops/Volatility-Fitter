@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from volfit.api.schemas import SmilePoint
+from volfit.api.schemas import AnchoringInfo, SmilePoint
 
 
 class CompareValidity(BaseModel):
@@ -87,6 +87,17 @@ class CompareModelFit(BaseModel):
     #: The tail-matching constraints this row's fit carried (empty for the
     #: reference LQD, the eSSVI yardstick and every unconstrained fit).
     tailMatched: list[str] = []
+    #: ANCHORING AXIS (api/compare_anchoring): the cell this row's fit is —
+    #: "free" | "prior" | "filter". On the DISPLAYED family's plain row it
+    #: names the cell the production fit coincides with (None when none
+    #: does); on the other families' like-for-like rows it stays None.
+    anchoring: str | None = None
+    #: Pull against the ``free`` cell (what the anchoring bought): ATM vol
+    #: distance in vol bp, skew distance, and the RMS distance of the two
+    #: curves over the quoted range in vol bp. None off the axis.
+    pullAtmBp: float | None = None
+    pullSkew: float | None = None
+    pullCurveBp: float | None = None
 
 
 class CompareResponse(BaseModel):
@@ -99,3 +110,6 @@ class CompareResponse(BaseModel):
     models: list[CompareModelFit] = []
     #: Present whenever tail matching was requested (even if nothing applied).
     tailMatch: TailMatchInfo | None = None
+    #: The node's anchoring axis (always present once the node has quotes):
+    #: available cells, the production cell, the reasons a cell is missing.
+    anchoring: AnchoringInfo | None = None

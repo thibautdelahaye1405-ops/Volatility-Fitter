@@ -6,6 +6,15 @@ import type { WhatsNewEntry } from "./types";
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-09-07",
+    title: "Compare and the node views: the anchoring axis — what the prior and the filter bought",
+    items: [
+      "A fourth chip group in the Compare strip — **Free**, **+ Prior**, **+ Filter** — refits the prevailing model with its anchoring blocks removed or added: no prior and no filter (the pure market fit), the persistence prior alone, or the filter's prediction from the kept state. Each cell lands as a dashed row of the same family, and the new **Pull** column reads its distance to the free fit in ATM vol bp (skew and curve RMS on hover), so a node tells what each block bought.",
+      "A **fit** switch in the Smile and Density header draws one of these shadow fits in place of production — the curve, both frames and the diagnostics read the shadow, while the quotes, the prior overlay and the committed calibration stay the node's. A *SHADOW* tag says which cell is on screen; quote edits refetch the shadow.",
+      "Only cells whose input exists are offered (an active prior, a kept filter state — a missing one says why in its tooltip). **+ Filter** under overlay mode is a preview of what active mode would fit; under active mode it is production. The cell production coincides with is tagged *prod* in the strip and in the table, so the axis always says which row is the prevailing one.",
+    ],
+  },
+  {
     date: "2026-09-04",
     title: "Compare: match LQD's tails and compare bellies only",
     items: [

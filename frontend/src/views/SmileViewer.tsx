@@ -7,7 +7,8 @@
 //   toolbar   NODE views (Smile · Density · Compare · Table) · TICKER views
 //             (Term · Densities · Stacked IV · Surface) · Density sub-toggle ·
 //             status badges (ParametricToolbar)
-//   header    node title · GRAPH / FILTER overlay badges · quote toolbar
+//   header    node title · GRAPH / FILTER overlay badges · the Fit switch of
+//             the anchoring axis (Smile / Density) · quote toolbar
 //   body      the chart, with the layer rail (Target · Calib. quotes · Calib.
 //             fit · Weights) at its RIGHT and Y-center / Y-fit as overlay
 //             buttons on the chart itself
@@ -16,9 +17,10 @@
 // diagnostics and follows Layout ▸ "Diagnostics aside". Save prior lives in
 // the top bar's Priors ▾. Quote edits post to the backend fit session and the
 // returned refit replaces the smile; shortcuts live in useSmileShortcuts.
-// View state (sub-view, density kind, axis unit, layers, Y auto-scale, extra
-// Compare families) goes through useLensViewMemory: per TAB when Layout ▸
-// "Remember view per tab" is on (wave 3, C2), per lens otherwise.
+// The Compare wiring lives in state/useCompareView. View state (sub-view,
+// axis unit, layers, Y auto-scale, Compare selections, the Fit switch) goes
+// through useLensViewMemory: per TAB when Layout ▸ "Remember view per tab"
+// is on (wave 3, C2), per lens otherwise.
 import { useEffect, useMemo, useRef, useState } from "react";
 import SmileChart from "../components/SmileChart";
 import QuoteToolbar from "../components/QuoteToolbar";
@@ -37,7 +39,8 @@ import AxisModeSelect from "../components/charts/AxisModeSelect";
 import ParametricToolbar, { AXIS_MODE_VIEWS, VIEW_HINTS } from "../components/parametric/ParametricToolbar";
 import type { ChartView } from "../components/parametric/ParametricToolbar";
 import LayerRail from "../components/parametric/LayerRail";
-import CompareChips, { prevailingModelId } from "../components/parametric/CompareChips";
+import CompareChips from "../components/parametric/CompareChips";
+import FitAnchoringSwitch from "../components/parametric/FitAnchoringSwitch";
 import { FilterBadge, GraphOverlayBadge } from "../components/parametric/SmileOverlayBadges";
 import { useSmileSession } from "../state/smileSession";
 import { useGraphFocus } from "../state/graphFocus";
@@ -47,16 +50,16 @@ import { useExpiryFormat } from "../state/expiryFormat";
 import { useOptionalWorkbench } from "../state/workbench";
 import { useNodeScope } from "../state/nodeScope";
 import { useLensViewMemory } from "../state/useLensViewMemory";
+import { useCompareView } from "../state/useCompareView";
+import type { CompareViewState } from "../state/useCompareView";
 import { formatExpiry } from "../lib/expiryFormat";
 import { useSmileShortcuts } from "../state/useSmileShortcuts";
 import { useLiveTicks } from "../state/useLiveTicks";
 import { composeFrames } from "../lib/smileLayers";
-import { useModelComparison } from "../state/useModelComparison";
 import { compareSeries } from "../lib/modelCompare";
-import { MODEL_ORDER } from "../lib/modelColor";
-import type { CompareModelId, CompareTailFlag } from "../lib/mockData";
-import { axisModeLabel, axisTickLabel, axisTransform, makeVolAt } from "../lib/axisModes";
-import type { AxisContext, AxisMode } from "../lib/axisModes";
+import type { FitAnchoring } from "../lib/anchoring";
+import { axisModeLabel, axisTickLabel } from "../lib/axisModes";
+import type { AxisMode } from "../lib/axisModes";
 import { formatPct } from "../lib/chartScale";
 import { readSmileAutoScale, writeSmileAutoScale } from "../lib/autoScaleY";
 import type { AutoScaleToggles } from "../lib/autoScaleY";
@@ -65,8 +68,9 @@ import { cardClass, chartMessageClass } from "../lib/ui";
 /** Centered placeholder for the chart-card body states. */
 const chartMessage = (text: string) => <div className={chartMessageClass}>{text}</div>;
 
-/** The lens's remembered view state (per tab or per lens — see the header). */
-interface ParametricView {
+/** The lens's remembered view state (per tab or per lens — see the header);
+ *  the Compare selections are the CompareViewState slice. */
+interface ParametricView extends CompareViewState {
   view: ChartView;
   densityKind: DistKind;
   axisMode: AxisMode;
@@ -75,17 +79,15 @@ interface ParametricView {
   showCalibFit: boolean;
   showWeights: boolean;
   autoScaleY: AutoScaleToggles;
-  /** Extra Compare families beyond the prevailing one (chips clicked). */
-  compareExtra: CompareModelId[];
-  /** Tail-matching toggles lit in Compare (lib/tailMatch): the SVI-JW / MCS
-   *  rows refit with their tails pulled onto LQD's. */
-  compareTails: CompareTailFlag[];
+  /** The Fit switch (lib/anchoring): production, or a shadow cell drawn
+   *  instead on the Smile / Density views. */
+  fitAnchoring: FitAnchoring;
 }
 
 export default function SmileViewer() {
   const {
     smile, source, loading, refreshing, error, editError, ticker, expiry, fitMode,
-    applyEdit, undo, redo, scenarioCurve,
+    applyEdit, undo, redo, scenarioCurve, setAnchoring,
     distribution, distributionLoading, loadDistribution, spotVersion,
   } = useSmileSession();
   const { format } = useExpiryFormat();
@@ -106,7 +108,8 @@ export default function SmileViewer() {
   const [vs, patchView] = useLensViewMemory<ParametricView>("parametric", () => ({
     view: "smile", densityKind: "density", axisMode: "logmoneyness",
     showTarget: true, showCalibQuotes: false, showCalibFit: true, showWeights: false,
-    autoScaleY: readSmileAutoScale(), compareExtra: [], compareTails: [],
+    autoScaleY: readSmileAutoScale(), compareExtra: [], compareTails: [], compareAnchoring: [],
+    fitAnchoring: "production",
   }));
   const { view, densityKind, axisMode, showTarget, showCalibQuotes, showCalibFit, showWeights, autoScaleY } = vs;
   const setDensityKind = (densityKind: DistKind) => patchView({ densityKind });
@@ -157,54 +160,22 @@ export default function SmileViewer() {
   const liveTicks = useLiveTicks(ticker, expiry, live, fitMode);
   const frames = useMemo(() => (smile ? composeFrames(smile, liveTicks) : null), [smile, liveTicks]);
 
-  // Compare (wave 2): the prevailing calibrated family shows at once; the
-  // others are fitted lazily when their chip is clicked. The extra selection
-  // lives in the view state (remembered per tab) and resets when the SAME
-  // node's prevailing model changes (a recalibration under another family).
-  const prevailing = prevailingModelId(smile?.modelInfo?.id, smile?.modelInfo?.label);
-  const prevailingRef = useRef<{ key: string; model: CompareModelId | null }>({ key: "", model: null });
+  // Compare (wave 2 + tail matching + the anchoring axis): state/useCompareView.
+  const cv = useCompareView({
+    vs, patchView, smile, smileKey, live, ticker, expiry, fitMode, spotVersion, axisMode,
+    enabled: view === "compare",
+  });
+
+  // Fit switch (anchoring axis): the view's choice drives the session's smile
+  // and density fetches — ONLY on the views that show the switch (a shadow
+  // never reaches the Table / Compare payloads unannounced); production
+  // again when the view moves on or the lens unmounts.
+  const fitAnchoring: FitAnchoring = vs.fitAnchoring ?? "production";
+  const shadowView = view === "smile" || view === "density";
   useEffect(() => {
-    const prev = prevailingRef.current;
-    prevailingRef.current = { key: smileKey, model: prevailing };
-    if (prev.key === smileKey && prev.model !== prevailing && vs.compareExtra.length > 0) {
-      patchView({ compareExtra: [] });
-    }
-  }, [smileKey, prevailing]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Tail matching (lib/tailMatch): LQD is the reference, so it joins the
-  // comparison whenever a toggle is lit (its chip is pinned meanwhile).
-  const compareTails = vs.compareTails ?? [];
-  const compareModels = useMemo(
-    () => MODEL_ORDER.filter(
-      (m) => m === prevailing || vs.compareExtra.includes(m) || (m === "lqd" && compareTails.length > 0),
-    ),
-    [prevailing, vs.compareExtra, compareTails],
-  );
-  const toggleModel = (id: CompareModelId) =>
-    patchView({
-      compareExtra: vs.compareExtra.includes(id)
-        ? vs.compareExtra.filter((m) => m !== id)
-        : [...vs.compareExtra, id],
-    });
-  const toggleTail = (flag: CompareTailFlag) =>
-    patchView({
-      compareTails: compareTails.includes(flag)
-        ? compareTails.filter((f) => f !== flag)
-        : [...compareTails, flag],
-    });
-  const comparison = useModelComparison(
-    view === "compare", live, ticker, expiry, fitMode, spotVersion, compareModels, compareTails,
-  );
-  // Compare chart x-axis: the smile's own context (forward, T, ATM vol, the
-  // prevailing fit's vol at k for the delta mode) — ONE coordinate for every
-  // family, so the curves stay comparable; identity in log-moneyness.
-  const compareTx = useMemo(() => {
-    if (smile === null || axisMode === "logmoneyness") return (k: number) => k;
-    const ctx: AxisContext = {
-      forward: smile.forward, t: smile.T, atmVol: smile.diagnostics.atmVol,
-      volAt: makeVolAt(smile.model), kRange: [smile.kMin, smile.kMax],
-    };
-    return (k: number) => axisTransform(axisMode, k, ctx);
-  }, [smile, axisMode]);
+    setAnchoring(shadowView && fitAnchoring !== "production" ? fitAnchoring : null);
+    return () => setAnchoring(null);
+  }, [fitAnchoring, shadowView, setAnchoring]);
 
   // Graph-extrapolation live overlay (plan Phase 5): when the user drilled into
   // THIS node from the Graph lens, overlay the posterior curve + credible band.
@@ -279,10 +250,13 @@ export default function SmileViewer() {
         }
         return chartMessage(distributionLoading ? "Loading distribution…" : "Distribution unavailable for this node.");
       case "compare": {
+        const { comparison, compareTx } = cv;
         const chips = (
-          <CompareChips prevailing={prevailing} selected={new Set(compareModels)} onToggle={toggleModel}
+          <CompareChips prevailing={cv.prevailing} selected={new Set(cv.compareModels)} onToggle={cv.toggleModel}
             data={comparison.data} loading={comparison.loading}
-            tails={new Set(compareTails)} onToggleTail={toggleTail} tailInfo={comparison.data?.tailMatch ?? null} />
+            tails={new Set(cv.compareTails)} onToggleTail={cv.toggleTail} tailInfo={comparison.data?.tailMatch ?? null}
+            anchoring={new Set(cv.compareAnchoring)} onToggleAnchoring={cv.toggleAnchoring}
+            anchoringInfo={comparison.data?.anchoring ?? smile.anchoring ?? null} />
         );
         if (comparison.data === null) {
           return (
@@ -340,6 +314,8 @@ export default function SmileViewer() {
   };
 
   const railView = view === "smile" || view === "table" ? view : null;
+  // The Fit switch: live, a fitted node, on the views that draw its own fit.
+  const showFitSwitch = live && shadowView && smile !== null && smile.hasFit !== false;
 
   return (
     <div className="flex h-full flex-col gap-3 p-3">
@@ -358,7 +334,7 @@ export default function SmileViewer() {
             updatedFlash ? "border-accent-500/70" : "",
           ].join(" ")}
         >
-          {/* Header: node title · overlay badges · quote-editing toolbar */}
+          {/* Header: node title · overlay badges · Fit switch · quote-editing toolbar */}
           <div className="mb-2 flex shrink-0 items-center gap-2">
             <h2 className="text-sm font-semibold text-slate-100">
               {smile ? `${smile.ticker} · ${formatExpiry(smile.expiry, smile.T, format)}` : "Smile"}
@@ -369,6 +345,10 @@ export default function SmileViewer() {
               <span className="truncate text-[10px] text-amber-400/80">{error}</span>
             )}
             <div className="ml-auto flex items-center gap-2">
+              {showFitSwitch && (
+                <FitAnchoringSwitch info={smile.anchoring} value={fitAnchoring}
+                  onChange={(fitAnchoring) => patchView({ fitAnchoring })} drawn={smile.modelInfo?.anchoring ?? null} />
+              )}
               {editError !== null && (
                 <span className="max-w-56 truncate text-[10px] text-amber-400">{editError}</span>
               )}

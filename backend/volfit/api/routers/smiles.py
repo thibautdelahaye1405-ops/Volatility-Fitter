@@ -31,6 +31,7 @@ from volfit.api import (
     table_stream,
     weights_view,
 )
+from volfit.api.compare_anchoring import parse_anchoring
 from volfit.api.schemas import (
     DensityResponse,
     FilterDiagnostics,
@@ -46,6 +47,18 @@ from volfit.api.schemas_weights import WeightsData
 from volfit.api.state import PriorRecord, UnknownNodeError
 
 router = APIRouter()
+
+
+def _anchoring_cell(anchoring: str | None) -> str | None:
+    """The anchoring-switch query value -> a cell name or None (production).
+    422 on an unknown name (compare_anchoring.parse_anchoring)."""
+    if anchoring is None or anchoring.strip().lower() in ("", "production"):
+        return None
+    try:
+        cells = parse_anchoring(anchoring)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return cells[0] if cells else None
 
 
 # NOTE: declared before /smiles/{ticker}/{expiry} so "densities" is not captured
@@ -64,12 +77,18 @@ def get_stacked_densities(
 
 @router.get("/smiles/{ticker}/{expiry}", response_model=SmileData)
 def get_smile(
-    ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid"
+    ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid",
+    anchoring: str | None = None,
 ) -> SmileData:
+    """``anchoring`` = "free" | "prior" | "filter" draws that shadow cell of
+    the anchoring axis (api/compare_anchoring) instead of the production
+    fit; omitted / "production" / an unavailable cell = the production fit.
+    422 on an unknown cell name."""
     state = request.app.state.volfit
     state.note_fit_mode(fit_mode)  # so Calibrate re-points the mode on screen
+    cell = _anchoring_cell(anchoring)
     try:
-        return service.smile_payload(state, ticker, expiry, fit_mode)
+        return service.smile_payload(state, ticker, expiry, fit_mode, anchoring=cell)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
 
@@ -149,10 +168,14 @@ def get_weights(
 
 @router.get("/smiles/{ticker}/{expiry}/density", response_model=DensityResponse)
 def get_density(
-    ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid"
+    ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid",
+    anchoring: str | None = None,
 ) -> DensityResponse:
+    cell = _anchoring_cell(anchoring)
     try:
-        return analytics.density_payload(request.app.state.volfit, ticker, expiry, fit_mode)
+        return analytics.density_payload(
+            request.app.state.volfit, ticker, expiry, fit_mode, anchoring=cell
+        )
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
 

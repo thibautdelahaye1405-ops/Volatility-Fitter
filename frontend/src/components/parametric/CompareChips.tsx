@@ -15,6 +15,12 @@
 // LQD's. LQD is then pinned in the comparison (its chip is disabled while a
 // toggle is lit); a toggle the backend could not apply shows an amber "!"
 // with the reason in its tooltip, a clamped Lee target a "cap" tag.
+//
+// ANCHORING (lib/anchoring): a fourth group — Free · + Prior · + Filter —
+// refits the prevailing model with the anchoring blocks removed or added.
+// The cell production coincides with is lit and disabled with a "prod" tag
+// (like "calibrated" on the prevailing model chip); a cell whose input the
+// node lacks is disabled and muted with the reason in its tooltip.
 import { useState } from "react";
 import {
   CHIP_MODELS,
@@ -25,9 +31,13 @@ import {
   isReferenceModel,
 } from "../../lib/modelColor";
 import { TAIL_FLAG_LABELS, TAIL_FLAG_ORDER, tailChipState } from "../../lib/tailMatch";
-import type { CompareModelId, CompareResponse, CompareTailFlag, CompareTailInfo } from "../../lib/mockData";
+import { ANCHORING_LABELS, ANCHORING_ORDER, anchoringChipState } from "../../lib/anchoring";
+import type {
+  AnchoringCell, AnchoringInfo, CompareModelId, CompareResponse, CompareTailFlag, CompareTailInfo,
+} from "../../lib/mockData";
 
 const NO_TAILS: ReadonlySet<CompareTailFlag> = new Set();
+const NO_CELLS: ReadonlySet<AnchoringCell> = new Set();
 
 export interface CompareChipsProps {
   prevailing: CompareModelId;
@@ -40,6 +50,12 @@ export interface CompareChipsProps {
   tails?: ReadonlySet<CompareTailFlag>;
   onToggleTail?: (flag: CompareTailFlag) => void;
   tailInfo?: CompareTailInfo | null;
+  /** Anchoring cells (lit set + toggler); the group shows only with a
+   *  toggler. `anchoringInfo` is the node's axis report (availability,
+   *  the production cell, the reasons). */
+  anchoring?: ReadonlySet<AnchoringCell>;
+  onToggleAnchoring?: (cell: AnchoringCell) => void;
+  anchoringInfo?: AnchoringInfo | null;
 }
 
 /** Map a modelInfo id / label onto a comparable family (default LQD). */
@@ -67,9 +83,15 @@ function chipTitle(
 
 const CHIP_BASE = "flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-medium transition-colors";
 const CHIP_OFF = "border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-200";
+/** An unavailable chip: no hover invitation, visibly muted. */
+const CHIP_MUTED = "border-slate-800/70 text-slate-600 opacity-60";
+const GROUP_LABEL = "text-[9px] font-semibold uppercase tracking-wider text-slate-600";
+const SPINNER = "h-2.5 w-2.5 animate-spin rounded-full border border-slate-500 border-t-transparent";
+const DIVIDER = <span className="mx-0.5 h-3 w-px bg-slate-800" aria-hidden />;
 
 export default function CompareChips({
   prevailing, selected, onToggle, data, loading, tails = NO_TAILS, onToggleTail, tailInfo,
+  anchoring = NO_CELLS, onToggleAnchoring, anchoringInfo,
 }: CompareChipsProps) {
   // Reference chips show while revealed OR selected (a selection remembered
   // by the tab survives a remount with the group collapsed).
@@ -112,9 +134,7 @@ export default function CompareChips({
         {isPrev && <span className="text-[9px] uppercase text-slate-500">calibrated</span>}
         {pinnedRef && <span className="text-[9px] uppercase text-slate-500">target</span>}
         {isRef && <span className="text-[9px] uppercase text-amber-500/80">ref</span>}
-        {pending && (
-          <span className="h-2.5 w-2.5 animate-spin rounded-full border border-slate-500 border-t-transparent" />
-        )}
+        {pending && <span className={SPINNER} />}
         {failed && <span className="text-rose-400">!</span>}
       </button>
     );
@@ -140,13 +160,40 @@ export default function CompareChips({
     );
   };
 
+  const anchoringChip = (cell: AnchoringCell) => {
+    const s = anchoringChipState(cell, anchoring, anchoringInfo);
+    const disabled = s.production || !s.available;
+    // A selected shadow cell is in flight until its row lands (the plain
+    // row already names the production cell, so that one never spins).
+    const row = data?.models.find((m) => m.anchoring === cell);
+    const pending = s.on && !s.production && loading && row === undefined;
+    return (
+      <button
+        key={cell}
+        aria-pressed={s.on}
+        disabled={disabled}
+        onClick={() => onToggleAnchoring?.(cell)}
+        title={s.title}
+        className={[
+          CHIP_BASE,
+          s.on ? "border-sky-500/50 bg-sky-500/10 text-sky-100" : s.available ? CHIP_OFF : CHIP_MUTED,
+          disabled ? "cursor-default" : "",
+        ].join(" ")}
+      >
+        {ANCHORING_LABELS[cell]}
+        {s.production && <span className="text-[9px] uppercase text-slate-500">prod</span>}
+        {pending && <span className={SPINNER} />}
+      </button>
+    );
+  };
+
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-      <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-600">models</span>
+      <span className={GROUP_LABEL}>models</span>
       {CHIP_MODELS.map(chip)}
       {REFERENCE_ORDER.length > 0 && (
         <>
-          <span className="mx-0.5 h-3 w-px bg-slate-800" aria-hidden />
+          {DIVIDER}
           {showRefs && REFERENCE_ORDER.map(chip)}
           <button
             aria-expanded={showRefs}
@@ -165,14 +212,26 @@ export default function CompareChips({
       )}
       {onToggleTail !== undefined && (
         <>
-          <span className="mx-0.5 h-3 w-px bg-slate-800" aria-hidden />
+          {DIVIDER}
           <span
-            className="text-[9px] font-semibold uppercase tracking-wider text-slate-600"
+            className={GROUP_LABEL}
             title="Tail matching: refit SVI-JW and MCS so their tails follow LQD's — the comparison then isolates belly expressiveness"
           >
             match LQD tails
           </span>
           {TAIL_FLAG_ORDER.map(tailChip)}
+        </>
+      )}
+      {onToggleAnchoring !== undefined && (
+        <>
+          {DIVIDER}
+          <span
+            className={GROUP_LABEL}
+            title="Anchoring axis: the prevailing model refit with the prior or the filter removed or added — what each block bought on this node"
+          >
+            anchoring
+          </span>
+          {ANCHORING_ORDER.map(anchoringChip)}
         </>
       )}
     </div>

@@ -15,6 +15,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from volfit.api import compare
+from volfit.api.compare_anchoring import parse_anchoring
 from volfit.api.compare_tails import parse_tail_flags
 from volfit.api.schemas import FitMode
 from volfit.api.schemas_compare import CompareResponse
@@ -31,12 +32,15 @@ def get_compare(
     models: str = "lqd,svi,sigmoid,essvi",
     fit_mode: FitMode = "mid",
     tail_match: str = "",
+    anchoring: str = "",
 ) -> CompareResponse:
     """Side-by-side LQD / SVI-JW / MCS / eSSVI comparison on one node (lazy:
     the UI fetches only when the Compare view opens — up to 3 extra fits,
     cached). ``tail_match`` is a CSV subset of ``varswap,lee,edge``: the
     tail-matching toggles pulling the SVI-JW / MCS rows' tails onto LQD's
-    (volfit.api.compare_tails); empty = the like-for-like fits."""
+    (volfit.api.compare_tails); empty = the like-for-like fits.
+    ``anchoring`` is a CSV subset of ``free,prior,filter``: the anchoring
+    axis's shadow cells of the displayed family (compare_anchoring)."""
     requested: list[str] = []
     for name in (m.strip().lower() for m in models.split(",")):
         if name and name not in requested:
@@ -50,13 +54,15 @@ def get_compare(
         )
     try:
         flags = parse_tail_flags(tail_match)
+        cells = parse_anchoring(anchoring)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     state = request.app.state.volfit
     try:
         with state.activity.activity("compare", f"Comparing models on {ticker} {expiry}"):
             return compare.compare_payload(
-                state, ticker, expiry, tuple(requested), fit_mode, tail_flags=flags
+                state, ticker, expiry, tuple(requested), fit_mode, tail_flags=flags,
+                anchoring=cells,
             )
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None

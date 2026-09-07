@@ -151,6 +151,9 @@ export interface UseDistributionResult {
  * requested until loadDistribution() arms the hook; once armed, it refetches
  * whenever the displayed smile changes identity — node switches and refits
  * both produce a new `smile` object, so that is the whole cache story.
+ * `anchoring` (lib/anchoring, the Fit switch) asks for a shadow cell's
+ * distribution instead of production's — the same parameter the smile GET
+ * carries, so the Density view reads the fit the Smile view draws.
  */
 export function useDistribution(
   live: boolean,
@@ -158,6 +161,7 @@ export function useDistribution(
   expiry: string,
   fitMode: FitMode,
   smile: SmileData | null,
+  anchoring: string | null = null,
 ): UseDistributionResult {
   const [active, setActive] = useState(false);
   const [distribution, setDistribution] = useState<DistributionData | null>(null);
@@ -175,7 +179,7 @@ export function useDistribution(
     setLoading(true);
     api
       .get<DistributionData>(`/smiles/${ticker}/${expiry}/density`, {
-        params: { fit_mode: fitMode },
+        params: { fit_mode: fitMode, ...(anchoring === null ? {} : { anchoring }) },
         signal: controller.signal,
       })
       .then((d) => {
@@ -188,7 +192,7 @@ export function useDistribution(
         setLoading(false);
       });
     return () => controller.abort();
-  }, [active, live, ticker, expiry, fitMode, smile]);
+  }, [active, live, ticker, expiry, fitMode, smile, anchoring]);
 
   return { distribution, distributionLoading: loading, loadDistribution };
 }

@@ -4,7 +4,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import CompareChips, { prevailingModelId } from "./CompareChips";
-import type { CompareModelId } from "../../lib/mockData";
+import { getMockAnchoring } from "../../lib/mockData";
+import type { AnchoringCell, AnchoringInfo, CompareModelId } from "../../lib/mockData";
 
 afterEach(cleanup);
 
@@ -99,6 +100,56 @@ describe("tail matching", () => {
     expect(lee.textContent).toContain("!");
     expect(lee.getAttribute("title")).toContain("alpha > 0");
     expect(screen.getByRole("button", { name: /= Edge/ }).textContent).not.toContain("!");
+  });
+});
+
+describe("anchoring axis", () => {
+  const anchorProps = (cells: AnchoringCell[] = [], info: AnchoringInfo | null = getMockAnchoring()) => ({
+    anchoring: new Set(cells),
+    onToggleAnchoring: vi.fn(),
+    anchoringInfo: info,
+  });
+  const renderAxis = (p: ReturnType<typeof anchorProps>, loading = false) =>
+    render(
+      <CompareChips prevailing="lqd" selected={new Set(["lqd"])} onToggle={vi.fn()} data={null} loading={loading} {...p} />,
+    );
+
+  it("shows the group only with a toggler; the production cell is lit, disabled and tagged prod", () => {
+    renderChips();
+    expect(screen.queryByRole("button", { name: /\+ Prior/ })).toBeNull();
+    expect(screen.queryByText("anchoring")).toBeNull();
+    cleanup();
+    renderAxis(anchorProps());
+    expect(screen.getByText("anchoring").getAttribute("title")).toMatch(/anchoring axis/i);
+    const prior = screen.getByRole("button", { name: /\+ Prior/ }) as HTMLButtonElement;
+    expect(prior.disabled).toBe(true);
+    expect(prior.getAttribute("aria-pressed")).toBe("true");
+    expect(prior.textContent).toContain("prod");
+    expect(prior.getAttribute("title")).toMatch(/production fit/i);
+  });
+
+  it("an unavailable cell is disabled with the node's reason; an available one toggles", () => {
+    const p = anchorProps();
+    renderAxis(p);
+    const filter = screen.getByRole("button", { name: /\+ Filter/ }) as HTMLButtonElement;
+    expect(filter.disabled).toBe(true);
+    expect(filter.getAttribute("aria-pressed")).toBe("false");
+    expect(filter.getAttribute("title")).toContain("observation filter is off");
+    const free = screen.getByRole("button", { name: /^Free/ }) as HTMLButtonElement;
+    expect(free.disabled).toBe(false);
+    expect(free.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(free);
+    expect(p.onToggleAnchoring).toHaveBeenCalledWith("free");
+    expect(p.onToggleAnchoring).toHaveBeenCalledTimes(1);
+  });
+
+  it("a selected cell is lit and spins while its row is in flight", () => {
+    renderAxis(anchorProps(["free"]), true);
+    const free = screen.getByRole("button", { name: /^Free/ });
+    expect(free.getAttribute("aria-pressed")).toBe("true");
+    expect(free.querySelector(".animate-spin")).not.toBeNull();
+    // The production chip never spins: its row is the plain one.
+    expect(screen.getByRole("button", { name: /\+ Prior/ }).querySelector(".animate-spin")).toBeNull();
   });
 });
 

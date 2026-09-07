@@ -20,6 +20,16 @@ carry no var-swap / prior / calendar targets — a like-for-like fit of each
 family to the same quotes (the dispatch.fit_node semantics); the reused
 committed row is the production fit as displayed.
 
+ANCHORING AXIS (volfit.api.compare_anchoring): ``anchoring`` names shadow
+cells of the DISPLAYED family — free / prior / filter — fitted through the
+production task builder with the anchoring blocks alone changed, so the
+rows read what the prior or the filter bought on this node (the pull
+columns against the free cell). The displayed family's plain row is ALWAYS
+its production fit: the committed record when fresh (reused), else a shadow
+fit with the production targets — never a target-free ad-hoc fit — so the
+"production" tag on the axis is truthful on a stale node too. The OTHER
+families keep the like-for-like target-free fits.
+
 TAIL MATCHING (volfit.api.compare_tails, the view's three toggles): with
 ``tail_flags`` the SVI-JW / MCS rows are refit with the stiff rows pulling
 their tails onto the LQD row's (var-swap level, Lee slopes, the quoted-edge
@@ -35,6 +45,7 @@ from collections import OrderedDict
 
 import numpy as np
 
+from volfit.api import compare_anchoring
 from volfit.api.compare_tails import TAIL_FAMILIES, resolve_tail_match
 from volfit.api.schemas import SmilePoint
 from volfit.api.schemas_compare import (
@@ -285,6 +296,7 @@ def compare_payload(
     state: AppState, ticker: str, expiry_iso: str,
     models: tuple[str, ...] = COMPARE_MODELS, fit_mode: str = "mid",
     tail_flags: tuple[str, ...] = (),
+    anchoring: tuple[str, ...] = (),
 ) -> CompareResponse:
     """Fit every requested family to one node's prepared quotes; one row each.
 
@@ -292,7 +304,11 @@ def compare_payload(
     chain / no forward yet yields an empty, honest ``models`` list. A single
     family's fit failure is recorded on its row (ok=False), never a 500.
     ``tail_flags`` (compare_tails) constrains the SVI-JW / MCS rows' tails to
-    the LQD row's; the response then carries a ``tailMatch`` report."""
+    the LQD row's; the response then carries a ``tailMatch`` report.
+    ``anchoring`` (compare_anchoring) appends the named shadow cells of the
+    displayed family (the free cell is always fitted for the pull columns;
+    a cell that IS production is the family's plain row, never duplicated;
+    an unavailable cell is skipped — the ``anchoring`` report says why)."""
     expiry = state.resolve_expiry(ticker, expiry_iso)  # UnknownNodeError -> 404
     iso = expiry.isoformat()
     settings = state.fit_settings()
@@ -313,10 +329,13 @@ def compare_payload(
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     key = fit_key(state, ticker, iso, fit_mode)
     cache = compare_cache(state)
+    plan = compare_anchoring.resolve_anchoring(state, ticker, iso, fit_mode, prepared)
+    response.anchoring = plan.info(anchoring)
 
     def family_row(family: str, target: TailMatchTarget | None = None):
         """This family's row (+ slice when fitted here): cached, reused from
-        the committed record (unconstrained rows only), or fitted ad hoc."""
+        the committed record (unconstrained rows only), the displayed
+        family's production shadow fit, or fitted ad hoc (the others)."""
         flags = target.applied if (target is not None and family in TAIL_FAMILIES) else ()
         ckey = (key, family, flags) if flags else (key, family)
         row = cache.get(ckey)
@@ -329,6 +348,15 @@ def compare_payload(
                 slice_ = committed
                 row = _model_row(family, slice_, prepared, k, w, weights, band,
                                  fit_ms=None, reused=True)
+                row.anchoring = plan.production
+            elif not flags and family == plan.family:
+                # The displayed family, stale or never calibrated: its
+                # PRODUCTION fit as a shadow (anchoring axis), never
+                # committed — so the plain row is production on every node.
+                row, record = compare_anchoring.anchoring_cell(
+                    state, ticker, iso, fit_mode, prepared, plan, None
+                )
+                slice_ = record.display.slice if record.display is not None else record.result.slice
             else:
                 t0 = time.perf_counter()
                 slice_ = _fit_family(family, k, w, prepared.tau, weights, band, settings, ticker,
@@ -358,4 +386,6 @@ def compare_payload(
     for family in models:
         row, _ = family_row(family, target)
         response.models.append(row)
+    # The anchoring axis: the requested shadow cells of the displayed family.
+    compare_anchoring.append_cells(state, ticker, iso, fit_mode, prepared, plan, anchoring, response)
     return response

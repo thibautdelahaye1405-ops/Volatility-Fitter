@@ -1036,6 +1036,29 @@ class ModelInfo(BaseModel):
     provenance: str = "fit"
     label: str  # human family name ("LQD", "SVI-JW", "Multi-Core Sigmoid")
     params: list[ModelParam] = Field(default_factory=list)
+    #: Anchoring axis (api/compare_anchoring): the SHADOW cell this payload
+    #: draws instead of the production fit ("free" | "prior" | "filter");
+    #: None = the production fit (the committed record).
+    anchoring: str | None = None
+
+
+class AnchoringInfo(BaseModel):
+    """The anchoring axis of one node (api/compare_anchoring): which shadow
+    cells exist, which one the production fit coincides with, and why a cell
+    is missing. Derived from the live Options by subtraction — never a
+    setting. Carried by the compare response and the smile payload."""
+
+    requested: list[str] = []  # the cells a compare asked for (wire order)
+    available: list[str] = []  # subset of ("free", "prior", "filter")
+    #: The cell the production fit coincides with; None when none does (the
+    #: filter is active with no prediction and a tail anchor survives).
+    production: str | None = None
+    family: str = "lqd"  # the displayed family the cells are fitted in
+    filterMode: str = "off"
+    priorMode: str = "off"
+    #: cell -> human reason it is unavailable ("production" -> why no cell
+    #: coincides with the production fit).
+    notes: dict[str, str] = {}
 
 
 class VarSwapInfo(BaseModel):
@@ -1187,6 +1210,10 @@ class SmileData(BaseModel):
     #: spot (paired with ``quotes``, the calibration quotes + their target).
     market: MarketLayer | None = None
     calib: CalibLayer | None = None
+    #: Anchoring axis (api/compare_anchoring): the cells available on this
+    #: node + the production cell, so the node views can offer the Fit
+    #: switch (Production / Free / + Prior / + Filter). None before a fit.
+    anchoring: AnchoringInfo | None = None
 
 
 # ------------------------------------------------------------------ universe

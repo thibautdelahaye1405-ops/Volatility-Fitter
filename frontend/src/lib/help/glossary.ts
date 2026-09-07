@@ -8,6 +8,10 @@
 import type { GlossaryEntry } from "./types";
 
 export const GLOSSARY: GlossaryEntry[] = [
+  { id: "anchoring-axis", term: "Anchoring axis (Compare · Fit switch)",
+    short: "Shadow fits of the prevailing model that differ from production in the anchoring blocks alone — Free (no prior, no filter), + Prior, + Filter — so a node shows what each block bought.",
+    long: "A production fit may carry two anchoring blocks: the persistence prior (yesterday's smile, transported) and the observation filter's prediction. The axis refits the displayed family with those blocks removed or added: **Free** is the pure market fit; **+ Prior** the persistence prior with the filter off; **+ Filter** the filter's prediction block from the kept state — a preview of *active* mode while the filter runs in overlay mode, production itself once it is active. Each cell exists only when its input exists (an active prior, a kept filter state); the cell production coincides with is tagged *prod*, and a missing cell says why in its tooltip. In **Compare** the chips add the cells as dashed rows of the prevailing family and the **Pull** column reads their distance to the free fit (ATM vol bp; skew and curve RMS on hover). The **fit** switch in the Smile and Density header draws one shadow instead of production — the quotes, the prior overlay and the committed calibration stay untouched.",
+    related: ["prior", "prior-persistence-modes", "observation-filter", "smile"], links: ["help:guides:parametric", "help:guides:priors", "help:guides:filter"] },
   { id: "as-of", term: "As-of",
     short: "The market timestamp the app is pricing from: Live, Previous close, or a historical day and moment.",
     long: "The as-of selector sits in the **Fetch ▾** menu (Live · Prev close · Historical: pick a day, then Close / Latest snapshot / n min before close). Every fetch, fit and view is served at that moment, and the status bar's *As of* chip and the market pill repeat it. A node whose chain was stamped in another session shows an amber **≠ as-of** pill in the Nodes pane; with `asOfMismatchGate` on, that mismatch fails readiness and blocks publish.",

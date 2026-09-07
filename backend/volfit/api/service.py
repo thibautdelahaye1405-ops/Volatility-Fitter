@@ -477,6 +477,7 @@ def prior_targets(
     weights: np.ndarray | None,
     prepared,
     fit_mode: str = "mid",
+    anchoring: str | None = None,
 ) -> PriorTargets:
     """Persistence targets + the observation-filter prediction prior (Note 15).
 
@@ -489,12 +490,33 @@ def prior_targets(
     anchor rides alongside it. Under ``wingOperatorsUnderActiveFilter`` (Note
     15 §6.3 carve-out) the persistence block is the WingL/WingR rows alone and
     is MERGED beside the MAP rows (volfit.calib.operator_merge); the default
-    leaves it None, so the block is the filter target itself."""
-    targets = _persistence_targets(state, ticker, iso, k, weights, prepared)
-    if state.options().observationFilterMode == "active":
+    leaves it None, so the block is the filter target itself.
+
+    ``anchoring`` (the ANCHORING AXIS, api/compare_anchoring) overrides the
+    production routing for a SHADOW fit — None = production (byte-identical):
+      "free"    no persistence, no filter block (the pure market fit);
+      "prior"   the persistence targets as resolved with the filter OFF (the
+                full body prior, whatever the live filter mode);
+      "filter"  the persistence targets as resolved with the filter ACTIVE
+                (§6.3 auto-exclusion applied) + the prediction block FORCED
+                from the kept state (a preview of the MAP under overlay mode).
+    """
+    if anchoring == "free":
+        return PriorTargets()
+    if anchoring in ("prior", "filter"):
+        as_mode = "off" if anchoring == "prior" else "active"
+        opts = state.options().model_copy(update={"observationFilterMode": as_mode})
+        targets = _persistence_targets(state, ticker, iso, k, weights, prepared, options=opts)
+        if anchoring == "prior":
+            return targets
+    else:
+        targets = _persistence_targets(state, ticker, iso, k, weights, prepared)
+    if anchoring == "filter" or state.options().observationFilterMode == "active":
         from volfit.api import observation_filter as ofilt
 
-        ft = ofilt.active_prediction_target(state, ticker, iso, fit_mode, prepared)
+        ft = ofilt.active_prediction_target(
+            state, ticker, iso, fit_mode, prepared, force=anchoring == "filter"
+        )
         if ft is not None:
             targets = PriorTargets(
                 prior_anchor=targets.prior_anchor,
@@ -530,7 +552,8 @@ def _prior_varswap(
 
 
 def _persistence_targets(
-    state: AppState, ticker: str, iso: str, k: np.ndarray, weights: np.ndarray | None, prepared
+    state: AppState, ticker: str, iso: str, k: np.ndarray, weights: np.ndarray | None, prepared,
+    options=None,
 ) -> PriorTargets:
     """Resolve the active prior-persistence targets for a node (design note §10).
 
@@ -546,8 +569,11 @@ def _persistence_targets(
     prior ⇒ empty targets ⇒ byte-identical. Existing desks are preserved by the
     store-load migration (legacy ``autoLoadPrior`` off → mode ``off``). The prior's
     LQD backbone is transported to the node's forward under the dynamics regime so it
-    is spot-consistent with the live quotes."""
-    options = state.options()
+    is spot-consistent with the live quotes.
+
+    ``options`` overrides the live OptionsSettings (the anchoring axis resolves
+    the persistence builders as if the filter were off / active); None = live."""
+    options = state.options() if options is None else options
     plan = resolve_prior_mode(options)
     if not plan.any_calibration_prior:
         return PriorTargets()
@@ -749,6 +775,7 @@ def _slice_task(
     allow_prepass: bool = False,
     with_fit: bool = True,
     with_overlay: bool = True,
+    anchoring: str | None = None,
 ) -> SliceFitTask:
     """Assemble one node's slice-fit work as a pure, picklable task.
 
@@ -771,13 +798,16 @@ def _slice_task(
     splits a violating pair's correction instead of pushing it all one way.
     ``allow_prepass`` opts the single-node path into the two-pass
     priorDataOnlyPrepass; ``with_fit=False`` builds an overlay-only task
-    (display_overlay), ``with_overlay=False`` an LQD-only task."""
+    (display_overlay), ``with_overlay=False`` an LQD-only task. ``anchoring``
+    (None = production) routes the prior / filter blocks for a SHADOW fit of
+    the anchoring axis (prior_targets docstring) — every other input is the
+    production one, so the variants differ in the anchoring blocks alone."""
     settings = state.fit_settings()
     k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
-    pt = prior_targets(state, ticker, iso, k, weights, prepared, fit_mode)
+    pt = prior_targets(state, ticker, iso, k, weights, prepared, fit_mode, anchoring=anchoring)
 
     calibrate = prepass = None
     if with_fit:
@@ -942,6 +972,42 @@ def display_overlay(
 
 
 # ------------------------------------------------------------- slice fitting
+def single_node_calendar_context(state: AppState, ticker: str, iso: str, fit_mode: str):
+    """(prev_ctx, next_ctx) of a lone node fit under ``calendarOnRefit`` (with
+    ``enforceCalendar``): the FRESH committed neighbours in the selected
+    ladder, read-only (``_neighbour_context``); (None, None) otherwise — the
+    historical task, byte-identical. Shared by ``_compute_fit`` and the
+    anchoring-axis shadow fits (api/compare_anchoring), so a variant reads
+    the same calendar floor / ceiling the production fit did."""
+    options = state.options()
+    if not (options.calendarOnRefit and options.enforceCalendar):
+        return None, None
+    prev_iso, next_iso = _neighbour_isos(state, ticker, iso)
+    return (
+        _neighbour_context(state, ticker, prev_iso, fit_mode),
+        _neighbour_context(state, ticker, next_iso, fit_mode),
+    )
+
+
+def single_node_task(
+    state: AppState, ticker: str, iso: str, prepared: PreparedQuotes, fit_mode: str,
+    prev_ctx, next_ctx, *, init=None, anchoring: str | None = None,
+) -> SliceFitTask:
+    """The single-node slice task: ``_slice_task`` with the prepass allowed and
+    the neighbour context threaded (``single_node_calendar_context``).
+    ``anchoring`` routes a shadow fit of the anchoring axis (None = production)."""
+    return _slice_task(
+        state, ticker, iso, prepared, fit_mode, init=init, allow_prepass=True,
+        prev=prev_ctx[0].result if prev_ctx is not None else None,
+        prev_display=prev_ctx[0].display if prev_ctx is not None else None,
+        prev_k=prev_ctx[1] if prev_ctx is not None else None,
+        next_display=next_ctx[0].display if next_ctx is not None else None,
+        next_k=next_ctx[1] if next_ctx is not None else None,
+        enforce_calendar=prev_ctx is not None or next_ctx is not None,
+        anchoring=anchoring,
+    )
+
+
 def _compute_fit(
     state: AppState, ticker: str, expiry_iso: str, fit_mode: str, init=None
 ) -> FitRecord:
@@ -989,27 +1055,14 @@ def _compute_fit(
         # Calendar-on-refit: thread the fresh committed neighbours (docstring).
         # OFF (the default), or no usable neighbour: every extra argument below
         # is None/False — the historical task, byte-identical.
-        prev_ctx = next_ctx = None
-        options = state.options()
-        if options.calendarOnRefit and options.enforceCalendar:
-            prev_iso, next_iso = _neighbour_isos(state, ticker, iso)
-            prev_ctx = _neighbour_context(state, ticker, prev_iso, fit_mode)
-            next_ctx = _neighbour_context(state, ticker, next_iso, fit_mode)
-            if prev_ctx is not None or next_ctx is not None:
-                act.detail("calendar context from committed neighbours")
+        prev_ctx, next_ctx = single_node_calendar_context(state, ticker, iso, fit_mode)
+        if prev_ctx is not None or next_ctx is not None:
+            act.detail("calendar context from committed neighbours")
         # The LQD backbone fit + the non-LQD display overlay (same edited quotes,
         # band and prior — Phase 3/5) as ONE pure task: a background Calibrate
         # thunk routes it to the fit process pool (volfit.api.fit_pool), an
         # interactive call runs it inline — byte-identical either way.
-        task = _slice_task(
-            state, ticker, iso, prepared, fit_mode, init=init, allow_prepass=True,
-            prev=prev_ctx[0].result if prev_ctx is not None else None,
-            prev_display=prev_ctx[0].display if prev_ctx is not None else None,
-            prev_k=prev_ctx[1] if prev_ctx is not None else None,
-            next_display=next_ctx[0].display if next_ctx is not None else None,
-            next_k=next_ctx[1] if next_ctx is not None else None,
-            enforce_calendar=prev_ctx is not None or next_ctx is not None,
-        )
+        task = single_node_task(state, ticker, iso, prepared, fit_mode, prev_ctx, next_ctx, init=init)
         if task.prepass is not None:
             act.detail("data-only prepass")
         act.detail(f"fitting {_model_label(settings.model)} smile")
@@ -1627,8 +1680,17 @@ def quote_kind(state: AppState, ticker: str) -> str:
     return getattr(snap, "quote_kind", "quotes") if snap is not None else "quotes"
 
 
-def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> SmileData:
-    """Assemble the full SmileData payload for one (ticker, expiry) node."""
+def smile_payload(
+    state: AppState, ticker: str, expiry_iso: str, fit_mode: str, anchoring: str | None = None
+) -> SmileData:
+    """Assemble the full SmileData payload for one (ticker, expiry) node.
+
+    ``anchoring`` (api/compare_anchoring) swaps the drawn fit for a SHADOW
+    cell of the anchoring axis — "free" / "prior" / "filter" — when that cell
+    exists and is not the production fit: the curve, both frames, the
+    diagnostics and the model chip then read the shadow (tagged in
+    ``modelInfo.anchoring``); the quotes, prior overlay, var-swap quote and
+    staleness stay the node's. The committed record is never touched."""
     try:
         record = fit_or_get(state, ticker, expiry_iso, fit_mode)
     except Exception as exc:  # noqa: BLE001 — absorb ONLY the named conditions
@@ -1643,6 +1705,16 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
     if record is None:  # gated workflow, never calibrated -> quotes/prior, no curve
         return _no_fit_smile_payload(state, ticker, expiry_iso, fit_mode)
     iso = state.resolve_expiry(ticker, expiry_iso).isoformat()  # session key
+    from volfit.api import compare_anchoring
+
+    # The anchoring switch: draw a shadow cell instead of the production fit.
+    # ``base`` is the un-transported record of what is DRAWN (the calib frame);
+    # ``record`` gets the active spot-move transport exactly like fit_or_get.
+    base = displayed_base(state, ticker, iso, fit_mode)
+    shadow, drawn_cell = compare_anchoring.display_record(state, ticker, iso, fit_mode, base, anchoring)
+    if drawn_cell is not None:
+        base = shadow
+        record = transport_record(state, ticker, iso, shadow) if state.spot_shift(ticker) != 0.0 else shadow
     session = state.session_if_exists((ticker, iso))
     prepared, slice_ = record.prepared, record.result.slice
     model = model_curve(record)
@@ -1666,7 +1738,9 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
     # Quote-derived error bars of the DISPLAYED (frozen) calibration —
     # (σ_atm, σ_skew, σ_curv) from the fit's own Jacobian + bid-ask noise
     # (api/fit_uncertainty; advisory, None when unavailable).
-    stds = fit_uncertainty.handle_stds(state, ticker, iso, fit_mode)
+    # (A shadow cell has no stored side channel: no band rather than the
+    # production fit's.)
+    stds = fit_uncertainty.handle_stds(state, ticker, iso, fit_mode) if drawn_cell is None else None
     atm_std, skew_std, curv_std = stds if stds is not None else (None, None, None)
 
     if record.display is not None:
@@ -1732,7 +1806,6 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
     # The two comparable frames (api/smile_layers): the calibration frame is
     # the UN-transported base (the fit on its own spot); the market frame is
     # the latest fetched chain + the fit rolled to the prevailing spot.
-    base = displayed_base(state, ticker, iso, fit_mode)
     market = smile_layers.market_layer(
         state, ticker, iso, fit_mode, base, quotes, prepare_slice(state, ticker, iso), model
     )
@@ -1753,7 +1826,8 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
         kMin=float(prepared.k.min()) - K_PAD,
         kMax=float(prepared.k.max()) + K_PAD,
         diagnostics=diagnostics,
-        modelInfo=model_info(record),
+        modelInfo=model_info(record).model_copy(update={"anchoring": drawn_cell}),
+        anchoring=compare_anchoring.resolve_anchoring(state, ticker, iso, fit_mode, prepared).info(),
         varSwap=varswap_info(state, ticker, iso, record, fit_mode),
         canUndo=session.can_undo if session is not None else False,
         canRedo=session.can_redo if session is not None else False,

@@ -215,6 +215,13 @@ export const TIPS: Tip[] = [
     action: { command: "lens.parametric", label: "Go to the Parametric lens" },
   },
   {
+    id: "compare-anchoring-axis",
+    title: "See what the prior and the filter bought: the anchoring axis",
+    body: "In Compare, the **Free**, **+ Prior** and **+ Filter** chips refit the prevailing model with the anchoring blocks removed or added — no prior and no filter, the persistence prior alone, or the filter's prediction from the kept state (a preview of active mode while the filter is in overlay mode). The cell production coincides with is tagged *prod*; the **Pull** column reads each row's distance to the free fit in ATM vol bp (hover for skew and curve RMS). The **fit** switch in the Smile and Density header draws one of these shadow fits in place of production — the committed calibration is untouched.",
+    scope: "parametric", level: "pro",
+    action: { command: "lens.parametric", label: "Go to the Parametric lens" },
+  },
+  {
     id: "quote-editing-keys",
     title: "Edit quotes with the keyboard",
     body: "Click a quote to select it; Delete excludes or restores it; ↑ / ↓ amend the mid by 0.1 vol pt (Shift = 0.5); Ctrl+Z / Ctrl+Y undo and redo. The node turns stale until you calibrate.",

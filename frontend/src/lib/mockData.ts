@@ -103,6 +103,37 @@ export interface ModelInfo {
   params: ModelParam[];
   /** "fit" (calibrated here) | "loaded" (a snapshot file's calibration). */
   provenance?: "fit" | "loaded";
+  /** The SHADOW cell drawn instead of production (GET …?anchoring=…, the
+   *  Fit switch); null / absent = the production fit. */
+  anchoring?: AnchoringCell | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* The anchoring axis (2026-09-07, lib/anchoring)                       */
+/* ------------------------------------------------------------------ */
+
+/** One cell of the axis: shadow fits of the displayed family that differ
+ *  from production in the anchoring blocks alone — free (no prior, no
+ *  filter), prior (the persistence prior, filter off), filter (the filter's
+ *  prediction block from the kept state). */
+export type AnchoringCell = "free" | "prior" | "filter";
+
+/** A node's axis report (compare response and smile payload alike). */
+export interface AnchoringInfo {
+  /** The cells the compare asked for (wire order). */
+  requested: string[];
+  /** The cells whose input exists on this node (subset, wire order). */
+  available: AnchoringCell[];
+  /** The cell the production fit coincides with (null = none does). */
+  production: AnchoringCell | null;
+  /** The displayed family the cells are fitted in. */
+  family: "lqd" | "svi" | "sigmoid";
+  /** "off" | "overlay" | "active" — under overlay the filter cell is a preview. */
+  filterMode: string;
+  /** The persistence mode of Options (e.g. "hybrid"). */
+  priorMode: string;
+  /** cell -> why it is unavailable; "production" -> why no cell coincides. */
+  notes: Record<string, string>;
 }
 
 /** Variance-swap quote state of a node (shared by Parametric & Local Vol). */
@@ -172,6 +203,9 @@ export interface SmileData {
   /** Displayed model family + hyperparameters (degree / cores). Optional for
    *  older payloads; always present from the current backend. */
   modelInfo?: ModelInfo;
+  /** The node's anchoring-axis report (lib/anchoring): which shadow cells
+   *  exist and which one production coincides with. Present once fitted. */
+  anchoring?: AnchoringInfo | null;
   /** Variance-swap quote + model level for this node. */
   varSwap: VarSwapInfo;
   /** False when the node has never been calibrated (gated workflow, before the
@@ -307,6 +341,22 @@ function generateQuotes(count: number, seed: number): QuoteBand[] {
   return quotes;
 }
 
+/** The mock node's anchoring axis (lib/anchoring): a persistence prior is
+ *  active and production coincides with its cell; the filter is off, so the
+ *  filter cell is unavailable with the reason. Shared by the smile and the
+ *  comparison mocks. */
+export function getMockAnchoring(): AnchoringInfo {
+  return {
+    requested: [],
+    available: ["free", "prior"],
+    production: "prior",
+    family: "lqd",
+    filterMode: "off",
+    priorMode: "hybrid",
+    notes: { filter: "observation filter is off — no per-node state is kept" },
+  };
+}
+
 /** Build the full mock smile payload (memoise at call site; it is pure). */
 export function getMockSmile(): SmileData {
   const volOf = (k: number) => sviVol(SVI, k, T);
@@ -336,7 +386,8 @@ export function getMockSmile(): SmileData {
       varSwapVol: 0.212,
       rmsError: 0.0021,
     },
-    modelInfo: { id: "lqd", label: "LQD", params: [{ label: "Degree N", value: "6" }] },
+    modelInfo: { id: "lqd", label: "LQD", params: [{ label: "Degree N", value: "6" }], anchoring: null },
+    anchoring: getMockAnchoring(),
     varSwap: {
       level: null,
       excluded: false,
@@ -425,6 +476,17 @@ export interface CompareModelFit {
   reused?: boolean;
   /** The tail-matching constraints this row's fit carried (empty = plain). */
   tailMatched?: CompareTailFlag[];
+  /** Anchoring axis (lib/anchoring): on the displayed family's plain row the
+   *  cell production coincides with; on an EXTRA row (same family, appended
+   *  after the family rows) the shadow cell it was fitted in; null on the
+   *  other families' rows. */
+  anchoring?: AnchoringCell | null;
+  /** Distance to the free cell (no prior, no filter): ATM vol in bp, skew
+   *  difference, RMS curve distance over the quoted range in bp. The free
+   *  row reads 0 on all three; absent when no cell was requested. */
+  pullAtmBp?: number | null;
+  pullSkew?: number | null;
+  pullCurveBp?: number | null;
 }
 
 /** Response of GET /smiles/{ticker}/{expiry}/compare. */
@@ -436,6 +498,8 @@ export interface CompareResponse {
   models: CompareModelFit[];
   /** Present whenever tail matching was requested. */
   tailMatch?: CompareTailInfo | null;
+  /** The node's anchoring-axis report; present whenever the node has quotes. */
+  anchoring?: AnchoringInfo | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -520,6 +584,7 @@ export function getMockComparison(): CompareResponse {
         leeLeft: 0.097, leeRight: 0.036, varSwapVol: 0.212,
         validity: { kind: "density", minValue: 1.2e-6, certified: true },
         nParams: 7, fitMs: null, reused: true,
+        anchoring: "prior", // the production fit coincides with the + Prior cell
       }),
       fit("svi", "SVI-JW", (k) => volOf(k) + 0.004 * k * k, {
         rmsBp: 24.9, maxIvBp: 68.3, atmVol: 0.205, skew: -0.348,
@@ -540,6 +605,7 @@ export function getMockComparison(): CompareResponse {
         nParams: 3, fitMs: 2.9, reused: false,
       }),
     ],
+    anchoring: getMockAnchoring(),
   };
 }
 

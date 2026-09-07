@@ -320,15 +320,21 @@ def _inflate_prediction(prediction: FilterPrediction, factors: np.ndarray) -> Fi
 
 
 def active_prediction_target(
-    state: AppState, ticker: str, iso: str, fit_mode: str, prepared
+    state: AppState, ticker: str, iso: str, fit_mode: str, prepared,
+    *, force: bool = False,
 ):
     """The Kalman prediction prior for the ACTIVE one-stage MAP fit (note eq.
     active-map), or None — mode not active, no previous state, or a reset is
     due (the fit then runs data-only and the commit reseeds). Consumed by
     ``service.prior_targets`` as the operator block, so it reaches every
-    parametric model with no new wiring."""
+    parametric model with no new wiring.
+
+    ``force`` lifts the MODE gate only (anchoring axis, api/compare_anchoring):
+    a shadow "+ Filter" fit previews what the active MAP would do from the
+    state the OVERLAY mode keeps, without switching the mode. The state /
+    reset gates stay — there is no prediction without a previous state."""
     plan = resolve_filter_mode(state.options())
-    if not plan.active:
+    if not plan.active and not force:
         return None
     prev: NodeFilter | None = state.filter_node((ticker, iso, fit_mode))
     if prev is None:

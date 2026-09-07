@@ -8,6 +8,11 @@
 // group mounts this hook on ITS node through state/nodeScope so two nodes can
 // show at once. `enabled: false` makes the hook inert (the focused group
 // reads the root session instead of fetching the same node twice).
+//
+// ANCHORING (lib/anchoring, the Fit switch): `anchoring` names a shadow cell
+// ("free" | "prior" | "filter") drawn INSTEAD of the production fit — the
+// smile and density GETs carry it; an edit / undo / redo / var-swap POST
+// answers with production, so a selected shadow is refetched right after.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import type { SmileData, SmilePoint } from "../lib/mockData";
@@ -83,6 +88,10 @@ export interface NodeSmileResult {
   /** Probe the market spot once (Spot move card). */
   probeLive: () => Promise<void>;
   spotNote: SpotNote | null;
+  /** The anchoring-axis shadow cell drawn instead of production (null =
+   *  production). Set by the Fit switch of the Smile / Density views. */
+  anchoring: string | null;
+  setAnchoring: (cell: string | null) => void;
 }
 
 export interface NodeSmileOptions {
@@ -115,6 +124,14 @@ export function useNodeSmile(o: NodeSmileOptions): NodeSmileResult {
   const [scenario, setScenario] = useState<ScenarioState>({ spotReturn: 0, regime: o.regime });
   const hasSmileRef = useRef(false);
   const reload = useCallback(() => setReloadNonce((n) => n + 1), []);
+  // The Fit switch's shadow cell; "production" / null both mean production.
+  const [anchoring, setAnchoringState] = useState<string | null>(null);
+  const anchoringRef = useRef<string | null>(null);
+  const setAnchoring = useCallback((cell: string | null) => {
+    const next = cell === null || cell === "production" ? null : cell;
+    anchoringRef.current = next;
+    setAnchoringState(next);
+  }, []);
 
   // Mock mode: the deterministic payload IS the node.
   useEffect(() => {
@@ -137,7 +154,10 @@ export function useNodeSmile(o: NodeSmileOptions): NodeSmileResult {
     if (hasSmileRef.current) setRefreshing(true);
     const load = () => {
       api
-        .get<SmileData>(`/smiles/${ticker}/${expiry}`, { params: { fit_mode: fitMode }, signal: controller.signal })
+        .get<SmileData>(`/smiles/${ticker}/${expiry}`, {
+          params: { fit_mode: fitMode, ...(anchoring === null ? {} : { anchoring }) },
+          signal: controller.signal,
+        })
         .then((data) => {
           setSmile(data);
           hasSmileRef.current = true;
@@ -156,7 +176,7 @@ export function useNodeSmile(o: NodeSmileOptions): NodeSmileResult {
     };
     load();
     return () => { controller.abort(); if (timer !== undefined) window.clearTimeout(timer); };
-  }, [live, ticker, expiry, fitMode, reloadNonce, reloadSignal, spotVersion]);
+  }, [live, ticker, expiry, fitMode, reloadNonce, reloadSignal, spotVersion, anchoring]);
 
   // Keep the scenario's regime in step with Options (spotReturn is the node's).
   useEffect(() => {
@@ -165,6 +185,8 @@ export function useNodeSmile(o: NodeSmileOptions): NodeSmileResult {
 
   // Edits / undo / redo / var-swap: the backend refits and returns the updated
   // smile; on failure the current smile stays and only editError surfaces.
+  // The POST answers with PRODUCTION: while a shadow cell is selected, the
+  // regular GET is re-run right after so the shadow reflects the edit.
   const post = useCallback(async (suffix: string, body?: unknown): Promise<void> => {
     if (!live || ticker === "" || expiry === "") return;
     setRefreshing(true);
@@ -173,6 +195,7 @@ export function useNodeSmile(o: NodeSmileOptions): NodeSmileResult {
       setSmile(data);
       hasSmileRef.current = true;
       setEditError(null);
+      if (anchoringRef.current !== null) setReloadNonce((n) => n + 1);
     } catch (err: unknown) {
       setEditError(editMessageOf(err));
     } finally {
@@ -203,7 +226,8 @@ export function useNodeSmile(o: NodeSmileOptions): NodeSmileResult {
   const { spotReturn, spotState, setSpotReturn, setFollow, recalibrate, probeLive, spotNote } =
     useSpot(live, ticker, fitMode, refreshViews, spotVersion);
   const { scenarioCurve, scenarioSsr } = useScenarioCurve(live, ticker, expiry, fitMode, scenario);
-  const { distribution, distributionLoading, loadDistribution } = useDistribution(live, ticker, expiry, fitMode, smile);
+  const { distribution, distributionLoading, loadDistribution } =
+    useDistribution(live, ticker, expiry, fitMode, smile, anchoring);
 
   return {
     smile, loading, refreshing, error, editError,
@@ -211,5 +235,6 @@ export function useNodeSmile(o: NodeSmileOptions): NodeSmileResult {
     scenario, setScenario, scenarioCurve, scenarioSsr,
     distribution, distributionLoading, loadDistribution,
     spotReturn, spotState, setSpotReturn, setFollow, recalibrate, probeLive, spotNote,
+    anchoring, setAnchoring,
   };
 }

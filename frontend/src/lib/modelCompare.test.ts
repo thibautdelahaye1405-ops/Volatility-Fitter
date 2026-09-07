@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { getMockComparison } from "./mockData";
 import type { CompareModelFit } from "./mockData";
+import { ANCHORING_DASH } from "./anchoring";
 import {
   CHIP_MODELS,
   MODEL_COLORS,
@@ -65,6 +66,37 @@ describe("compareSeries", () => {
     data.models[1] = baseFit({ ok: false, error: "boom", curve: [] });
     data.models[2] = baseFit({ model: "sigmoid", label: "MCS", curve: [{ k: 0, vol: 0.2 }] });
     expect(compareSeries(data).map((s) => s.label)).toEqual(["LQD", "eSSVI"]);
+  });
+});
+
+describe("anchoring shadow rows", () => {
+  it("dashes a shadow row with its cell's dash, in the family colour, labelled 'LQD · free'", () => {
+    const data = getMockComparison(); // production coincides with the prior cell
+    const lqd = data.models[0];
+    data.models = [lqd, data.models[1], { ...lqd, anchoring: "free" }, { ...lqd, anchoring: "filter" }];
+    const series = compareSeries(data);
+    expect(series.map((s) => s.label)).toEqual(["LQD", "SVI-JW", "LQD · free", "LQD · +filter"]);
+    expect(series.map((s) => s.dash)).toEqual([undefined, undefined, ANCHORING_DASH.free, ANCHORING_DASH.filter]);
+    expect(series[2].color).toBe(MODEL_COLORS.lqd);
+  });
+
+  it("the plain row naming the production cell stays solid and plainly labelled", () => {
+    const series = compareSeries(getMockComparison());
+    expect(series[0].label).toBe("LQD");
+    expect(series[0].dash).toBeUndefined();
+  });
+
+  it("groups each family's shadow rows under its plain row, reference last, stably", () => {
+    const rows = [
+      baseFit({ model: "essvi", label: "eSSVI" }),
+      baseFit({ model: "lqd", label: "LQD", anchoring: "prior" }),
+      baseFit({ model: "svi", label: "SVI-JW" }),
+      baseFit({ model: "lqd", label: "LQD", anchoring: "free" }),
+      baseFit({ model: "lqd", label: "LQD", anchoring: "filter" }),
+    ];
+    expect(orderCompareRows(rows).map((m) => `${m.model}:${m.anchoring ?? "plain"}`)).toEqual([
+      "lqd:prior", "lqd:free", "lqd:filter", "svi:plain", "essvi:plain",
+    ]);
   });
 });
 

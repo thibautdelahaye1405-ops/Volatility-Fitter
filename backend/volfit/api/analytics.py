@@ -354,16 +354,25 @@ def stacked_density_arrays(
     return k[keep], pdf[keep], raw[keep], min_d, min_x
 
 
-def density_payload(state: AppState, ticker: str, expiry: str, fit_mode: str) -> DensityResponse:
+def density_payload(
+    state: AppState, ticker: str, expiry: str, fit_mode: str, anchoring: str | None = None
+) -> DensityResponse:
     """Current-fit distribution plus the saved prior's, when one exists.
 
     The current distribution follows the chosen display model (LQD exact, else
     the SVI / Multi-Core-SIV overlay's own Breeden-Litzenberger density); the
-    saved prior is always the LQD snapshot that was stored.
+    saved prior is always the LQD snapshot that was stored. ``anchoring``
+    (api/compare_anchoring) reads a shadow cell of the anchoring axis instead
+    of the production fit, exactly like the smile payload's switch.
     """
     record = fit_or_get(state, ticker, expiry, fit_mode)
     if record is None:  # gated, never calibrated: empty current density
         return DensityResponse(current=DistributionArrays(x=[], density=[]), prior=None)
+    if anchoring is not None:
+        from volfit.api import compare_anchoring
+
+        iso = state.resolve_expiry(ticker, expiry).isoformat()
+        record, _cell = compare_anchoring.display_record(state, ticker, iso, fit_mode, record, anchoring)
     if record.display is not None:
         current = _distribution_model(displayed_slice(record))
     else:

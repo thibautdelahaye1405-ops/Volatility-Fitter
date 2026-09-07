@@ -2,35 +2,55 @@
 // Pure functions (no React, no DOM) so the chart series, the validity chip
 // and the null-metric handling are unit-testable — SmileViewer stays a thin
 // consumer (file-size policy).
+//
+// ANCHORING AXIS (lib/anchoring): the displayed family may answer with extra
+// SHADOW rows (its refit with the prior / filter removed or added). They are
+// drawn in the family colour with the cell's dash and grouped under the
+// family's plain row in the table.
 import type { OverlaySeries } from "../components/OverlayCurvesChart";
 import type { CompareModelFit, CompareResponse } from "./mockData";
+import { ANCHORING_DASH, ANCHORING_SHORT, isShadowRow } from "./anchoring";
 import { MODEL_COLORS, MODEL_LABELS, isReferenceModel } from "./modelColor";
 
 /** Stroke dash of a reference family's curve (never solid like the models). */
 export const REFERENCE_DASH = "5 3";
 
-/** One OverlayCurvesChart series per successfully fitted model, in the
+/** One OverlayCurvesChart series per successfully fitted row, in the
  *  response's (book) order, coloured by family; reference families (eSSVI)
- *  are dashed. `tx` maps log-moneyness k to the chart's display coordinate
- *  (the selected strike-axis mode; identity = k). Failed rows and degenerate
- *  curves are skipped — the table still lists them with their error. */
+ *  are dashed, anchoring shadow rows carry their cell's dash and a
+ *  "LQD · free" label. `tx` maps log-moneyness k to the chart's display
+ *  coordinate (the selected strike-axis mode; identity = k). Failed rows
+ *  and degenerate curves are skipped — the table still lists them. */
 export function compareSeries(data: CompareResponse, tx: (k: number) => number = (k) => k): OverlaySeries[] {
+  const info = data.anchoring ?? null;
   return data.models
     .filter((m) => m.ok && m.curve.length > 1)
-    .map((m) => ({
-      label: MODEL_LABELS[m.model] ?? m.label,
-      xs: m.curve.map((p) => tx(p.k)),
-      ys: m.curve.map((p) => p.vol),
-      color: MODEL_COLORS[m.model] ?? "#94a3b8",
-      ...(isReferenceModel(m.model) ? { dash: REFERENCE_DASH } : {}),
-    }));
+    .map((m) => {
+      const shadow = isShadowRow(m, info) ? (m.anchoring as NonNullable<typeof m.anchoring>) : null;
+      const name = MODEL_LABELS[m.model] ?? m.label;
+      const dash = shadow !== null ? ANCHORING_DASH[shadow] : isReferenceModel(m.model) ? REFERENCE_DASH : undefined;
+      return {
+        label: shadow !== null ? `${name} · ${ANCHORING_SHORT[shadow]}` : name,
+        xs: m.curve.map((p) => tx(p.k)),
+        ys: m.curve.map((p) => p.vol),
+        color: MODEL_COLORS[m.model] ?? "#94a3b8",
+        ...(dash !== undefined ? { dash } : {}),
+      };
+    });
 }
 
-/** Table row order: the calibratable families first (wire order kept), the
- *  reference rows after them — so a reference never sits between two
- *  models whatever order the endpoint answered in. Stable. */
+/** Table row order: the calibratable families first (wire order kept), each
+ *  plain row followed by its own family's other rows (the anchoring shadow
+ *  cells, wire order), the reference rows after them — so a reference never
+ *  sits between two models whatever order the endpoint answered in. Stable. */
 export function orderCompareRows(models: readonly CompareModelFit[]): CompareModelFit[] {
-  const head = models.filter((m) => !isReferenceModel(m.model));
+  const head: CompareModelFit[] = [];
+  const seen = new Set<string>();
+  for (const m of models) {
+    if (isReferenceModel(m.model) || seen.has(m.model)) continue;
+    seen.add(m.model);
+    head.push(m, ...models.filter((o) => o !== m && o.model === m.model));
+  }
   const tail = models.filter((m) => isReferenceModel(m.model));
   return [...head, ...tail];
 }
