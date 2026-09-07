@@ -2,7 +2,7 @@
 // calibration, each in its own moneyness; live rows become pure-market quote
 // bands at the live forward; fallbacks keep older payloads drawable.
 import { describe, expect, it } from "vitest";
-import { calibByStrike, composeFrames, frameK, liveQuoteBands } from "./smileLayers";
+import { calibByStrike, composeFrames, frameK, liveQuoteBands, marketLayerKey } from "./smileLayers";
 import { EMPTY_LIVE, type LiveTickRow, type LiveTicksState } from "../state/useLiveTicks";
 import type { QuoteBand, SmileData } from "./mockData";
 
@@ -25,6 +25,21 @@ const smile = (over: Partial<SmileData> = {}): SmileData =>
 const row = (strike: number, midIv: number, index = -1): LiveTickRow => ({
   key: strike.toFixed(4), strike, type: "C", k: 0, bidIv: midIv - 0.01, midIv, askIv: midIv + 0.01,
   bidPrice: 1, midPrice: 1, askPrice: 1, targetLo: midIv - 0.005, targetHi: midIv + 0.005, index,
+});
+
+describe("marketLayerKey", () => {
+  const band = (index: number): QuoteBand => ({
+    k: 0, bid: 0.19, ask: 0.21, mid: 0.2, index, excluded: false, amended: false, strike: 100,
+  });
+  it("remounts per live frame only when no quote has a click target (an uncalibrated node)", () => {
+    expect(marketLayerKey("z1", [band(-1), band(-1)], 7)).toBe("market-z1,t7");
+    expect(marketLayerKey("z1", [band(-1), band(-1)], 8)).not.toBe(marketLayerKey("z1", [band(-1), band(-1)], 7));
+    expect(marketLayerKey("z1", [], 3)).toBe("market-z1,t3");
+  });
+  it("keeps a tick-independent key while any beam is clickable (a calibrated node)", () => {
+    expect(marketLayerKey("z1", [band(-1), band(4)], 7)).toBe("market-z1");
+    expect(marketLayerKey("z1", [band(0)], 8)).toBe(marketLayerKey("z1", [band(0)], 9));
+  });
 });
 
 describe("smile frames", () => {

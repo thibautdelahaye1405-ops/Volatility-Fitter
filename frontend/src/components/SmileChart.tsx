@@ -25,6 +25,7 @@ import { formatPct, linearScale, niceTicks } from "../lib/chartScale";
 import { axisDisplayTicks, axisInvert, axisTransform, formatHoverValue } from "../lib/axisModes";
 import type { AxisContext, AxisMode } from "../lib/axisModes";
 import type { MarketFrame, SmileFrame } from "../lib/smileLayers";
+import { marketLayerKey } from "../lib/smileLayers";
 import { useElementSize } from "../lib/useElementSize";
 import { useChartZoom } from "../lib/useChartZoom";
 import { DEFAULT_AUTOSCALE } from "../lib/autoScaleY";
@@ -46,6 +47,9 @@ interface SmileChartProps {
   showCalibFit?: boolean;
   /** Strike keys (4 dp) whose live band moved in the last frame (flash). */
   liveFlash?: Set<string>;
+  /** Live frame counter (useLiveTicks.seq): remounts the market quote layer
+   *  per frame on a node without click targets (lib/smileLayers.marketLayerKey). */
+  liveSeq?: number;
   /** "marks" when the calibration chain is bid = ask closes (a Massive
    *  historical chain): quotes draw as diamonds and the legend says so. */
   quoteKind?: "quotes" | "marks";
@@ -142,6 +146,7 @@ export default function SmileChart({
   showCalibQuotes = false,
   showCalibFit = true,
   liveFlash,
+  liveSeq = 0,
   quoteKind = "quotes",
   prior,
   priorTransported = false,
@@ -548,7 +553,7 @@ export default function SmileChart({
                 {/* Market frame (primary): the prevailing bid/ask quotes + their
                     fit target, bright red; live-ticked strikes flash teal. */}
                 <QuoteLayer
-                  key={`market-${viewKey}`}
+                  key={marketLayerKey(viewKey, quotes, liveSeq)}
                   quotes={quotes}
                   variant="market"
                   toX={toX}

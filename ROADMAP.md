@@ -1030,6 +1030,32 @@ universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
 
+### 🧭 SESSION WRAP (2026-09-07d) — LIVE BEAMS PILING UP ON AN UNCALIBRATED NODE: A CHROMIUM REPAINT GHOST, REMOUNT THE LAYER PER FRAME
+
+User: "when nothing is calibrated yet (for instance for a dark node) and
+the quotes are streamed continuously, they are not redrawn: all quotes are
+added to the chart and remain in place (when the smile is calibrated and
+transported it works fine)". Diagnosed READ-ONLY on the running :8000
+(`scratchpad sse_peek.py`: 12 s of SSE frames under `fit_mode=mid` — the
+no-fit path on a haircut session — vs haircut): the stream is clean in both
+modes (75 stable strike keys, deltas + `gone`, a full re-send when the spot
+moves, no drift); the ONLY differences on the no-fit path are `index -1` on
+every row and no rolled `model`. So the pile-up is the repaint ghost the
+chart already documents (QuoteLayer / SmileChart: Chromium does not reliably
+invalidate path geometry changed in place inside the clipped group while
+ticks stream) — on a calibrated node the rolled curve repaints the region
+every spot tick and hides it; on an uncalibrated node nothing else repaints.
+FIX: `lib/smileLayers.marketLayerKey` — the market QuoteLayer's key carries
+the live frame counter (`useLiveTicks.seq`, new SmileChart prop `liveSeq`)
+when NO quote has a click target (every index -1: no calibration), so the
+layer remounts per frame (removal + insertion is invalidated reliably); a
+layer with click targets keeps its tick-independent key (a beam's click
+target must survive between pointer-down and click while streaming — the
+existing design). Locks in smileLayers.test.ts; tsc, vitest 507, build,
+workbench smoke green. Not reproducible headlessly (the synthetic source
+does not stream): the user confirms on the dark node after a reload (the
+dev server hot-reloads — no backend restart for this one).
+
 ### 🧭 SESSION WRAP (2026-09-07c) — ONE PRIOR PER NODE, ACTIVE ON SAVE; THE GRAPH STARTS FROM IT
 
 User: "When one saves a prior for a given node, then this prior is the prior

@@ -216,7 +216,7 @@ export default function SmileViewer() {
           <SmileChart
             market={fr.market} calib={fr.calib}
             showCalibQuotes={showCalibQuotes} showCalibFit={showCalibFit}
-            liveFlash={liveTicks.flash}
+            liveFlash={liveTicks.flash} liveSeq={liveTicks.seq}
             quoteKind={smile.quoteKind ?? "quotes"}
             prior={smile.prior} priorTransported={smile.priorTransported}
             scenario={scenarioCurve}

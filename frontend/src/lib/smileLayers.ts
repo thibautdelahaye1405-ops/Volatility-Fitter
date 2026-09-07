@@ -48,6 +48,24 @@ export function calibByStrike(quotes: readonly QuoteBand[]): Map<string, QuoteBa
   return m;
 }
 
+/**
+ * React key of the market QuoteLayer: the zoom / axis `viewKey` plus, when
+ * the layer has NO click target (every quote carries index -1: a node with
+ * no calibration — a dark node, or a fit under another target), the live
+ * frame counter. Chromium does not reliably invalidate path geometry that
+ * changes in place inside the chart's clipped group while ticks stream
+ * (ghost beams at the old positions); on a calibrated node the rolled fit
+ * curve repaints the region every spot tick and hides it, on an
+ * uncalibrated node nothing else repaints and the ghosts pile up into a
+ * scattered plot. Remounting the layer per frame is the reliable repaint.
+ * A layer WITH click targets keeps a tick-independent key so a beam's click
+ * target survives between pointer-down and click while streaming.
+ */
+export function marketLayerKey(viewKey: string, quotes: readonly QuoteBand[], liveSeq: number): string {
+  const clickable = quotes.some((q) => q.index >= 0);
+  return clickable ? `market-${viewKey}` : `market-${viewKey},t${liveSeq}`;
+}
+
 /** Live tick rows -> market quote bands (pure market: no edits), at the live forward. */
 export function liveQuoteBands(ticks: LiveTicksState): QuoteBand[] {
   const f = ticks.forward;
