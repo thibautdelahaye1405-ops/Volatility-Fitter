@@ -111,8 +111,9 @@ def test_defaults(client):
         "graphEtaScale": 1.0,
         "graphLambdaScale": 0.0,
         "graphNu": 0.1,
-        # The 2026-07-27 user-ratified flip (FINDINGS_message_phase4.md).
-        "graphPropagationMode": "precision_messages",
+        # GRAPH ERGONOMICS ARC ruling (2026-09-07): Layered (default) ->
+        # Precision -> Smooth field (legacy).
+        "graphPropagationMode": "layered_dynamic_harmonic",
         "dynamicsRegime": "sticky_strike",
         "ssr": 2.0,
         "autoCalibrate": True,

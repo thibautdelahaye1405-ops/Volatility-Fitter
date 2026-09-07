@@ -22,6 +22,8 @@ interface CrossMatrixCardProps {
   rows: MessageEdgeRow[];
   /** Open the row-level relation editor (the cell drill-in). */
   onDrillIn: () => void;
+  /** False (GRAPH ERGONOMICS ARC): the pane renders the Level-0 slider. */
+  dials?: boolean;
 }
 
 /** One rendered cell: β + σ with provenance. */
@@ -83,10 +85,11 @@ export default function CrossMatrixCard({
   tickers,
   rows,
   onDrillIn,
+  dials = true,
 }: CrossMatrixCardProps) {
   return (
     <div>
-      <MessageCrossSection params={params} setParam={setParam} raw={raw} />
+      {dials && <MessageCrossSection params={params} setParam={setParam} raw={raw} />}
 
       {tickers.length >= 2 && (
         <div className="mt-2">

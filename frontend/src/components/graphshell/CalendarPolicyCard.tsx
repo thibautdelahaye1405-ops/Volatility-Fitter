@@ -26,6 +26,10 @@ interface CalendarPolicyCardProps {
   /** Selected universe (tickers + expiry ladders), or null before it loads. */
   tickers: string[];
   expiries: Record<string, UniverseExpiry[]>;
+  /** False (GRAPH ERGONOMICS ARC): the pane renders the Level-0 sliders and
+   *  the live example itself — the card keeps only the policy switch, the
+   *  per-ticker overrides and the ladder view. */
+  dials?: boolean;
 }
 
 const INHERIT: CalendarOverride = { enabled: true, precisionScale: null, betaExponent: null };
@@ -35,12 +39,29 @@ const numCls =
   "font-mono text-[10px] text-slate-100 outline-none hover:border-slate-600 " +
   "focus:border-accent-500 disabled:cursor-not-allowed disabled:opacity-40";
 
+/** The live +1pt sentence on the canonical 3M/6M pair under the current dials
+ *  (spec §8.2/§9.2 — exactly the solver's shape and precision family). */
+export function calendarLiveExample(params: SolverParams): string {
+  const exBeta = calendarBeta(0.25, 0.5, params.alphaT);
+  const exPrecision = calendarPrecision(
+    0.25, 0.5, params.calPrecision, params.calEpsilon, params.calDecay,
+  );
+  return relationSentence({
+    sourceLabel: "6M",
+    targetLabel: "3M",
+    beta: exBeta,
+    precision: exPrecision,
+    rho: params.ampCal,
+  });
+}
+
 export default function CalendarPolicyCard({
   params,
   setParam,
   raw,
   tickers,
   expiries,
+  dials = true,
 }: CalendarPolicyCardProps) {
   const [ladderTicker, setLadderTicker] = useState("");
   const activeTicker = ladderTicker !== "" ? ladderTicker : (tickers[0] ?? "");
@@ -62,17 +83,7 @@ export default function CalendarPolicyCard({
 
   // LIVE +1pt example on the canonical 3M/6M pair (spec §8.2/§9.2): the exact
   // transfer and relationship uncertainty the current dials imply.
-  const exBeta = calendarBeta(0.25, 0.5, params.alphaT);
-  const exPrecision = calendarPrecision(
-    0.25, 0.5, params.calPrecision, params.calEpsilon, params.calDecay,
-  );
-  const example = relationSentence({
-    sourceLabel: "6M",
-    targetLabel: "3M",
-    beta: exBeta,
-    precision: exPrecision,
-    rho: params.ampCal,
-  });
+  const example = calendarLiveExample(params);
 
   // Ladder view under the ACTIVE ticker's effective policy.
   const policy = effectiveCalendarPolicy(params, activeTicker);
@@ -91,18 +102,20 @@ export default function CalendarPolicyCard({
     <div>
       {/* Policy switch: suppresses every calendar-class factor (auto ladders
           AND persisted calendar rows); cross relations keep flowing. */}
-      <label
-        className="mb-2 flex items-center gap-2 text-xs text-slate-300"
-        title="Calendar policy switch — off suppresses all calendar factors (auto ladders and persisted calendar rows); cross-asset relations keep flowing"
-      >
-        <input
-          type="checkbox"
-          checked={params.calendarEnabled}
-          onChange={(e) => setParam("calendarEnabled", e.target.checked)}
-          className="accent-accent-500"
-        />
-        Calendar messages
-      </label>
+      {dials && (
+        <label
+          className="mb-2 flex items-center gap-2 text-xs text-slate-300"
+          title="Calendar policy switch — off suppresses all calendar factors (auto ladders and persisted calendar rows); cross-asset relations keep flowing"
+        >
+          <input
+            type="checkbox"
+            checked={params.calendarEnabled}
+            onChange={(e) => setParam("calendarEnabled", e.target.checked)}
+            className="accent-accent-500"
+          />
+          Calendar messages
+        </label>
+      )}
 
       {!params.calendarEnabled ? (
         <p className="text-[10px] text-slate-600">
@@ -110,16 +123,18 @@ export default function CalendarPolicyCard({
         </p>
       ) : (
         <>
-          <MessageCalendarSection params={params} setParam={setParam} raw={raw} />
+          {dials && <MessageCalendarSection params={params} setParam={setParam} raw={raw} />}
 
           {/* LIVE example: recomputed from the dials above. */}
-          <p
-            className="mb-2 rounded-md border border-slate-800 bg-surface-800/60 px-2 py-1 font-mono text-[10px] text-slate-400"
-            data-testid="cal-live-example"
-            title="Live example on the canonical 3M/6M pair — exactly the solver's §8.2 shape and §9.2 precision family under the current dials"
-          >
-            {example}
-          </p>
+          {dials && (
+            <p
+              className="mb-2 rounded-md border border-slate-800 bg-surface-800/60 px-2 py-1 font-mono text-[10px] text-slate-400"
+              data-testid="cal-live-example"
+              title="Live example on the canonical 3M/6M pair — exactly the solver's §8.2 shape and §9.2 precision family under the current dials"
+            >
+              {example}
+            </p>
+          )}
 
           {/* Per-ticker policy overrides (unset fields inherit the dials). */}
           <div className="mb-1 mt-2 flex items-center justify-between">

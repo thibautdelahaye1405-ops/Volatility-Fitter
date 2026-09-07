@@ -14,7 +14,7 @@
 // byte-identical output.
 
 export interface LayoutNode { ticker: string; expiry: string; t: number }
-export interface LayoutEdgeIn { fromTicker: string; fromExpiry: string; toTicker: string; toExpiry: string; weight: number }
+export interface LayoutEdgeIn { fromTicker: string; fromExpiry: string; toTicker: string; toExpiry: string; weight: number; beta?: number }
 export interface PlacedNode { ticker: string; expiry: string; t: number; x: number; y: number }
 export interface PodLayout { ticker: string; cx: number; cy: number; radius: number; nodes: PlacedNode[] }
 export interface BundleEdge {
@@ -22,14 +22,29 @@ export interface BundleEdge {
   totalWeight: number;                     // sum of |weight| across all individual edges both directions
   count: number;                           // number of individual cross edges in the bundle
   bidirectional: boolean;                  // true when edges exist in both directions
+  /** |weight|-weighted mean beta across the pair's edges (edges without a
+   *  beta count as 1; 1 when the pair's total |weight| is 0). */
+  meanBeta: number;
   // Direction flags for honest arrowheads (engine truth: an a→b edge means b
   // INFORMS a, i.e. information flows INTO the a/x1 end of the bundle).
   hasAb: boolean;                          // an edge stored as (a → b) exists
   hasBa: boolean;                          // an edge stored as (b → a) exists
   x1: number; y1: number; x2: number; y2: number;  // pod-boundary anchor points (on the circles, along the center line)
 }
-export interface CalendarEdge { ticker: string; fromExpiry: string; toExpiry: string; weight: number; x1: number; y1: number; x2: number; y2: number }
-export interface PairEdgeDetail { fromTicker: string; fromExpiry: string; toTicker: string; toExpiry: string; weight: number; x1: number; y1: number; x2: number; y2: number }
+export interface CalendarEdge {
+  ticker: string; fromExpiry: string; toExpiry: string; weight: number;
+  /** Beta of the max-|weight| directed edge on this hop (1 when the hop
+   *  carries no edge, or none of its edges carry a beta). */
+  beta: number;
+  /** An input edge exists whose FROM (the RECEIVER, chart convention) is the
+   *  earlier / later expiry of this hop — i.e. information flows toward that
+   *  end. Both can be true (a bidirectional hop); both false for a
+   *  zero-weight filler. */
+  toEarlier: boolean;
+  toLater: boolean;
+  x1: number; y1: number; x2: number; y2: number;
+}
+export interface PairEdgeDetail { fromTicker: string; fromExpiry: string; toTicker: string; toExpiry: string; weight: number; beta: number; x1: number; y1: number; x2: number; y2: number }
 export interface GraphLayout {
   pods: PodLayout[];
   nodePos: Map<string, { x: number; y: number }>;   // key `${ticker}|${expiry}`
@@ -123,6 +138,8 @@ interface PairAgg {
   count: number;
   ab: boolean; ba: boolean;        // direction flags (a→b seen / b→a seen)
   details: LayoutEdgeIn[];         // individual edges, input order
+  betaNum: number;                 // Σ|weight|·beta (beta defaults to 1)
+  betaDen: number;                 // Σ|weight|
 }
 
 export function computeGraphLayout(nodes: LayoutNode[], edges: LayoutEdgeIn[]): GraphLayout {
@@ -168,13 +185,16 @@ export function computeGraphLayout(nodes: LayoutNode[], edges: LayoutEdgeIn[]): 
     const key = `${a}|${b}`;
     let agg = pairs.get(key);
     if (agg === undefined) {
-      agg = { a, b, totalWeight: 0, count: 0, ab: false, ba: false, details: [] };
+      agg = { a, b, totalWeight: 0, count: 0, ab: false, ba: false, details: [], betaNum: 0, betaDen: 0 };
       pairs.set(key, agg);
     }
-    agg.totalWeight += Math.abs(e.weight);
+    const w = Math.abs(e.weight);
+    agg.totalWeight += w;
     agg.count += 1;
     if (flip) agg.ba = true; else agg.ab = true;
     agg.details.push(e);
+    agg.betaNum += w * (e.beta ?? 1);
+    agg.betaDen += w;
   }
 
   // ---- calendar aggregation: per adjacent-expiry hop of each spine --------
@@ -184,6 +204,11 @@ export function computeGraphLayout(nodes: LayoutNode[], edges: LayoutEdgeIn[]): 
   // spine segment and are ignored here.
   const spinePos = spines.map((s) => new Map<string, number>(s.map((n, j) => [n.expiry, j])));
   const calW = spines.map((s) => new Array<number>(Math.max(0, s.length - 1)).fill(0));
+  // Beta of the max-|weight| directed edge per hop (1 = no edge / no beta),
+  // plus per-direction existence flags for honest calendar arrowheads.
+  const calBeta = spines.map((s) => new Array<number>(Math.max(0, s.length - 1)).fill(1));
+  const calToEarlier = spines.map((s) => new Array<boolean>(Math.max(0, s.length - 1)).fill(false));
+  const calToLater = spines.map((s) => new Array<boolean>(Math.max(0, s.length - 1)).fill(false));
   for (const e of valid) {
     if (e.fromTicker !== e.toTicker) continue;
     const i = podIndex.get(e.fromTicker) ?? -1;
@@ -191,7 +216,15 @@ export function computeGraphLayout(nodes: LayoutNode[], edges: LayoutEdgeIn[]): 
     const pt = spinePos[i].get(e.toExpiry) ?? -1;
     if (Math.abs(pf - pt) !== 1) continue; // adjacent hops only (incl. self-loops out)
     const seg = Math.min(pf, pt);
-    calW[i][seg] = Math.max(calW[i][seg], Math.abs(e.weight));
+    const w = Math.abs(e.weight);
+    if (w > calW[i][seg]) {
+      calW[i][seg] = w;
+      calBeta[i][seg] = e.beta ?? 1;
+    }
+    // fromExpiry is the RECEIVER (chart convention): an earlier fromExpiry
+    // means information flows toward the earlier expiry, and vice versa.
+    if (pf < pt) calToEarlier[i][seg] = true;
+    else calToLater[i][seg] = true;
   }
 
   // ---- force simulation on pod centers only -------------------------------
@@ -312,6 +345,7 @@ export function computeGraphLayout(nodes: LayoutNode[], edges: LayoutEdgeIn[]): 
       fromTicker: p.a, toTicker: p.b,
       totalWeight: p.totalWeight, count: p.count,
       bidirectional: p.ab && p.ba,
+      meanBeta: p.betaDen > 0 ? p.betaNum / p.betaDen : 1,
       hasAb: p.ab, hasBa: p.ba,
       x1: pa.cx + ux * pa.radius, y1: pa.cy + uy * pa.radius,
       x2: pb.cx - ux * pb.radius, y2: pb.cy - uy * pb.radius,
@@ -330,6 +364,8 @@ export function computeGraphLayout(nodes: LayoutNode[], edges: LayoutEdgeIn[]): 
         ticker: tickers[i],
         fromExpiry: spine[j].expiry, toExpiry: spine[j + 1].expiry,
         weight: calW[i][j],
+        beta: calBeta[i][j],
+        toEarlier: calToEarlier[i][j], toLater: calToLater[i][j],
         x1: a.x, y1: a.y, x2: b.x, y2: b.y,
       });
     }
@@ -349,6 +385,7 @@ export function computeGraphLayout(nodes: LayoutNode[], edges: LayoutEdgeIn[]): 
         fromTicker: e.fromTicker, fromExpiry: e.fromExpiry,
         toTicker: e.toTicker, toExpiry: e.toExpiry,
         weight: e.weight,
+        beta: e.beta ?? 1,
         x1: from.x, y1: from.y, x2: to.x, y2: to.y,
       };
     });

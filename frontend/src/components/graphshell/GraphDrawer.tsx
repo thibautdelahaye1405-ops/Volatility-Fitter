@@ -1,6 +1,9 @@
-// Graph shell BOTTOM drawer (P5b U0; test pulse unified in U3): Preview |
-// Diagnostics | Validation | Observation plan.
+// Graph shell BOTTOM drawer (P5b U0; test pulse unified in U3; Relations tab
+// E5): Relations | Preview | Diagnostics | Validation | Observation plan.
 //
+//   Relations    — (message family) every relation of the draft as a row:
+//                  search / filter / sort, select → canvas + inspector,
+//                  undo / redo, seed / reset, templates, the full editor.
 //   Preview      — what the next Run will propagate: the what-if TEST PULSE
 //                  rows (editable shifts + canonical scenario shortcuts;
 //                  non-persisting, runs the ACTIVE operator on the production
@@ -17,8 +20,11 @@
 // The shell owns tab/open state so a landing run can reveal Diagnostics.
 import ExtrapolateResults from "../ExtrapolateResults";
 import ObservationPlanCard from "../ObservationPlanCard";
+import RelationsTab from "./RelationsTab";
 import TimelinePreview from "./TimelinePreview";
 import ValidationTab from "./ValidationTab";
+import type { NodeRef } from "../../lib/relationRows";
+import type { RelationDraft } from "../../state/useRelationDraft";
 import { planAnnotations } from "../../lib/planAnnotations";
 import { buildScenario, SCENARIOS } from "../../lib/whatifScenarios";
 import type { GraphNodeBase, UseGraphResult } from "../../state/useGraph";
@@ -30,9 +36,10 @@ import type { UseLooComparisonResult } from "../../state/useLooComparison";
 import type { MessageEdgeRow } from "../../state/useMessageEdges";
 import type { ObservationSource } from "./GraphTopBar";
 
-export type DrawerTab = "preview" | "diagnostics" | "validation" | "plan";
+export type DrawerTab = "relations" | "preview" | "diagnostics" | "validation" | "plan";
 
 const TABS: { id: DrawerTab; label: string }[] = [
+  { id: "relations", label: "Relations" },
   { id: "preview", label: "Preview" },
   { id: "diagnostics", label: "Diagnostics" },
   { id: "validation", label: "Validation" },
@@ -53,6 +60,13 @@ interface GraphDrawerProps {
   looBodies: { smooth: ExtrapolateBody; messages: ExtrapolateBody };
   /** Effective relation rows — the plan's competing-signals annotation. */
   msgRows: MessageEdgeRow[];
+  /** The relation draft (message family) — the Relations tab. */
+  draft: RelationDraft;
+  raw: boolean;
+  selectedRelationKey: string | null;
+  onSelectRelation: (key: string) => void;
+  universeNodes: NodeRef[];
+  onOpenFullEditor: () => void;
   flatAtm: boolean;
   setFlatAtm: (v: boolean) => void;
   selected: { ticker: string; expiry: string } | null;
@@ -74,6 +88,12 @@ export default function GraphDrawer({
   loo,
   looBodies,
   msgRows,
+  draft,
+  raw,
+  selectedRelationKey,
+  onSelectRelation,
+  universeNodes,
+  onOpenFullEditor,
   flatAtm,
   setFlatAtm,
   selected,
@@ -272,7 +292,24 @@ export default function GraphDrawer({
       />
     );
 
+  const relations = messagesOperator ? (
+    <RelationsTab
+      draft={draft}
+      params={graph.params}
+      raw={raw}
+      selectedKey={selectedRelationKey}
+      onSelect={onSelectRelation}
+      nodes={universeNodes}
+      onOpenFullEditor={onOpenFullEditor}
+    />
+  ) : (
+    <p className="py-2 text-xs text-slate-500">
+      The smooth field has no relation rows — its per-edge weights live in the pane's Edges editor.
+    </p>
+  );
+
   const content: Record<DrawerTab, React.ReactNode> = {
+    relations,
     preview,
     diagnostics,
     validation,
@@ -310,7 +347,11 @@ export default function GraphDrawer({
           {open ? "▾" : "▴"}
         </button>
       </div>
-      {open && <div className="h-52 overflow-y-auto border-t border-slate-800 px-4 py-2">{content[tab]}</div>}
+      {open && (
+        <div className={(tab === "relations" ? "h-64" : "h-52") + " overflow-y-auto border-t border-slate-800 px-4 py-2"}>
+          {content[tab]}
+        </div>
+      )}
     </div>
   );
 }

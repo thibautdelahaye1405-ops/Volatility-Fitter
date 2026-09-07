@@ -14,6 +14,8 @@ import type { WaveState } from "../GraphNetworkChart.helpers";
 import type { GraphNodeBase, GraphSolveNode } from "../../state/useGraph";
 import type { ParticleSpec } from "../../state/useAttributionParticles";
 import type { LayoutEdgeIn } from "../../lib/graphLayout";
+import type { NodeRef } from "../../lib/relationRows";
+import { BETA_LEGEND, WIDTH_LEGEND, betaColor } from "../../lib/edgeStyle";
 
 interface CanvasCardProps {
   /** Baseline still loading (and no production field to show instead). */
@@ -32,6 +34,13 @@ interface CanvasCardProps {
   onEdgeClick?: (sel: GraphEdgeSelection) => void;
   /** A node dropped onto the canvas (wave 3, C5). */
   onNodeDrop?: (node: DragNode) => void;
+  /** E3: the relation highlighted on the canvas + the connect gesture. */
+  selectedRelationKey?: string | null;
+  onConnect?: (source: NodeRef, target: NodeRef) => void;
+  focused?: boolean;
+  onToggleFocus?: () => void;
+  /** Message family: the legend explains the arrow encodings. */
+  editable?: boolean;
 }
 
 export default function CanvasCard({
@@ -48,6 +57,11 @@ export default function CanvasCard({
   manual,
   onEdgeClick,
   onNodeDrop,
+  selectedRelationKey = null,
+  onConnect,
+  focused,
+  onToggleFocus,
+  editable = false,
 }: CanvasCardProps) {
   const [dropHalo, setDropHalo] = useState(false);
   const onDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -103,6 +117,10 @@ export default function CanvasCard({
             onToggle={onToggle}
             onOpenSmile={onOpenSmile}
             onEdgeClick={onEdgeClick}
+            selectedRelationKey={selectedRelationKey}
+            onConnect={onConnect}
+            focused={focused}
+            onToggleFocus={onToggleFocus}
             wave={wave}
             particles={particles}
             waveEpoch={waveEpoch}
@@ -114,8 +132,10 @@ export default function CanvasCard({
       <div className="mt-1 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-600">
         <span>
           {manual
-            ? "Click to pulse/unpulse · click an edge to inspect the relation · double-click to open smile · drop a node from the Nodes pane to pulse it"
-            : "Click a node or edge to inspect · double-click to open smile · drag to pan, wheel to zoom · drop a node from the Nodes pane to light it"}
+            ? "Click to pulse/unpulse · click an arrow to edit the relation · double-click to open smile · drop a node from the Nodes pane to pulse it"
+            : editable
+              ? "Click a node to inspect · click an arrow to edit it · Connect tool or Shift-drag node → node adds a relation · click a ticker label to collapse its pod"
+              : "Click a node or edge to inspect · double-click to open smile · drag to pan, wheel to zoom · drop a node from the Nodes pane to light it"}
         </span>
         {/* The post-Run reveal is an INFLUENCE visualization (real BFS hops
             from the observations) — never solver chronology. */}
@@ -139,6 +159,25 @@ export default function CanvasCard({
           <span className="flex items-center gap-1">
             <span className="h-3 w-3 rounded-full bg-slate-400/25" /> halo = uncertainty (sd)
           </span>
+          {editable && (
+            <>
+              <span className="flex items-center gap-1" title="Arrow thickness = relationship confidence (σ in vol points on fixed anchors: 10 pt thin … ¼ pt thick)">
+                <svg width="34" height="12" aria-hidden>
+                  {WIDTH_LEGEND.map((w, i) => (
+                    <line key={w.label} x1={2 + i * 11} y1={11} x2={9 + i * 11} y2={1} stroke="rgb(148 163 184)" strokeWidth={w.width} strokeLinecap="round" />
+                  ))}
+                </svg>
+                width = confidence
+              </span>
+              <span className="flex items-center gap-1" title="Arrow colour = β: cool below 1, slate at 1, warm above 1, rose when negative">
+                <span
+                  className="h-2 w-10 rounded-sm"
+                  style={{ background: `linear-gradient(90deg, ${BETA_LEGEND.map((s) => betaColor(s.beta)).join(", ")})` }}
+                />
+                colour = β
+              </span>
+            </>
+          )}
         </span>
       </div>
     </div>

@@ -19,6 +19,7 @@ import {
 import { calendarBeta, calendarPrecision } from "../../lib/messagePreview";
 import { effectiveCalendarPolicy } from "../../lib/calendarPolicy";
 import { fmtSigmaPts, relationSentence } from "../../lib/precisionUnits";
+import { relationKey, rowsForCalendarPair, rowsForTickerPair } from "../../lib/relationRows";
 import { nodeKey, type SolverParams } from "../../state/useGraph";
 import type { ExtrapolateNode } from "../../state/useGraphExtrapolation";
 import type { MessageEdgeRow } from "../../state/useMessageEdges";
@@ -131,7 +132,10 @@ export function MessageInspector({
   );
 }
 
-/** The edge-click relation card: a calendar pair or a cross ticker pair. */
+/** The edge-click PAIR card: a calendar pair or a cross ticker pair. Since
+ *  the GRAPH ERGONOMICS ARC the pair's rows are listed as selectable entries
+ *  (`onSelectRelation` opens the slider card); the β/σ summary below stays
+ *  for pairs without a row (auto at solve time). */
 export function EdgeInspectorCard({
   edge,
   rows,
@@ -140,6 +144,7 @@ export function EdgeInspectorCard({
   messages,
   onClose,
   onEditRelations,
+  onSelectRelation,
 }: {
   edge: GraphEdgeSelection;
   rows: MessageEdgeRow[];
@@ -148,7 +153,14 @@ export function EdgeInspectorCard({
   messages: boolean;
   onClose: () => void;
   onEditRelations: () => void;
+  onSelectRelation?: (key: string) => void;
 }) {
+  if (edge.kind === "relation") return null; // the RelationCard owns this kind
+  const pairRows = messages
+    ? edge.kind === "cross"
+      ? rowsForTickerPair(rows, edge.a, edge.b)
+      : rowsForCalendarPair(rows, edge.ticker, edge.aExpiry, edge.bExpiry)
+    : [];
   let body: React.ReactNode;
   if (!messages) {
     body = (
@@ -261,15 +273,37 @@ export function EdgeInspectorCard({
           ×
         </button>
       </div>
-      {body}
+      {pairRows.length > 0 && (
+        <div className="mb-1.5 max-h-40 overflow-y-auto">
+          {pairRows.map((r) => {
+            const key = relationKey(r);
+            return (
+              <button
+                key={key}
+                onClick={() => onSelectRelation?.(key)}
+                title="Open this relation's slider card"
+                data-testid="pair-row"
+                className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left font-mono text-[10px] text-slate-300 transition-colors hover:bg-surface-800"
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {short(r.sourceTicker, r.sourceExpiry)} <span className="text-accent-400">→</span>{" "}
+                  {short(r.targetTicker, r.targetExpiry)}
+                </span>
+                <span className="text-slate-500">β {r.betaAtmVol.toFixed(2)} · σ {fmtSigmaPts(r.messagePrecision)}pt</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {pairRows.length === 0 && body}
       {messages && (
         <button
           onClick={onEditRelations}
           className="mt-1.5 flex items-center gap-1 rounded-md border border-slate-700 bg-surface-800 px-2 py-1 text-[10px] font-medium text-slate-300 transition-colors hover:border-slate-600 hover:text-slate-100"
-          title="Open the row-level relation editor"
+          title="Open the Relations tab (every relation as a row)"
         >
           <Grid3x3 size={11} strokeWidth={1.75} className="opacity-80" />
-          Edit relations
+          All relations
         </button>
       )}
     </div>

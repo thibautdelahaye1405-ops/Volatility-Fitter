@@ -195,9 +195,10 @@ export interface OptionsSettings {
   graphEtaScale: number;
   graphLambdaScale: number;
   graphNu: number;
-  /** Default propagation operator for the production graph solve (message
-   *  arc): smooth_field = legacy byte-identical; hybrid is config-only. */
-  graphPropagationMode: "smooth_field" | "precision_messages" | "hybrid";
+  /** Default propagation operator (message arc + GRAPH ERGONOMICS ARC):
+   *  layered_dynamic_harmonic = directed pipeline (2026-09-07 default);
+   *  smooth_field = legacy byte-identical rollback; hybrid = config-only. */
+  graphPropagationMode: "smooth_field" | "precision_messages" | "hybrid" | "layered_dynamic_harmonic";
   dynamicsRegime: DynamicsRegime;
   ssr: number;
   autoCalibrate: boolean;
@@ -306,9 +307,10 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   graphEtaScale: 1.0,
   graphLambdaScale: 0.0,
   graphNu: 0.1,
-  // USER-RATIFIED FLIP 2026-07-27 (FINDINGS_message_phase4.md): messages is
-  // the product default; smooth_field stays explicit configuration/rollback.
-  graphPropagationMode: "precision_messages",
+  // GRAPH ERGONOMICS ARC ruling (2026-09-07): Layered (default) -> Precision
+  // -> Smooth field (legacy). Supersedes the 2026-07-27 flip to messages
+  // (FINDINGS_message_phase4.md), which is now the second-choice operator.
+  graphPropagationMode: "layered_dynamic_harmonic",
   dynamicsRegime: "sticky_strike",
   ssr: 2.0,
   autoCalibrate: true,

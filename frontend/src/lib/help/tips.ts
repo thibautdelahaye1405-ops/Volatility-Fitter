@@ -170,6 +170,27 @@ export const TIPS: Tip[] = [
     scope: "graph", level: "pro",
     action: { command: "help.open", arg: "guides:graph", label: "Read the Graph guide" },
   },
+  {
+    id: "graph-connect-tool",
+    title: "Draw a relation with the Connect tool or Shift-drag",
+    body: "The canvas toolbar's Connect tool turns the next node-to-node drag into a new relation, informer → receiver; holding Shift while dragging does the same without switching tools. The new arrow lands selected in the relation card.",
+    scope: "graph", level: "basic",
+    action: { command: "lens.graph", label: "Go to the Graph lens" },
+  },
+  {
+    id: "graph-live-preview",
+    title: "Turn on Live before you start turning dials",
+    body: "The Live toggle re-solves a few hundred milliseconds after every dial or relation edit and tags the summary **preview** — nothing is recorded until you press Run, so it is a free way to see a change before committing it.",
+    scope: "graph", level: "basic",
+    action: { command: "lens.graph", label: "Go to the Graph lens" },
+  },
+  {
+    id: "graph-collapse-pods",
+    title: "Collapse ticker pods to keep a big universe legible",
+    body: "Click a ticker's pod label to fold its expiries into one node, or use the canvas toolbar to collapse or expand every pod at once. Cross-ticker relations still bundle into one arrow per pair while collapsed.",
+    scope: "graph", level: "pro",
+    action: { command: "lens.graph", label: "Go to the Graph lens" },
+  },
   // ------------------------------------------------------------ Forwards
   {
     id: "forwards-ladder-click",

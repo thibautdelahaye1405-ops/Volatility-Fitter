@@ -20,8 +20,11 @@ function e(
   fromTicker: string, fromExpiry: string,
   toTicker: string, toExpiry: string,
   weight: number,
+  beta?: number,
 ): LayoutEdgeIn {
-  return { fromTicker, fromExpiry, toTicker, toExpiry, weight };
+  return beta === undefined
+    ? { fromTicker, fromExpiry, toTicker, toExpiry, weight }
+    : { fromTicker, fromExpiry, toTicker, toExpiry, weight, beta };
 }
 
 // 5 tickers; SPX carries 4 expiries (deliberately listed out of t order to
@@ -35,8 +38,10 @@ const NODES: LayoutNode[] = [
 ];
 
 const EDGES: LayoutEdgeIn[] = [
-  // SPX calendar: both directions on the first hop (max rule picks 10).
-  e("SPX", E1, "SPX", E2, 10), e("SPX", E2, "SPX", E1, 4),
+  // SPX calendar: both directions on the first hop (max rule picks 10,
+  // carrying its beta 1.2 — the golden lock for CalendarEdge.beta/toEarlier/
+  // toLater below).
+  e("SPX", E1, "SPX", E2, 10, 1.2), e("SPX", E2, "SPX", E1, 4, 0.5),
   e("SPX", E2, "SPX", E3, 8), e("SPX", E3, "SPX", E4, 6),
   // NDX calendar chain.
   e("NDX", E1, "NDX", E2, 9), e("NDX", E2, "NDX", E3, 7),
@@ -44,9 +49,10 @@ const EDGES: LayoutEdgeIn[] = [
   e("AAPL", E1, "AAPL", E2, 5),
   // MSFT full chain; TSLA has no calendar edges at all (both hops fillers).
   e("MSFT", E1, "MSFT", E2, 3), e("MSFT", E2, "MSFT", E3, 2),
-  // Cross pairs: SPX↔NDX both directions, the rest one-way; one negative
-  // weight to prove |weight| aggregation.
-  e("SPX", E1, "NDX", E1, 5), e("NDX", E2, "SPX", E2, 3),
+  // Cross pairs: SPX↔NDX both directions (with betas — the BundleEdge.meanBeta
+  // golden lock below), the rest one-way; one negative weight to prove
+  // |weight| aggregation.
+  e("SPX", E1, "NDX", E1, 5, 2), e("NDX", E2, "SPX", E2, 3, 0.5),
   e("SPX", E1, "AAPL", E1, 2),
   e("NDX", E3, "AAPL", E1, -4),
   e("MSFT", E1, "TSLA", E1, 1.5),
@@ -139,6 +145,19 @@ describe("bundle aggregation", () => {
       expect(Math.hypot(b.x2 - (pb?.cx ?? 0), b.y2 - (pb?.cy ?? 0))).toBeCloseTo(pb?.radius ?? -1, 6);
     }
   });
+
+  it("golden: SPX<->NDX meanBeta is the |weight|-weighted mean of its two betas", () => {
+    const spxNdx = bundleOf(layout, "SPX", "NDX");
+    // (5*2 + 3*0.5) / (5+3) = 11.5 / 8 = 1.4375
+    expect(spxNdx.meanBeta).toBeCloseTo(1.4375, 12);
+  });
+
+  it("defaults meanBeta to 1 when none of the pair's edges carry a beta", () => {
+    const msftTsla = bundleOf(layout, "TSLA", "MSFT");
+    expect(msftTsla.meanBeta).toBe(1);
+    const spxAapl = bundleOf(layout, "AAPL", "SPX");
+    expect(spxAapl.meanBeta).toBe(1);
+  });
 });
 
 describe("calendar continuity", () => {
@@ -174,6 +193,26 @@ describe("calendar continuity", () => {
       expect({ x: c.x2, y: c.y2 }).toEqual(b);
     }
   });
+
+  it("golden: the SPX first hop is bidirectional and carries the max-weight edge's beta", () => {
+    const hop = layout.calendar.find((c) => c.ticker === "SPX" && c.fromExpiry === E1 && c.toExpiry === E2);
+    // weight 10 (E1->E2, beta 1.2) beats weight 4 (E2->E1, beta 0.5).
+    expect(hop?.beta).toBeCloseTo(1.2, 12);
+    expect(hop?.toEarlier).toBe(true); // E2->E1 informs E1 (receiver = earlier)
+    expect(hop?.toLater).toBe(true); // E1->E2 informs E2 (receiver = later)
+  });
+
+  it("a one-directional hop sets only its own direction flag; a filler sets neither", () => {
+    const spxSecondHop = layout.calendar.find((c) => c.ticker === "SPX" && c.fromExpiry === E2 && c.toExpiry === E3);
+    expect(spxSecondHop?.toEarlier).toBe(true); // E2 (earlier) is the FROM/receiver
+    expect(spxSecondHop?.toLater).toBe(false);
+    expect(spxSecondHop?.beta).toBe(1); // no beta on that edge -> default
+
+    const tslaFiller = layout.calendar.find((c) => c.ticker === "TSLA" && c.fromExpiry === E1 && c.toExpiry === E2);
+    expect(tslaFiller?.toEarlier).toBe(false);
+    expect(tslaFiller?.toLater).toBe(false);
+    expect(tslaFiller?.beta).toBe(1);
+  });
 });
 
 describe("pairDetails", () => {
@@ -185,7 +224,12 @@ describe("pairDetails", () => {
     const d0 = details.find((d) => d.fromTicker === "SPX");
     const d1 = details.find((d) => d.fromTicker === "NDX"); // both directions present
     expect(d0?.weight).toBe(5);
+    expect(d0?.beta).toBe(2);
     expect(d1?.weight).toBe(3);
+    expect(d1?.beta).toBe(0.5);
+    // An edge with no input beta carries the default (1).
+    const spxAapl = layout.pairDetails("SPX", "AAPL");
+    expect(spxAapl[0]?.beta).toBe(1);
     for (const d of details) {
       expect({ x: d.x1, y: d.y1 }).toEqual(layout.nodePos.get(`${d.fromTicker}|${d.fromExpiry}`));
       expect({ x: d.x2, y: d.y2 }).toEqual(layout.nodePos.get(`${d.toTicker}|${d.toExpiry}`));

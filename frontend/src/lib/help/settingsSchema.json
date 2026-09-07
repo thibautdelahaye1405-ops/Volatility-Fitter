@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-03",
+  "generatedAt": "2026-09-07",
   "models": {
     "fit": {
       "title": "FitSettings",
@@ -760,9 +760,10 @@
           "enum": [
             "smooth_field",
             "precision_messages",
-            "hybrid"
+            "hybrid",
+            "layered_dynamic_harmonic"
           ],
-          "default": "precision_messages"
+          "default": "layered_dynamic_harmonic"
         },
         {
           "name": "dynamicsRegime",

@@ -187,15 +187,16 @@ export const GRAPH_DOCS: SettingDoc[] = [
     label: "Propagation operator",
     summary: "Choose the default operator the graph solve uses to carry lit innovations to dark nodes.",
     details:
-      "`precision_messages` (the default, user-ratified 2026-07-27): every edge is a contract z_i ≈ β z_j at a stated relation precision. A receiver inherits the full configured amplitude whatever the trust, competing messages are precision-weighted votes (never sums), distance costs confidence but never amplitude, and a silent neighbour costs nothing.\n\n" +
-      "`smooth_field` is the legacy increment prior (the κ/η/λ/ν committee) — the explicit rollback, byte-identical to the pre-message product, and still the *wire* default on a bare solve request so replay, byte-identity locks and the backtest harness are untouched. `hybrid` adds the smoothing term to the message factors; it is configuration-only and not offered in the dialog.\n\n" +
-      "Why the flip: at the daily horizon the two operators tie on RMS, but on the intraday replay messages carry the signal at 65.8 bp where smooth-field is nearly inert (168.6 bp against a pure-transport 172.7). The recorded daily-horizon price is graph bands about 2× narrower and wing medians about +5 bp. Seeds the Graph lens's mode selector; a store that ever saved Options keeps its explicit value until re-saved. No cache is touched.",
+      "`layered_dynamic_harmonic` (the default, GRAPH ERGONOMICS ARC ruling 2026-09-07) is the directed dynamic-harmonic pipeline: each node listens to its parents, remembers its own residual with a half-life, and completes the rest of the graph harmonically — the desk's pick for its directed/temporal semantics (a move propagates forward in time and along edges the way a trader reasons about it).\n\n" +
+      "`precision_messages` (the product default from 2026-07-27 to 2026-09-07, FINDINGS_message_phase4.md) is next in the operator order: every edge is a contract z_i ≈ β z_j at a stated relation precision. A receiver inherits the full configured amplitude whatever the trust, competing messages are precision-weighted votes (never sums), distance costs confidence but never amplitude, and a silent neighbour costs nothing.\n\n" +
+      "`smooth_field` is the legacy increment prior (the κ/η/λ/ν committee) — kept as the explicit rollback under Advanced, byte-identical to the pre-message product, and still the *wire* default on a bare solve request so replay, byte-identity locks and the backtest harness are untouched. `hybrid` adds the smoothing term to the message factors; it is configuration-only and not offered in the dialog.\n\n" +
+      "Why the 2026-07-27 flip to messages: at the daily horizon the two operators tie on RMS, but on the intraday replay messages carried the signal at 65.8 bp where smooth-field was nearly inert (168.6 bp against a pure-transport 172.7), for graph bands about 2× narrower and wing medians about +5 bp. Recorded caveat carried by the CURRENT default: that same intraday campaign scored the static precision-message arm above every layered arm on the ETF triangle — the user chose layered anyway for its directed semantics, and a benchmark-pack adjudication may revisit the default (never the Layered → Precision → Smooth-field ordering of the dialog). Seeds the Graph lens's mode selector; a store that ever saved Options keeps its explicit value until re-saved. No cache is touched.",
     example:
-      "Switch to smooth_field on a six-node SPY/QQQ universe with SPY 6M lit: the dark nodes' moves shrink toward zero at day-scale stiffness, where precision_messages carried the full β-scaled move with wider bands.",
+      "Switch to smooth_field on a six-node SPY/QQQ universe with SPY 6M lit: the dark nodes' moves shrink toward zero at day-scale stiffness, where layered_dynamic_harmonic and precision_messages both carry the full β-scaled move with wider bands.",
     cacheEffect: "display-only",
     surfaced: true,
     related: ["graphKappaScale", "graphEtaScale", "help:guides:graph"],
-    docs: ["14_graph_messages"],
+    docs: ["14_graph_messages", "docs_graph_dynamic_harmonic"],
   },
 ];
 

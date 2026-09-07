@@ -181,6 +181,9 @@ export interface UseGraphExtrapolationResult {
   error: string | null;
   /** §16.4 inconsistent-cycle flags of the last solve (empty when clean). */
   cycles: CycleFlag[];
+  /** The field on screen came from a live PREVIEW (`preview: true` — nothing
+   *  recorded server-side); false after an explicit Run. */
+  preview: boolean;
   backtest: BacktestResult | null;
   backtesting: boolean;
   backtestError: string | null;
@@ -196,6 +199,7 @@ export function useGraphExtrapolation(): UseGraphExtrapolationResult {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cycles, setCycles] = useState<CycleFlag[]>([]);
+  const [preview, setPreview] = useState(false);
   const [backtest, setBacktest] = useState<BacktestResult | null>(null);
   const [backtesting, setBacktesting] = useState(false);
   const [backtestError, setBacktestError] = useState<string | null>(null);
@@ -207,6 +211,7 @@ export function useGraphExtrapolation(): UseGraphExtrapolationResult {
       const res = await api.post<ExtrapolateResponse>("/graph/extrapolate", { body });
       setNodes(res.nodes);
       setCycles(res.cycleDiagnostics ?? []);
+      setPreview(body.preview === true);
     } catch (err: unknown) {
       setError(messageOf(err));
     } finally {
@@ -233,6 +238,7 @@ export function useGraphExtrapolation(): UseGraphExtrapolationResult {
   const clear = useCallback(() => {
     setNodes(null);
     setCycles([]);
+    setPreview(false);
     setBacktest(null);
     setError(null);
     setBacktestError(null);
@@ -249,6 +255,7 @@ export function useGraphExtrapolation(): UseGraphExtrapolationResult {
     running,
     error,
     cycles,
+    preview,
     backtest,
     backtesting,
     backtestError,

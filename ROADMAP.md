@@ -237,7 +237,95 @@ half-life/update-rule/D6 sweeps; §16.3 adoption gate) then Phase 6
 
 ---
 
-## PRECISION-MESSAGE GRAPH ARC — adopted 2026-07-18 (current top arc)
+## GRAPH ERGONOMICS ARC — adopted 2026-09-07 (current top arc)
+
+User brief (2026-09-07): "There are too many parameters at the same level,
+which makes it complicated and not intuitive. Better ergonomy and a
+simplified workflow: (1) Layer by default (precision next); (2) large
+expandable graph with easy edge addition / deletion / amendment; (3)
+sliders for the edge parameters; (4) arrows with colour / thickness
+visualising an edge's precision and β; (5) other trader-friendly features."
+The arc keeps every solver contract of the PRECISION-MESSAGE and
+DYNAMIC-HARMONIC arcs (operators, goldens, byte-identity locks, the U6
+draft/active lifecycle) and reworks HOW the desk drives them.
+
+**Ratified rulings (2026-09-07 — do not re-litigate):**
+
+- **Operator order = Layered (default) → Precision → Smooth field (legacy,
+  under Advanced).** `OptionsSettings.graphPropagationMode` gains
+  `layered_dynamic_harmonic` and DEFAULTS to it; the Graph lens seeds from it;
+  the WIRE default (`GraphExtrapolateRequest`) stays `smooth_field` (replay /
+  byte-identity / harness untouched). Recorded caveat carried by the
+  default: the intraday campaign (wrap 2026-07-27) scored the static
+  precision-message arm above every layered arm on the ETF triangle — the
+  user chose Layered for its directed/temporal semantics; a benchmark-pack
+  adjudication may revisit the DEFAULT, never the ordering of the UI.
+- **Three disclosure levels, never one flat list.** Level 0 = what a trader
+  touches every day (operator, calendar / cross coupling as σ sliders in vol
+  points, the amplitude preset, Run). Level 1 "Fine-tune" = shape and
+  family dials (αT, decay, ε, cross-expiry tolerance, per-ticker overrides,
+  the ladder, Dynamics clamp / half-life / semantics). Level 2 "Advanced" =
+  units lens (raw p), the Smooth-field legacy operator with η/κ/λ/ν and
+  autotune, the legacy weight matrix. Nothing from a deeper level is shown
+  at a shallower one.
+- **What you see is what runs.** Edits to relations stage the DRAFT
+  automatically (debounced PUT, undo/redo); while the draft differs from the
+  active config Run solves the draft (`useDraftConfig` follows the dirty
+  state — the manual run-draft toggle is retired); **Apply** activates it
+  (event-logged, unchanged backend), **Discard** reverts. The U6 envelope,
+  routes and migrations are untouched.
+- **Live preview is non-persisting.** `GraphExtrapolateRequest.preview`
+  (default False) skips `record_graph_innovations`, the layered residual
+  store write and `graph_inferred.record_run`; the Live toggle re-solves on
+  every dial / relation change through that flag; the explicit RUN records.
+  The "graph output is never prior input" invariant holds for both.
+- **The canvas is the editor.** Every relation is an ARROW informer →
+  receiver: thickness = relationship confidence (fixed σ anchors 10 pt → 0.25
+  pt, so widths compare across sessions), colour = β (cool below 1, slate at
+  1, warm above 1, rose when negative). Click selects a relation (inspector
+  sliders), Delete removes it, the Connect tool (or Shift-drag) draws a new
+  one node-to-node, pods collapse / expand per ticker, Focus hides the side
+  panes. Bundles keep the pair overview (Σp width, p-weighted mean β) and
+  expand on click.
+
+**Increments (each ships with its vitest / pytest locks; files ≤ 400 lines):**
+
+- **E0 Backend seams** — Options literal + default flip (`layered_dynamic_
+  harmonic`), `preview` request flag honoured in `graph_extrapolation.solve`
+  / `extrapolate` (spy-locked: nothing recorded), `gen_help_schema.py`
+  regen, options test update.
+- **E1 Pure libs** — `lib/edgeStyle.ts` (width / colour encoders + legend
+  stops), `lib/graphCollapse.ts` (collapsed-pod universe + result
+  aggregation), `lib/relationRows.ts` (row identity, default row for a
+  connect gesture, direction flip, class inference), `lib/relationTemplates.
+  ts` (Hub → names, Peers ⇄, Calendar only, Clear cross); `graphLayout`
+  gains the per-bundle p-weighted mean β and per-spine direction / β.
+- **E2 Draft state** — `state/useRelationDraft.ts`: effective rows (draft →
+  active → auto), add / update / remove / flip / seed / reset / template,
+  undo / redo, debounced PUT to the draft, dirty + saving flags.
+- **E3 Canvas v2** — `GraphNetworkChart` + `GraphEdgeLayer` + `GraphCanvasToolbar`:
+  arrows with computed heads (no marker colour limits), selection glow, sticky
+  bundle expansion, Connect tool + Shift-drag rubber band, pod collapse,
+  Focus (maximise), legend strip.
+- **E4 Policy pane + top bar** — `PolicyPane` (Level 0 sliders, Fine-tune,
+  Advanced), `Slider` component, top bar with Layered | Precision (Smooth
+  field only under Advanced), Live toggle, the Apply / Discard config pill.
+- **E5 Relation inspector + Relations drawer tab** — `RelationCard` (σ / β
+  sliders, linked handles with an unlock, distance-rule ↺, flip, delete,
+  implied reverse), `RelationsTab` (search, class filter, sort, select →
+  canvas + inspector, bulk actions, templates, full editor for the §20 grid).
+- **E6 Shell integration** — GraphViewer orchestration (selection model
+  `relation` | pair, keyboard Delete / Esc / Ctrl+Z / Ctrl+Y, focus mode,
+  live preview badge), help corpus (guide, setting doc, what's new, tips,
+  glossary), smoke script, roadmap STATUS wrap + memory.
+
+Exit gate: `npm test` + `npm run build` green; backend graph set + options
+tests green; the ui smoke's Graph steps unchanged (data-drop-zone kept);
+every recorded rider listed in the STATUS wrap.
+
+---
+
+## PRECISION-MESSAGE GRAPH ARC — adopted 2026-07-18 (top arc until 2026-09-07)
 
 Redesign of the graph propagation workflow per
 `Docs/graph_precision_message_framework.md` (design spec, AMENDED 2026-07-18
@@ -1016,6 +1104,11 @@ below) — every recorded rider is closed except the ones listed here:
    wings at the last quote — sizing it by the image estimate (or a
    log-linear far-field condition) changes those fits: benchmark-pack
    adjudication.
+9. GRAPH ERGONOMICS riders (wrap 2026-09-07f below; none are gates): the
+   Layered DEFAULT vs the intraday campaign's verdict is a benchmark-pack
+   adjudication candidate (the UI ORDER is ruled); a resizable drawer for
+   very large Relations lists; live-preview lag on a 1k-node universe rides
+   the P7 sparse-solve rider.
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
 wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
 replace the five scheduler fields, migrated on load; the `/scheduler` payload
@@ -1029,6 +1122,111 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-07f) — GRAPH ERGONOMICS ARC E0–E6 SHIPPED: LAYERED BY DEFAULT, SLIDERS, ARROWS YOU EDIT ON THE CANVAS
+
+User brief: "too many parameters at the same level … (1) Layer by default
+(precision next); (2) large expandable graph with easy edge addition /
+deletion / amendment; (3) sliders for the edge parameters; (4) arrows with
+colour / thickness visualising an edge's precision and β; (5) other
+trader-friendly features. Extend and refine this roadmap, and proceed."
+The arc section above (GRAPH ERGONOMICS ARC) records the five rulings;
+every increment shipped this session:
+
+- **E0 backend seams** — `OptionsSettings.graphPropagationMode` gains
+  `layered_dynamic_harmonic` and DEFAULTS to it (wire default on
+  `GraphExtrapolateRequest` stays `smooth_field`); new request flag
+  `preview: bool = False` — a live-preview solve returns the same numbers as
+  a Run but records NOTHING (`record_graph_innovations`, the layered
+  residual-store write, `graph_inferred.record_run` all skipped);
+  `tests/test_graph_preview.py` (3: numbers identical, nothing recorded,
+  residual store untouched); `test_api_options.py` default updated;
+  `settingsSchema.json` regenerated. Backend graph/options set 76 green.
+- **E1 pure libs** — `lib/edgeStyle.ts` (width on FIXED σ anchors 10 pt →
+  0.25 pt, β colour cool/slate/warm/rose, computed arrow-head polygons —
+  SVG markers cannot take a per-use colour), `lib/graphCollapse.ts`
+  (collapsed-pod universe + result / lit aggregation), `lib/relationRows.ts`
+  (directed key, connect-gesture row, §7.6/§8.3 flip, chart edges),
+  `lib/relationTemplates.ts` (Hub → names / Peers ⇄ / Calendar only);
+  `graphLayout` bundles carry the p-weighted mean β, calendar hops their β
+  and receiver direction. All vitest-locked.
+- **E2 draft state** — `state/useRelationDraft.ts`: rows on screen resolve
+  draft → active → auto; add / update / remove / flip / replaceAll / seed /
+  reset with undo / redo (60 steps) and a 450 ms debounced PUT to the U6
+  draft (flushed on unmount). Shell rule "what you see is what runs":
+  `useDraftConfig` = `configDirty(config)` — the manual run-draft toggle is
+  RETIRED; the config pill shows "config <name> vN · n edits" (a first draft
+  against no active config reads "new draft") with **Apply** (activate) /
+  **Discard** (revert).
+- **E3 canvas v2** — `GraphNetworkChart` split into `GraphEdgeLayer`
+  (arrows informer → receiver; bundles Σp-wide / mean-β-coloured with heads
+  on the ends flow arrives at; sticky click expansion into individual
+  arrows, mirror pairs offset sideways; calendar hops with heads at the
+  receiver; selection glow), `GraphNodeLayer` (collapsed-pod node with the
+  member count, connect-source ring), `GraphCanvasToolbar` (zoom · fit ·
+  Connect tool · collapse / expand all · Focus), `GraphNetworkChart.tooltips`
+  (node / bundle / relation readouts). Gestures: click an arrow → relation
+  selection; Connect tool or Shift-drag node → node → `onConnect`; click a
+  ticker label → collapse its pod; Esc cancels a connect. The canvas keeps
+  the wave / particle cinematics and the drop zone (`data-drop-zone`).
+- **E4 policy pane + top bar** — `PolicyPane` replaces RelationshipsPane
+  with THREE levels: Level 0 = Desk | Learned preset, Calendar relations
+  switch + "Calendar @ ref distance" σ slider, "Cross-asset" σ slider, the
+  live +1 pt example, "Relations · n"; Fine-tune = αT, ρ calendar / cross,
+  decay, ε, cross-expiry tolerance, per-ticker calendar overrides + ladder
+  (CalendarPolicyCard `dials={false}`), the receiver × informer matrix
+  (CrossMatrixCard `dials={false}`), Dynamics (Layered); Advanced = units
+  lens + "Smooth field (legacy)" (the pane becomes the legacy weights + η κ
+  λ ν + Edges matrix with "← Back to Layered"). Shared `Slider` (linear /
+  log, mark, reset) + `SigmaSlider` (σ pts ↔ p, right = more confident, the
+  same anchors as the arrows). Top bar: Operator = Layered | Precision
+  (Smooth field a third segment only while selected), the config pill, the
+  **Live** toggle (`useLivePreview`: 600 ms debounce, `preview: true`, a
+  "preview" tag on the summary), Run.
+- **E5 relation inspector + Relations tab** — `RelationCard` (Confidence
+  slider with the "auto" badge for distance-rule rows — a drag locks it
+  explicit, ↺ returns to the rule; β slider with an exact input, "link
+  handles" fanning to β skew / β curvature; class; semantics (Layered);
+  ⇄ flip; Delete; implied reverse), `RelationsTab` (search, class chips,
+  sort, row click → canvas glow + card, ×, undo / redo, Seed auto, Reset to
+  auto, Templates ▾, Full editor = the §20 MessageEdgeEditor modal, whose
+  save reloads the draft). The edge-click PAIR card lists the pair's rows as
+  selectable entries.
+- **E6 shell** — GraphViewer rewritten around the draft (`useGraphChartData`,
+  `useGraphHotkeys` Delete / Esc / Ctrl+Z / Ctrl+Y, `useLivePreview`,
+  Focus hides the pane + inspector + drawer); Options ▸ Graph select lists
+  layered first; `useGraph.DEFAULT_PARAMS` = layered, seeded from Options;
+  help corpus (guide, setting doc, what's new, tips, glossary) — see the
+  help agent's files; `scripts/graph_ergonomics_check.mjs` = the live
+  headless-Edge check on the synthetic server :4194 (6 steps, screenshots
+  `.smoke/graph-ergo-*.png`) — ALL GREEN; `npm run smoke:ui` green (Graph
+  drop step unchanged); vitest 571 → 600+ green; `npm run build` clean.
+
+Recorded riders (none are gates):
+- The intraday campaign (wrap 2026-07-27) scored the static
+  precision-message arm above every layered arm on the ETF triangle; the
+  user chose Layered for its semantics. A benchmark-pack adjudication may
+  revisit the DEFAULT (never the UI order). Stores that saved Options keep
+  their explicit operator until Options ▸ Graph is re-saved; the user's
+  :8000 needs a restart for the new `preview` field and the schema literal.
+- Pod collapse is chart-local state (not persisted in the workspace file);
+  a collapsed pod cannot be a connect endpoint (by design — the hint says
+  so). Bundle expansion is sticky per session only.
+- The Relations drawer tab is 16 rem tall; a very large universe (hundreds
+  of rows) wants a resizable drawer — not built.
+- The β sliders span 0 … 3 (a negative β or |β| > 3 needs the exact input
+  or the Full editor); the σ sliders span 0.25 … 10 pt (raw p beyond that
+  needs the units lens).
+- The live-preview debounce re-solves the WHOLE universe on every slider
+  tick beyond 600 ms of rest; on a 1k-node universe the Live toggle will
+  feel laggy — a perf item if it ever matters (dense solve, the P7 rider).
+- One screenshot of the live check once showed the drawer's tab strip one
+  frame behind its content (capture artefact; the next frame agreed) — if
+  it recurs in real use, look at GraphDrawer's tab state.
+- The legacy EdgeMatrixEditor / smooth-field weights are reachable only via
+  Advanced → "Smooth field (legacy)"; no smoke drives them any more (the
+  vitest lock "feeds the Edges matrix from the SELECTED universe" still
+  does, in smooth-field mode).
 
 ### 🧭 SESSION WRAP (2026-09-07e) — THE GRAPH-INFERRED SMILE ON EVERY NODE OF THE RUN, TRANSPORTED LIKE A FIT
 

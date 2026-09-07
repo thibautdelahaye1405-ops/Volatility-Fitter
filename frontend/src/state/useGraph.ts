@@ -59,8 +59,8 @@ export interface GraphSolveNode {
 
 /** Production propagation operator (message arc; hybrid stays config-only).
  *  "layered_dynamic_harmonic" is the dynamic-harmonic pipeline (framework
- *  §10) — session OPT-IN per the Phase-5 verdict (never a persisted default;
- *  smooth_field remains the production default). */
+ *  §10) — the UI DEFAULT since the GRAPH ERGONOMICS ARC ruling (2026-09-07:
+ *  Layered → Precision → Smooth field); the WIRE default stays smooth_field. */
 export type PropagationMode =
   | "smooth_field"
   | "precision_messages"
@@ -133,9 +133,10 @@ export interface AutotuneResult {
   candidates: AutotuneCandidate[];
 }
 
-/** Default solver regime: legacy behavior (OT off, service edge weights,
- *  smooth-field operator, spec-default message knobs). */
-const DEFAULT_PARAMS: SolverParams = {
+/** Default solver regime: OT off, service edge weights, spec-default message
+ *  knobs — and the LAYERED operator (GRAPH ERGONOMICS ARC ruling 2026-09-07:
+ *  Layered → Precision → Smooth field; Options ▸ Graph re-seeds it). */
+export const DEFAULT_PARAMS: SolverParams = {
   etaScale: 1,
   kappaScale: 1,
   lambdaScale: 0,
@@ -143,7 +144,7 @@ const DEFAULT_PARAMS: SolverParams = {
   calendarWeight: null,
   crossWeight: null,
   crossExpiryToleranceDays: 0,
-  propagationMode: "smooth_field",
+  propagationMode: "layered_dynamic_harmonic",
   alphaT: 1,
   ampCal: 1,
   ampCross: 1,
@@ -175,7 +176,9 @@ function seedSolverParams(p: SolverParams, o: GraphPriorDefaults): SolverParams 
   const mode: PropagationMode =
     o.graphPropagationMode === "precision_messages"
       ? "precision_messages"
-      : "smooth_field"; // hybrid stays config-only — never a UI default
+      : o.graphPropagationMode === "smooth_field"
+        ? "smooth_field"
+        : "layered_dynamic_harmonic"; // hybrid stays config-only — never a UI default
   return untouched
     ? {
         ...p,

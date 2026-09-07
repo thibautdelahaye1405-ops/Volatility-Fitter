@@ -75,7 +75,7 @@ export function GraphSection({ draft, patch, live }: SectionProps) {
       <h3 className={sectionTitle}>Graph</h3>
       <div className="space-y-2">
         <label className="flex items-center justify-between gap-2 text-xs text-slate-400"
-          title="Default propagation operator (message arc): smooth field = the legacy increment prior, byte-identical; precision messages = the pairwise relation-factor operator. Hybrid is config-only until validated.">
+          title="Default propagation operator (GRAPH ERGONOMICS ARC, 2026-09-07): layered (dynamic-harmonic) is the default directed pipeline; precision messages is the pairwise relation-factor operator; smooth field is the legacy increment prior, byte-identical — kept for rollback.">
           <span>Propagation operator</span>
           <select
             value={draft.graphPropagationMode}
@@ -88,8 +88,9 @@ export function GraphSection({ draft, patch, live }: SectionProps) {
             }
             className="rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1 font-mono text-xs text-slate-100 outline-none hover:border-slate-600 focus:border-accent-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <option value="smooth_field">smooth field</option>
+            <option value="layered_dynamic_harmonic">layered (dynamic-harmonic)</option>
             <option value="precision_messages">precision messages</option>
+            <option value="smooth_field">smooth field (legacy)</option>
           </select>
         </label>
         <NumberRow label="κ prior strength" value={draft.graphKappaScale} step={0.1} disabled={!live}

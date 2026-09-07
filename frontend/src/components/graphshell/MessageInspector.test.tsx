@@ -96,9 +96,10 @@ describe("EdgeInspectorCard", () => {
       />,
     );
     expect(screen.getByText(/Relation · SPY calendar/)).toBeTruthy();
+    // The pair's rows are listed (GRAPH ERGONOMICS ARC): β + σ per row.
     expect(screen.getByText(/β 2\.00/)).toBeTruthy();
-    expect(screen.getByText(/persisted/)).toBeTruthy();
-    fireEvent.click(screen.getByText("Edit relations"));
+    expect(screen.getByTestId("pair-row")).toBeTruthy();
+    fireEvent.click(screen.getByText("All relations"));
     expect(onEdit).toHaveBeenCalledOnce();
   });
 

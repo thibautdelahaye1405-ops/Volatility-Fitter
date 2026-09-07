@@ -454,7 +454,7 @@ def solve(
             # write or purge it (§10 Step 8) — a scoring pass must not update
             # residuals, and a hypothesis is non-persisting by construction.
             residual_store=state.graph_dynamic_residuals,
-            update_store=not (synthetic or hold_out),
+            update_store=not (synthetic or hold_out or request.preview),
             now_day=(
                 float(state.reference_date.toordinal()) if now_day is None else now_day
             ),
@@ -516,15 +516,17 @@ def solve(
     # node that goes dark on a LATER day gets floored from the days it was lit.
     # Idempotent per (ticker, day, expiry); a no-op without a store on scratch
     # states (the benchmark harness builds throwaway states and feeds the floor
-    # its own strictly-causal history instead). What-if pulses are NEVER
-    # recorded — non-persisting by construction (P5b U3).
+    # its own strictly-causal history instead). What-if pulses and live
+    # previews are NEVER recorded — non-persisting by construction (P5b U3,
+    # GRAPH ERGONOMICS ARC 2026-09-07 ``request.preview``).
     if (
         request.propagationMode == "layered_dynamic_harmonic"
         and not synthetic
         and not hold_out
+        and not request.preview
     ):
         state.persist_graph_dynamic_residuals()  # framework §13.5, Phase-4 rider
-    if not synthetic:
+    if not synthetic and not request.preview:
         state.record_graph_innovations(
             {
                 (universe.nodes[i].ticker, universe.nodes[i].expiry): float(
@@ -554,13 +556,17 @@ def extrapolate(
     """Bulk ATM-summary response over every selected node (plan Phase 3, Amendment E:
     summaries only; full curves are fetched per node via the node-smile route).
     The solved field is kept as the LAST RUN (api/graph_inferred): the node
-    views then draw every node's inferred smile, transported with the spot."""
+    views then draw every node's inferred smile, transported with the spot.
+    A ``request.preview`` (GRAPH ERGONOMICS ARC 2026-09-07) leaves the LAST
+    RUN untouched — a live-preview solve returns the same numbers a Run
+    would but never becomes what the node views draw."""
     sol = solve(state, request)
     if sol is None:
         return GraphExtrapolateResponse(nodes=[])
-    from volfit.api import graph_inferred  # lazy: it imports the reconstruction
+    if not request.preview:
+        from volfit.api import graph_inferred  # lazy: it imports the reconstruction
 
-    graph_inferred.record_run(state, sol)
+        graph_inferred.record_run(state, sol)
     universe, field = sol.universe, sol.field
     base_breakdowns, obs_breakdowns = sol.base_breakdowns, sol.obs_breakdowns
     obs_value_by_idx = sol.obs_value_by_idx

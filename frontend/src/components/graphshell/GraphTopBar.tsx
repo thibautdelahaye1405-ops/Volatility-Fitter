@@ -1,13 +1,15 @@
-// Graph shell top bar (P5b U0; live preflight U5): the workflow spine's
-// Configure→Run controls.
+// Graph shell top bar (P5b U0 → GRAPH ERGONOMICS ARC, E4): the workflow
+// spine's Configure → Run controls, at Level 0 only.
 //
-// LEFT: observation source (calibrations vs manual what-if — unified by the
-// U3 mode-aware what-if), propagation operator (Smooth field | Messages;
-// hybrid stays config-only), the config chip (structural stub until the U6
-// lifecycle) and the LIVE preflight chip (dry-run findings; Run gates only
-// on blockers). RIGHT: post-run summary badges, last error, Clear field, and
-// RUN — the workspace's single primary action.
-import { Eraser } from "lucide-react";
+// LEFT: observation source (calibrations vs what-if), the operator in the
+// ruled order — Layered (default) | Precision — with Smooth field shown only
+// while it is the selected legacy operator (the door to it lives under the
+// pane's Advanced section), the config pill (active version · staged edits ·
+// Apply / Discard) and the LIVE preflight chip (Run gates on blockers only).
+// RIGHT: the Live toggle (re-solve on every edit, non-persisting preview),
+// the post-run summary, the last error, Clear field, and RUN — the single
+// primary action (it records; a live preview never does).
+import { Eraser, Zap } from "lucide-react";
 import ConfigChip, { type ConfigChipBundle } from "./ConfigChip";
 import PreflightChip from "./PreflightChip";
 import SegmentedControl from "../SegmentedControl";
@@ -32,12 +34,13 @@ interface GraphTopBarProps {
   /** Lit/dark composition of the displayed universe. */
   litCount: number;
   darkCount: number;
-  /** The live dry-run report (U5) — drives the chip; blockers gate Run. */
   preflight: UsePreflightResult;
-  /** The U6 config-lifecycle chip bundle. */
   config: ConfigChipBundle;
   summary: RunSummary | null;
-  /** Last run failure (production or sandbox), or null. */
+  /** The field on screen came from a live preview (nothing recorded). */
+  previewField: boolean;
+  live: boolean;
+  setLive: (v: boolean) => void;
   error: string | null;
   canRun: boolean;
   busy: boolean;
@@ -46,8 +49,12 @@ interface GraphTopBarProps {
   onClear: () => void;
 }
 
-const chipClass =
-  "rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono text-[11px]";
+const chipClass = "rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono text-[11px]";
+
+const MODES: { id: PropagationMode; label: string }[] = [
+  { id: "layered_dynamic_harmonic", label: "Layered" },
+  { id: "precision_messages", label: "Precision" },
+];
 
 export default function GraphTopBar({
   source,
@@ -59,6 +66,9 @@ export default function GraphTopBar({
   preflight,
   config,
   summary,
+  previewField,
+  live,
+  setLive,
   error,
   canRun,
   busy,
@@ -66,6 +76,8 @@ export default function GraphTopBar({
   hasResults,
   onClear,
 }: GraphTopBarProps) {
+  const modeOptions =
+    mode === "smooth_field" ? [...MODES, { id: "smooth_field" as PropagationMode, label: "Smooth field" }] : MODES;
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-3">
       <label className="flex items-center gap-2 text-xs text-slate-500">
@@ -81,36 +93,25 @@ export default function GraphTopBar({
         />
       </label>
 
-      {/* Propagation operator — mode-aware for BOTH sources since the U3
-          unification (the what-if rides the production solve). Layered (the
-          dynamic-harmonic pipeline, P6 V1) is session opt-in per the Phase-5
-          verdict — smooth field stays the default and Options never seeds it. */}
       <label
         className="flex items-center gap-2 text-xs text-slate-500"
-        title="Propagation operator — applies to calibrations AND the what-if; seeded from Options ▸ Graph. Layered = dynamic-harmonic (directed state + harmonic completion; opt-in)"
+        title="Propagation operator — Layered (default): directed parents + remembered dislocations + harmonic completion; Precision: every relation a contract z_i ≈ β z_j at a stated confidence. The legacy Smooth field lives under the pane's Advanced section."
       >
-        Propagation
-        <SegmentedControl
-          options={[
-            { id: "smooth_field" as PropagationMode, label: "Smooth field" },
-            { id: "precision_messages" as PropagationMode, label: "Messages" },
-            { id: "layered_dynamic_harmonic" as PropagationMode, label: "Layered" },
-          ]}
-          value={mode}
-          onChange={setMode}
-          size="xs"
-        />
+        Operator
+        <SegmentedControl options={modeOptions} value={mode} onChange={setMode} size="xs" />
       </label>
 
-      {/* Live config lifecycle (U6): draft/active, diff, Activate/Revert. */}
       <ConfigChip bundle={config} />
-
-      {/* Live preflight (U5): dry-run findings; blockers gate Run. */}
       <PreflightChip preflight={preflight} litCount={litCount} darkCount={darkCount} />
 
       <div className="ml-auto flex items-center gap-2">
         {summary !== null && (
-          <span className={chipClass + " text-slate-400"}>
+          <span className={chipClass + " text-slate-400"} data-testid="run-summary">
+            {previewField && (
+              <span className="mr-1 rounded bg-accent-600/25 px-1 text-[9px] text-accent-300" title="This field is a live preview — nothing was recorded; press Run to commit">
+                preview
+              </span>
+            )}
             <span className="text-amber-400">{summary.observed} observed</span>
             {" · "}
             {summary.extrapolated} extrapolated
@@ -124,6 +125,25 @@ export default function GraphTopBar({
           </span>
         )}
         <button
+          onClick={() => setLive(!live)}
+          aria-pressed={live}
+          data-testid="live-toggle"
+          title={
+            live
+              ? "Live ON — every dial / relation edit re-solves as a non-persisting preview (nothing recorded). Click to stop."
+              : "Live — re-solve on every dial / relation edit as a non-persisting preview; Run still commits."
+          }
+          className={[
+            "flex items-center gap-1 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors",
+            live
+              ? "border-accent-500/60 bg-accent-600/20 text-accent-300"
+              : "border-slate-700 bg-surface-800 text-slate-400 hover:border-slate-600 hover:text-slate-200",
+          ].join(" ")}
+        >
+          <Zap size={12} strokeWidth={1.75} />
+          Live
+        </button>
+        <button
           disabled={!hasResults}
           onClick={onClear}
           title="Reset the posterior field (observations are kept)"
@@ -135,16 +155,10 @@ export default function GraphTopBar({
         <button
           disabled={!canRun || busy}
           onClick={onRun}
-          title={
-            !canRun
-              ? "Light at least one node first"
-              : "Propagate the observations through the graph"
-          }
+          title={!canRun ? "Light at least one node first" : "Propagate the observations through the graph (records the run)"}
           className="flex items-center justify-center gap-2 rounded-md bg-accent-600 px-4 py-1.5 text-xs font-semibold text-white transition-colors enabled:hover:bg-accent-500 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {busy && (
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-          )}
+          {busy && <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />}
           {busy ? "Running…" : "Run"}
         </button>
       </div>

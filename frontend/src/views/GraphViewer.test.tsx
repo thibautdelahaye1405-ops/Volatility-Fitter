@@ -1,10 +1,12 @@
-// Graph shell (P5b U0) feature-parity locks, ported from the dissolved
-// PropagatePanel: the source fork (calibrations vs manual), Run/Validate
-// routing, the manual observation rows, and — regression 2026-07-09 — that
-// the Edges matrix is fed by the SELECTED universe (GET /universe), not the
-// sandbox lattice (empty on the gated server until mid-mode calibrations
-// exist). Plus the new shell surfaces: drawer tabs and the inspector
-// selection flow.
+// Graph shell (P5b U0 → GRAPH ERGONOMICS ARC) locks: the source fork
+// (calibrations vs manual), Run/Validate routing, the manual observation
+// rows, — regression 2026-07-09 — that the legacy Edges matrix is fed by the
+// SELECTED universe (GET /universe), the drawer tabs and the inspector
+// selection flow; plus the arc's rulings: the operator order, "what you see
+// is what runs" (useDraftConfig follows the dirty draft, Apply / Discard),
+// the relation card + Delete chord, the connect gesture, Live preview and
+// Focus. The stub's default operator is the legacy smooth field so the
+// legacy locks stay meaningful; message-family tests set the mode.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import GraphViewer from "./GraphViewer";
@@ -18,6 +20,7 @@ import type { GraphTopologyResult } from "../state/useGraphTopology";
 import type { UseLooComparisonResult } from "../state/useLooComparison";
 import type { MessageConfigEnvelope } from "../state/useMessageConfig";
 import type { MessageEdgeRow } from "../state/useMessageEdges";
+import type { RelationDraft } from "../state/useRelationDraft";
 
 const apiGet = vi.fn();
 vi.mock("../state/api", () => ({
@@ -66,6 +69,15 @@ vi.mock("../state/useLooComparison", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../state/useLooComparison")>()),
   useLooComparison: () => looState,
 }));
+// The relation draft (E2): rows on screen + spied edit operations.
+let draftState: RelationDraft;
+vi.mock("../state/useRelationDraft", () => ({
+  useRelationDraft: () => draftState,
+}));
+vi.mock("../state/useLivePreview", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/useLivePreview")>()),
+  LIVE_PREVIEW_DEBOUNCE_MS: 0,
+}));
 
 // Shared-session contexts + cinematics: inert stubs.
 vi.mock("../state/smileSession", () => ({
@@ -79,18 +91,35 @@ vi.mock("../state/useAttributionParticles", () => ({ useAttributionParticles: ()
 // Heavy leaves: the canvas and the drill-in cards have their own tests. The
 // mock exposes an edge-click trigger for the U4 relation-card lock.
 vi.mock("../components/GraphNetworkChart", () => ({
-  default: ({ onEdgeClick }: { onEdgeClick?: (s: unknown) => void }) => (
-    <button
-      data-testid="chart-edge"
-      onClick={() =>
-        onEdgeClick?.({
-          kind: "calendar",
-          ticker: "SPY",
-          aExpiry: "2026-10-16",
-          bExpiry: "2026-07-17",
-        })
-      }
-    />
+  default: ({
+    onEdgeClick,
+    onConnect,
+    selectedRelationKey,
+    onToggleFocus,
+  }: {
+    onEdgeClick?: (s: unknown) => void;
+    onConnect?: (a: { ticker: string; expiry: string }, b: { ticker: string; expiry: string }) => void;
+    selectedRelationKey?: string | null;
+    onToggleFocus?: () => void;
+  }) => (
+    <div data-testid="chart" data-selected={selectedRelationKey ?? ""}>
+      <button
+        data-testid="chart-edge"
+        onClick={() =>
+          onEdgeClick?.({ kind: "calendar", ticker: "SPY", aExpiry: "2026-10-16", bExpiry: "2026-07-17" })
+        }
+      />
+      <button
+        data-testid="chart-relation"
+        onClick={() => onEdgeClick?.({ kind: "relation", key: "SPY|2026-10-16>SPY|2026-07-17" })}
+      />
+      <button
+        data-testid="chart-connect"
+        disabled={onConnect === undefined}
+        onClick={() => onConnect?.({ ticker: "SPY", expiry: "2026-07-17" }, { ticker: "SPY", expiry: "2026-10-16" })}
+      />
+      <button data-testid="chart-focus" onClick={onToggleFocus} />
+    </div>
   ),
 }));
 vi.mock("../components/GraphAttributionCard", () => ({
@@ -146,6 +175,7 @@ function extraStub(
     running: false,
     error: null,
     cycles: [],
+    preview: false,
     backtest: null,
     backtesting: false,
     backtestError: null,
@@ -193,6 +223,19 @@ const CONFIG_ROW: MessageEdgeRow = {
   relationClass: "calendar", precisionRule: "explicit",
 };
 
+function draftStub(rows: MessageEdgeRow[] = []): RelationDraft {
+  const byKey = (key: string) =>
+    rows.find((r) => `${r.sourceTicker}|${r.sourceExpiry}>${r.targetTicker}|${r.targetExpiry}` === key);
+  return {
+    rows, source: rows.length > 0 ? "draft" : "auto", loading: false, saving: false, error: null,
+    canUndo: false, canRedo: false,
+    add: vi.fn(), update: vi.fn(), remove: vi.fn(), removeMany: vi.fn(),
+    flip: vi.fn(() => null), replaceAll: vi.fn(),
+    seedAuto: vi.fn().mockResolvedValue(undefined), resetAuto: vi.fn().mockResolvedValue(undefined),
+    undo: vi.fn(), redo: vi.fn(), reload: vi.fn(), byKey,
+  };
+}
+
 function envelope(over: Partial<MessageConfigEnvelope> = {}): MessageConfigEnvelope {
   return {
     name: "default", version: 1, createdAt: "2026-07-19T10:00:00+00:00",
@@ -211,6 +254,7 @@ beforeEach(() => {
     edges: [], msgRows: [], persistedRows: [], config: null, refresh: vi.fn(),
   };
   looState = { columns: null, running: null, error: null, run: vi.fn().mockResolvedValue(undefined) };
+  draftState = draftStub();
   activateMock.mockClear();
   revertMock.mockClear();
 });
@@ -422,27 +466,39 @@ describe("Graph shell (U0)", () => {
       }),
     };
     renderShell();
-    // Chip label = active name·version + the dirty marker.
-    fireEvent.click(screen.getByText("draft*"));
-    expect(screen.getByText(/\+0 −0 ~1 vs v1 · stages v2/)).toBeTruthy();
-    fireEvent.click(screen.getByText("Activate"));
+    // Pill = active name·version + the staged-edit count; popover = diff + Apply.
+    fireEvent.click(screen.getByText("1 edit"));
+    expect(screen.getByText(/\+0 −0 ~1/)).toBeTruthy();
+    expect(screen.getByText(/the draft \(staged edits\)/)).toBeTruthy();
+    fireEvent.click(screen.getByText("Apply"));
     expect(activateMock).toHaveBeenCalledWith("");
     await waitFor(() => expect(topologyState.refresh).toHaveBeenCalled());
   });
 
-  it("run-draft toggle ships useDraftConfig on the run body (U6)", async () => {
+  it("what you see is what runs: a dirty draft ships useDraftConfig by itself", async () => {
     graphState = graphStub();
     graphState.params.propagationMode = "precision_messages";
-    topologyState.config = { active: envelope(), draft: envelope({ version: 2 }) };
+    topologyState.config = {
+      active: envelope(),
+      draft: envelope({ version: 2, rows: [{ ...CONFIG_ROW, betaAtmVol: 1.5 }] }),
+    };
     renderShell();
-    fireEvent.click(screen.getByText("config"));
-    fireEvent.click(screen.getByText("Draft"));
     fireEvent.click(screen.getByText("Run"));
     await waitFor(() => expect(extraState.run).toHaveBeenCalled());
     const body = (extraState.run as ReturnType<typeof vi.fn>).mock
       .lastCall?.[0] as Record<string, unknown>;
     expect(body.useDraftConfig).toBe(true);
     expect(body.propagationMode).toBe("precision_messages");
+    // A clean draft (identical rows) runs the active config.
+    cleanup();
+    extraState = extraStub();
+    topologyState.config = { active: envelope(), draft: envelope({ version: 2 }) };
+    renderShell();
+    fireEvent.click(screen.getByText("Run"));
+    await waitFor(() => expect(extraState.run).toHaveBeenCalled());
+    const clean = (extraState.run as ReturnType<typeof vi.fn>).mock
+      .lastCall?.[0] as Record<string, unknown>;
+    expect(clean.useDraftConfig).toBeUndefined();
   });
 
   it("layered segment sets the dynamic-harmonic operator (P6 V1)", () => {
@@ -458,10 +514,11 @@ describe("Graph shell (U0)", () => {
     graphState = graphStub();
     graphState.params.propagationMode = "layered_dynamic_harmonic";
     renderShell();
-    // Message-family Relationships pane (layered reuses the relation config).
-    expect(
-      screen.getByText(/How each smile informs its neighbors/),
-    ).toBeTruthy();
+    // Message-family policy pane (layered reuses the relation config); the
+    // legacy operator is NOT a segment until it is selected.
+    expect(screen.getByText(/How each smile informs its neighbors/)).toBeTruthy();
+    expect(screen.queryByText("Smooth field")).toBeNull();
+    expect(screen.getByText("Precision")).toBeTruthy();
     fireEvent.click(screen.getByText("Run"));
     await waitFor(() => expect(extraState.run).toHaveBeenCalled());
     const body = (extraState.run as ReturnType<typeof vi.fn>).mock
@@ -488,5 +545,118 @@ describe("Graph shell (U0)", () => {
     expect(screen.getByText(/transported priors drive the field/)).toBeTruthy();
     fireEvent.click(screen.getByText("Preview"));
     expect(screen.queryByText(/transported priors drive the field/)).toBeNull();
+  });
+});
+
+describe("Graph shell (GRAPH ERGONOMICS ARC)", () => {
+  const messages = () => {
+    graphState = graphStub();
+    graphState.params.propagationMode = "layered_dynamic_harmonic";
+    draftState = draftStub([CONFIG_ROW]);
+  };
+
+  it("the legacy operator lives under Advanced and comes back as a segment", () => {
+    messages();
+    renderShell();
+    fireEvent.click(screen.getByText("Smooth field (legacy)"));
+    expect(graphState.setParam).toHaveBeenCalledWith("propagationMode", "smooth_field");
+    cleanup();
+    graphState = graphStub(); // smooth_field → the third segment + Back button
+    renderShell();
+    expect(screen.getByText("Smooth field")).toBeTruthy();
+    fireEvent.click(screen.getByText("← Back to Layered"));
+    expect(graphState.setParam).toHaveBeenCalledWith("propagationMode", "layered_dynamic_harmonic");
+  });
+
+  it("an arrow click opens the relation card; sliders and Delete edit the draft", () => {
+    messages();
+    renderShell();
+    fireEvent.click(screen.getByTestId("chart-relation"));
+    expect(screen.getByTestId("relation-card")).toBeTruthy();
+    expect(screen.getByTestId("chart").getAttribute("data-selected")).toBe(
+      "SPY|2026-10-16>SPY|2026-07-17",
+    );
+    // β slider → linked handles patch on the selected key.
+    fireEvent.change(screen.getByTestId("slider-beta"), { target: { value: "1.5" } });
+    expect(draftState.update).toHaveBeenCalledWith("SPY|2026-10-16>SPY|2026-07-17", {
+      betaAtmVol: 1.5, betaSkew: 1.5, betaCurv: 1.5,
+    });
+    // Delete chord removes it and clears the selection.
+    fireEvent.keyDown(window, { key: "Delete" });
+    expect(draftState.remove).toHaveBeenCalledWith("SPY|2026-10-16>SPY|2026-07-17");
+    expect(screen.queryByTestId("relation-card")).toBeNull();
+  });
+
+  it("the connect gesture adds a draft row and selects it", () => {
+    messages();
+    renderShell();
+    fireEvent.click(screen.getByTestId("chart-connect"));
+    expect(draftState.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceTicker: "SPY", sourceExpiry: "2026-07-17",
+        targetTicker: "SPY", targetExpiry: "2026-10-16",
+        relationClass: "calendar", precisionRule: "calendar_distance",
+      }),
+    );
+    expect(screen.getByTestId("chart").getAttribute("data-selected")).toBe(
+      "SPY|2026-07-17>SPY|2026-10-16",
+    );
+    // Smooth field: no connect handler (read-only canvas).
+    cleanup();
+    graphState = graphStub();
+    renderShell();
+    expect((screen.getByTestId("chart-connect") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("Ctrl+Z / Ctrl+Y route to the draft's undo / redo", () => {
+    messages();
+    renderShell();
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(draftState.undo).toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "y", ctrlKey: true });
+    expect(draftState.redo).toHaveBeenCalled();
+  });
+
+  it("the Relations tab lists the draft rows and a row click selects the arrow", () => {
+    messages();
+    renderShell();
+    fireEvent.click(screen.getByTestId("open-relations"));
+    expect(screen.getByTestId("relations-tab")).toBeTruthy();
+    fireEvent.click(screen.getByText(/SPY 10-16/));
+    expect(screen.getByTestId("relation-card")).toBeTruthy();
+  });
+
+  it("Live re-solves as a non-persisting preview; Run commits", async () => {
+    messages();
+    renderShell();
+    fireEvent.click(screen.getByTestId("live-toggle"));
+    await waitFor(() => expect(extraState.run).toHaveBeenCalled());
+    const body = (extraState.run as ReturnType<typeof vi.fn>).mock
+      .lastCall?.[0] as Record<string, unknown>;
+    expect(body.preview).toBe(true);
+    fireEvent.click(screen.getByText("Run"));
+    const committed = (extraState.run as ReturnType<typeof vi.fn>).mock
+      .lastCall?.[0] as Record<string, unknown>;
+    expect(committed.preview).toBeUndefined();
+  });
+
+  it("Focus hides the side panes and the drawer; Esc restores them", () => {
+    messages();
+    renderShell();
+    expect(screen.getByTestId("policy-pane")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("chart-focus"));
+    expect(screen.queryByTestId("policy-pane")).toBeNull();
+    expect(screen.queryByTestId("inspector-pane")).toBeNull();
+    expect(screen.queryByText("Diagnostics")).toBeNull();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByTestId("policy-pane")).toBeTruthy();
+  });
+
+  it("Level 0 sliders write the calendar / cross confidence as precisions", () => {
+    messages();
+    renderShell();
+    fireEvent.change(screen.getByTestId("slider-cross"), { target: { value: String(Math.log10(1)) } });
+    // conf = 1/σ = 1 → σ = 1 pt → p = 10 000
+    expect(graphState.setParam).toHaveBeenCalledWith("crossPrecision", 10000);
   });
 });

@@ -1,44 +1,45 @@
-// Graph shell RIGHT pane (P5b U0; message inspector U4): the inspector for
-// the selected node or edge.
+// Graph shell RIGHT pane (P5b U0; message inspector U4; relation card E5):
+// the inspector for the selected node, relation or pair.
 //
-// Selection comes from the shell (canvas node/edge click, or a Diagnostics-
-// table row). Shows the node's baseline facts, its prior → posterior move
-// once a production run landed, the P6-V2 layered decomposition card (self-
-// hides unless the run's wire carried the V0 fields), the U4 message
-// inspector (incoming-messages table + local consensus vs global posterior +
-// divergence explainer, message mode), and the exact attribution card (gain ×
-// innovation terms — why it moved). An edge click swaps in the relation card.
+// Selection comes from the shell (canvas node / arrow / bundle click, a
+// Relations-tab row, or a Diagnostics-table row). A selected RELATION shows
+// the slider card (RelationCard); a selected PAIR lists its relations
+// (EdgeInspectorCard). Below, the node's baseline facts, its prior →
+// posterior move once a production run landed, the P6-V2 layered
+// decomposition card (self-hides unless the run's wire carried the V0
+// fields), the U4 message inspector (incoming messages + local consensus vs
+// global posterior, message family) and the exact attribution card.
 import DecompositionCard from "./DecompositionCard";
 import GraphAttributionCard from "../GraphAttributionCard";
 import { EdgeInspectorCard, MessageInspector } from "./MessageInspector";
+import RelationCard from "./RelationCard";
 import type { GraphNodeBase, SolverParams } from "../../state/useGraph";
-import type {
-  ExtrapolateBody,
-  ExtrapolateNode,
-} from "../../state/useGraphExtrapolation";
+import type { ExtrapolateBody, ExtrapolateNode } from "../../state/useGraphExtrapolation";
 import type { MessageEdgeRow } from "../../state/useMessageEdges";
 import type { GraphEdgeSelection } from "../GraphNetworkChart";
 
 interface InspectorPaneProps {
-  /** The inspected node, or null (empty state). */
   selected: { ticker: string; expiry: string } | null;
-  /** Baseline facts for the selected node (GET /graph/nodes), if loaded. */
   base: GraphNodeBase | null;
-  /** Production posterior for the selected node, once a run landed. */
   post: ExtrapolateNode | null;
-  /** The /graph/extrapolate body of the run on screen (attribution knobs). */
   body: ExtrapolateBody;
-  /** Attribution rides the production drill-in — calibrations source only. */
   showAttribution: boolean;
   manual: boolean;
-  /** Message operator active (drives the U4 inspector sections). */
   messages: boolean;
-  /** Effective relation rows (persisted else auto) + the solved nodes. */
+  layered: boolean;
+  raw: boolean;
   msgRows: MessageEdgeRow[];
   allNodes: ExtrapolateNode[] | null;
   params: SolverParams;
-  /** A canvas edge click, or null; shows the relation card when set. */
+  /** A canvas edge click / Relations row, or null. */
   selectedEdge: GraphEdgeSelection | null;
+  /** The selected relation's row (kind "relation"), if it still exists. */
+  relation: MessageEdgeRow | null;
+  tOf: (ticker: string, expiry: string) => number | undefined;
+  onRelationChange: (patch: Partial<MessageEdgeRow>) => void;
+  onRelationFlip: () => void;
+  onRelationDelete: () => void;
+  onSelectRelation: (key: string) => void;
   onCloseEdge: () => void;
   onEditRelations: () => void;
   onClose: () => void;
@@ -46,15 +47,7 @@ interface InspectorPaneProps {
 }
 
 /** One label/value fact row (title = the taxonomy long-name, if any). */
-function Fact({
-  label,
-  title,
-  children,
-}: {
-  label: string;
-  title?: string;
-  children: React.ReactNode;
-}) {
+function Fact({ label, title, children }: { label: string; title?: string; children: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-2 py-0.5 text-[11px]" title={title}>
       <span className="text-slate-500">{label}</span>
@@ -71,21 +64,43 @@ export default function InspectorPane({
   showAttribution,
   manual,
   messages,
+  layered,
+  raw,
   msgRows,
   allNodes,
   params,
   selectedEdge,
+  relation,
+  tOf,
+  onRelationChange,
+  onRelationFlip,
+  onRelationDelete,
+  onSelectRelation,
   onCloseEdge,
   onEditRelations,
   onClose,
   onOpenSmile,
 }: InspectorPaneProps) {
+  const lit = post?.lit ?? base?.lit;
   return (
-    <aside className="flex w-80 shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
+    <aside className="flex w-80 shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30" data-testid="inspector-pane">
       <h3 className="mb-1 text-sm font-semibold text-slate-100">Inspector</h3>
 
-      {/* Edge-click relation card (U4) — shown above/instead of node facts. */}
-      {selectedEdge !== null && (
+      {/* Relation (slider card) or pair (row list) — above the node facts. */}
+      {selectedEdge !== null && selectedEdge.kind === "relation" && relation !== null && (
+        <RelationCard
+          row={relation}
+          params={params}
+          layered={layered}
+          raw={raw}
+          tOf={tOf}
+          onChange={onRelationChange}
+          onFlip={onRelationFlip}
+          onDelete={onRelationDelete}
+          onClose={onCloseEdge}
+        />
+      )}
+      {selectedEdge !== null && selectedEdge.kind !== "relation" && (
         <EdgeInspectorCard
           edge={selectedEdge}
           rows={msgRows}
@@ -94,6 +109,7 @@ export default function InspectorPane({
           messages={messages}
           onClose={onCloseEdge}
           onEditRelations={onEditRelations}
+          onSelectRelation={onSelectRelation}
         />
       )}
 
@@ -101,42 +117,30 @@ export default function InspectorPane({
         <p className="mt-1 text-[11px] text-slate-500">
           {manual
             ? "What-if: canvas clicks add/remove pulses — select a row in Diagnostics to inspect a node."
-            : "Click a node on the canvas — or a row in Diagnostics — to inspect it."}
+            : messages
+              ? "Click a node to inspect it, an arrow to edit the relation, or drag node → node with the Connect tool to add one."
+              : "Click a node on the canvas — or a row in Diagnostics — to inspect it."}
         </p>
       ) : (
         <>
-          {/* Header: identity + lit/dark + drill-in + close */}
           <div className="mb-2 flex items-center gap-2">
             <span className="min-w-0 flex-1 truncate text-xs text-slate-300">
               <span className="font-medium text-slate-100">{selected.ticker}</span>{" "}
               <span className="font-mono text-[10px] text-slate-500">{selected.expiry}</span>
-              {(post?.lit ?? base?.lit) !== undefined && (
-                <span
-                  className={`ml-1 text-[9px] ${
-                    (post?.lit ?? base?.lit) ? "text-amber-400" : "text-slate-600"
-                  }`}
-                >
-                  {(post?.lit ?? base?.lit) ? "lit" : "dark"}
+              {lit !== undefined && (
+                <span className={`ml-1 text-[9px] ${lit ? "text-amber-400" : "text-slate-600"}`}>
+                  {lit ? "lit" : "dark"}
                 </span>
               )}
             </span>
-            <button
-              onClick={() => onOpenSmile(selected.ticker, selected.expiry)}
-              title="Open this node's reconstructed smile"
-              className="shrink-0 text-[11px] text-slate-600 hover:text-slate-300"
-            >
+            <button onClick={() => onOpenSmile(selected.ticker, selected.expiry)} title="Open this node's reconstructed smile" className="shrink-0 text-[11px] text-slate-600 hover:text-slate-300">
               ↗
             </button>
-            <button
-              onClick={onClose}
-              title="Close inspector"
-              className="shrink-0 px-0.5 text-sm leading-none text-slate-500 transition-colors hover:text-slate-200"
-            >
+            <button onClick={onClose} title="Close inspector" className="shrink-0 px-0.5 text-sm leading-none text-slate-500 transition-colors hover:text-slate-200">
               ×
             </button>
           </div>
 
-          {/* Posterior facts (once a production run landed), else baseline. */}
           {post !== null ? (
             <div className="mb-3 rounded-md border border-slate-800 bg-surface-800/50 p-2">
               <Fact label="ATM vol">
@@ -154,17 +158,11 @@ export default function InspectorPane({
                   {post.shiftBp.toFixed(1)} bp
                 </span>
               </Fact>
-              <Fact
-                label="Posterior confidence (1σ)"
-                title="Final posterior confidence — the solved marginal sd; folds in source uncertainty and shared routes (authoritative)."
-              >
+              <Fact label="Posterior confidence (1σ)" title="Final posterior confidence — the solved marginal sd; folds in source uncertainty and shared routes (authoritative).">
                 ±{(post.sd * 1e4).toFixed(0)} bp
               </Fact>
               {post.qIncoming !== null && (
-                <Fact
-                  label="Incoming confidence q"
-                  title="Incoming message confidence q = Σp — the receiver conditional (§7.6). The final posterior (marginal) above is authoritative."
-                >
+                <Fact label="Incoming confidence q" title="Incoming message confidence q = Σp — the receiver conditional (§7.6). The final posterior (marginal) above is authoritative.">
                   {post.qIncoming.toFixed(0)}
                 </Fact>
               )}
@@ -177,18 +175,12 @@ export default function InspectorPane({
               <Fact label="Prior source">{post.priorSource}</Fact>
               {post.priorAsOf !== null && <Fact label="Prior as-of">{post.priorAsOf}</Fact>}
               {post.transportDistance > 0 && (
-                <Fact
-                  label="Transport"
-                  title="Transported-prior comparison: how far the active prior travelled (spot transport distance) to form this node's baseline."
-                >
+                <Fact label="Transport" title="Transported-prior comparison: how far the active prior travelled (spot transport distance) to form this node's baseline.">
                   {post.transportDistance.toFixed(3)}
                 </Fact>
               )}
               {post.noLitPath === true && (
-                <p
-                  className="mt-1 rounded bg-rose-500/15 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-rose-300"
-                  title="No lit path: this node's component has no observation — it stays at its transported prior with explicitly broad uncertainty (spec §14.3)"
-                >
+                <p className="mt-1 rounded bg-rose-500/15 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-rose-300" title="No lit path: this node's component has no observation — it stays at its transported prior with explicitly broad uncertainty (spec §14.3)">
                   no lit path
                 </p>
               )}
@@ -199,37 +191,18 @@ export default function InspectorPane({
               <Fact label="Skew">{base.skew.toFixed(3)}</Fact>
               <Fact label="Curvature">{base.curvature.toFixed(3)}</Fact>
               <Fact label="T">{base.t.toFixed(3)}y</Fact>
-              <p className="mt-1 text-[10px] text-slate-600">
-                Baseline handles — press Run for the posterior.
-              </p>
+              <p className="mt-1 text-[10px] text-slate-600">Baseline handles — press Run for the posterior.</p>
             </div>
           ) : null}
 
-          {/* P6 V2: the layered four-part mark explanation (baseline +
-              systematic + residual + harmonic + χ); hidden outside layered
-              runs — the card checks the V0 fields itself. */}
           {post !== null && <DecompositionCard node={post} />}
 
-          {/* U4 message inspector: incoming messages + local consensus vs
-              the solved global posterior. */}
           {messages && post !== null && allNodes !== null && (
-            <MessageInspector
-              receiver={post}
-              rows={msgRows}
-              nodes={allNodes}
-              params={params}
-            />
+            <MessageInspector receiver={post} rows={msgRows} nodes={allNodes} params={params} />
           )}
 
-          {/* Why it moved: exact gain × innovation attribution. */}
           {showAttribution && (
-            <GraphAttributionCard
-              ticker={selected.ticker}
-              expiry={selected.expiry}
-              body={body}
-              onClose={onClose}
-              onOpenSmile={onOpenSmile}
-            />
+            <GraphAttributionCard ticker={selected.ticker} expiry={selected.expiry} body={body} onClose={onClose} onOpenSmile={onOpenSmile} />
           )}
         </>
       )}

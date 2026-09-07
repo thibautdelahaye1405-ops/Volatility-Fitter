@@ -709,19 +709,28 @@ class OptionsSettings(BaseModel):
     graphLambdaScale: float = Field(0.0, ge=0.0)
     graphNu: float = Field(0.1, gt=0.0)
     #: Default propagation operator for the production graph solve (message
-    #: arc P3, Docs/graph_precision_message_framework.md §18.1). The frontend
-    #: seeds its mode selector from this. DEFAULT = "precision_messages"
-    #: (USER-RATIFIED FLIP 2026-07-27, FINDINGS_message_phase4.md: the daily
-    #: §22.4 gate did not clear, but intraday the legacy operator is nearly
-    #: inert — 168.6bp vs 172.7 transport — while messages carry the signal
-    #: at 65.8bp). "smooth_field" stays explicit configuration/rollback, and
-    #: remains the WIRE default on GraphExtrapolateRequest (replay,
-    #: byte-identity locks and the backtest harness are untouched). Old
-    #: persisted blobs lack the field and coerce to the default; a store
-    #: that ever saved Options pins its explicit value until re-save.
+    #: arc P3, Docs/graph_precision_message_framework.md §18.1; dynamic-
+    #: harmonic arc §10). The frontend seeds its mode selector from this.
+    #: History: 2026-07-27 USER-RATIFIED FLIP to "precision_messages"
+    #: (FINDINGS_message_phase4.md: the daily §22.4 gate did not clear, but
+    #: intraday the legacy operator is nearly inert — 168.6bp vs 172.7
+    #: transport — while messages carry the signal at 65.8bp); the WIRE
+    #: default on GraphExtrapolateRequest stayed "smooth_field" throughout
+    #: (replay, byte-identity locks and the backtest harness are untouched)
+    #: and still does.
+    #: GRAPH ERGONOMICS ARC ruling (2026-09-07): operator order = Layered
+    #: (DEFAULT) -> Precision -> Smooth field (legacy, under Advanced).
+    #: DEFAULT is now "layered_dynamic_harmonic" — the user chose it for its
+    #: directed/temporal semantics. Recorded caveat carried by the default:
+    #: the intraday campaign (wrap 2026-07-27) scored the static precision-
+    #: message arm above every layered arm on the ETF triangle, so a
+    #: benchmark-pack adjudication may revisit the DEFAULT (never the
+    #: ordering of the UI). Old persisted blobs lack the field and coerce to
+    #: the (current) default; a store that ever saved Options pins its
+    #: explicit value until re-save.
     graphPropagationMode: Literal[
-        "smooth_field", "precision_messages", "hybrid"
-    ] = "precision_messages"
+        "smooth_field", "precision_messages", "hybrid", "layered_dynamic_harmonic"
+    ] = "layered_dynamic_harmonic"
     # spot-vol dynamics defaults — the Parametric spot-scenario reads these
     # (the regime selector moved entirely to Options). "custom" uses ``ssr``.
     dynamicsRegime: Literal[
@@ -1869,6 +1878,13 @@ class GraphExtrapolateRequest(GraphSolverParams):
     #: U6 lifecycle: solve with the DRAFT config's rows instead of the active
     #: ones (the run-draft toggle) — a test drive, never an activation.
     useDraftConfig: bool = False
+
+    #: GRAPH ERGONOMICS ARC (2026-09-07): a LIVE-PREVIEW solve — identical
+    #: numbers to a Run, but NOTHING is recorded: no innovation history
+    #: (record_graph_innovations), no layered residual-store write, no
+    #: graph-inferred last-run cache. The Live toggle re-solves on every
+    #: dial / relation edit through this flag; the explicit Run commits.
+    preview: bool = False
 
     #: Dynamic-harmonic mode only (framework D2): residual half-life in DAYS
     #: for persistent target-specific dislocations; None = fully persistent
