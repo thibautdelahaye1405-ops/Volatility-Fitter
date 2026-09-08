@@ -237,6 +237,225 @@ half-life/update-rule/D6 sweeps; §16.3 adoption gate) then Phase 6
 
 ---
 
+## LV DUPIRE-TWIN COMPARE ARC — adopted 2026-09-08 (D0 ratified the same day; Local Vol lens ▸ a "Compare" tab: the parametric surface differentiated the classical way, beside the surface fitted the forward way)
+
+User ask (2026-09-08): "In Local Vol I would like to add a comparison feature.
+When a parametric model is calibrated, a comparison tab within Local Vol can
+calibrate a smooth LV surface from the parametric model (with different
+targets options for the tails) with the classical Dupire differentiation."
+
+### Refined ask (the contract)
+
+The Local Vol lens gains a TICKER view **Compare** (beside LV surface / IV
+surface, `LV_TICKER_VIEWS`). It draws the **Dupire twin** — the local-vol
+surface read off the calibrated PARAMETRIC surface the classical way
+(Gatheral eq. 1.10 in log-moneyness, σ²_loc = w_τ / g(k, w): differentiate,
+then divide — `models/localvol/dupire.py`) — next to the **affine sheet**
+(the piecewise-affine local variance the LV workspace fits to quotes
+through the forward PDE, Note 04's direction). Note 04 §1 states the two
+objects "should not be conflated"; this tab is where they are CONFRONTED,
+in both spaces:
+
+- **Local-vol space** — the two σ_loc sheets on ONE lattice (the affine
+  vertex grid, τ vertices × x vertices, `affine_fit._resolve_grid`), a
+  signed difference sheet (diverging ramp), and the extraction's counters
+  drawn on the twin: butterfly cells (g ≤ 0: the implied surface itself
+  carries strike arbitrage there), calendar cells (w_τ < 0), floored
+  cells, and vertices above the affine cap (`lvVolCapMult`).
+- **Implied-vol space** — the twin is REPRICED through the affine's OWN
+  Dupire march (`models/localvol/reprice.reprice_affine_dupire` on the
+  calibration's `_pde_grids` lattice, the put-march mirror through
+  `affine_views_ext.otm_implied_w` — the same code path as the affine
+  reconstruction, `affine_fit.py:1432–1469`), so every expiry shows four
+  curves on the Smile grammar: quotes, the parametric smile, the affine
+  reconstruction, the twin's reconstruction. A per-expiry table scores each
+  surface against the fit target (the weighted basis of
+  `AffineSmile.rmsError`) and the twin against its own parametric source on
+  the quoted strikes — the classic Dupire round-trip check, which reads
+  discretization + the extraction's repairs and nothing else.
+
+**"Smooth"** = the twin is continuous in BOTH directions, unlike today's
+`GET /localvol/{ticker}` extraction (piecewise-constant forward-variance
+buckets between listed expiries, `pw_t`, sampled at bucket midpoints,
+`api/localvol._w_surface` — the market convention, kept as an option). The
+total-variance surface is interpolated in τ (the event-weighted variance
+clock the affine lattice lives on, `prepared.tau`, as the Stage-2b seed
+already does) by a monotone C¹ scheme (PCHIP per k on w(k, ·), w(0) = 0,
+Fritsch–Carlson: w_τ ≥ 0 wherever the slice values are calendar-ordered at
+that k), sampled on the affine τ vertices (Stage-3 knees at every expiry +
+the sqrt-T midpoints, `_time_nodes`) and the affine x vertices, and held as
+an `AffineVarianceSurface(theta = σ²_loc, interp="bilinear")` — the same
+class of object the affine sheet is, so the difference is nodal.
+
+**Tail targets** = what the parametric surface IS beyond the quoted range
+before it is differentiated. This is where the two directions structurally
+part: the affine sheet is Gaussian-class by construction (`models/wings.py:
+lv_wing_laws` — w ≤ max θ · τ, Lee slope 0), while an LQD (α = 0) or
+SVI-JW surface has exponential-class wings (w linear in |k|), whose Dupire
+local variance grows without bound in |k| (g → 3/16, w_τ ∝ |k|). **v1
+ships ONE target (user ruling 2026-09-08): `model` — the displayed model's
+own analytic wings** (LQD α± generalized tails, SVI-JW's Lee slopes, MCS),
+so the tail-class gap is shown as it is. The wire carries `tails="model"`
+from day one (422 on anything else) so the riders below extend the chip
+group without a break:
+
+| rider chip | the wings of w(k, τ) fed to the derivative | notes |
+|---|---|---|
+| **Match LQD tails** | the overlay (SVI-JW / MCS) re-fit per expiry with the Compare tail-match rows (var-swap · Lee · edge, `calib/tails.py` via `api/compare_tails.resolve_tail_match`, the `(fit_key, model, flags)` compare cache) | identity on LQD (chip dimmed); ladder-wide cold cost = seconds (MCS ≤ 0.44 s / node) |
+| **Quoted range** | differentiate INSIDE each expiry's quoted hull only; σ_loc extends flat in k beyond the last quoted vertex (the `LocalVolGrid` / `np.interp` convention) | like-for-like belly comparison — the affine fit's own extrapolation regime |
+| **Affine wings** | the twin inside the hull, the calibrated affine sheet outside | the difference sheet reads the belly ALONE; needs the LV fit |
+
+In every mode the twin is differentiated only down to the affine 5Δ-put
+boundary / the display range (`_axis_scale`, `K_DISPLAY_LO`), flat beyond
+(the x = 0 vertex row is never differentiated), and clipped into the affine
+variance box [var_lo, var_hi] with the clip COUNT reported — a twin that
+needs the cap is a finding, not a repair.
+
+The twin is READ-ONLY (the eSSVI reference row / graph-inferred smile
+precedent): never a fit, never a prior, never the affine calibration's seed
+or θ_ref (the Stage-2b cold seed keeps its bucketed extraction,
+byte-identical). Feeding it back — "calibrate LV around the twin"
+(θ_ref = twin) or the smooth twin as the Stage-2b seed — is a recorded
+rider, benchmark-pack adjudicated.
+
+### Design decisions (settled 2026-09-08 — D0 answers folded in)
+
+1. **A lens tab, not a lens** — `LvView` gains `"compare"` in
+   `LV_TICKER_VIEWS` (`PER_EXPIRY` false, `AXIS_MODE_VIEWS` yes); no
+   registry command (sub-views are not commands, no CommandDoc lock); the
+   chips live in the lens view memory (`useLensViewMemory("localvol")`)
+   like the Parametric Compare's `compareTails`.
+2. **One lattice for both sheets** — the twin is sampled on the affine's
+   `(t_nodes, x_nodes)` from `_resolve_grid(rows, opts)` (which needs the
+   rows, not a fit), exactly as `_parametric_seed` samples the seed; the
+   two `SurfaceMesh` share `cameraKey` + a linked crosshair
+   (`chartId "localvol:compare"`). A finer display lattice is a rider.
+3. **T-interpolation is a second chip group** — `Smooth` (PCHIP in τ,
+   default) vs `Buckets` (today's linear-in-t / pw_t, byte-identical to
+   `GET /localvol`'s surface), so the textbook picture (constant forward
+   variance per bucket) is one click away and the smooth twin is judged
+   against it.
+4. **Derivatives by central FD** (`extract_grid`, dk 2e-3 in k, dt inside
+   the shortest τ gap; the module's own caveat on FD steps vs interpolant
+   kinks is respected by construction — PCHIP is C¹) first; analytic
+   k-derivatives where the slice has closed forms (LQD) are a rider, locked
+   by FD agreement.
+5. **The twin's reprice runs the affine PDE lattice, never
+   `models/localvol/pde.py`** — the k-space Crank–Nicolson pricer has a
+   different mesh, span and scheme; an IV-space gap must be attributable to
+   the SURFACE, not the operator (the backend map's finding). Both the
+   in-operator and the converged-operator (`refined_grids`, dt/4 · dx/2)
+   reprices are produced, as for the affine sheet.
+6. **Honest counters, not repairs** — g ≤ 0, w_τ < 0, the variance floor,
+   the cap: counted per expiry, drawn on the sheet, reported in the table;
+   `extract_grid`'s nearest-valid fill stays (the march needs a positive
+   sheet) but is never silent.
+7. **Perf budget** — value-only, no optimizer: one extraction (4
+   vectorized w-evaluations per τ row on the x vertices, sub-ms per row for
+   closed-form slices) + one value march per lattice (single-digit ms, the
+   "value solve ≈ 2 %" slice of an eval) + the converged reprice — target
+   < 100 ms warm on SPY; no cold cost in v1 (the "Match LQD tails" rider
+   would add the per-node constrained fits). The affine sheet is READ from the cached
+   `AffineFitResponse`, never re-fitted by this tab. Cache key = the
+   `localvol_record` key + tails + interp + `affine_key`.
+8. **Gates** — no parametric fit on the ticker ⇒ the Parametric lens's
+   "Calibrate" cue; parametric calibrated but LV not ⇒ the twin alone with
+   the "Calibrate LV" cue (the sheets and smiles it needs the LV fit for
+   stay empty, the twin's own smiles and round-trip still draw); `stale` follows
+   `AffineFitResponse.stale`.
+9. **No new Options field** in v1 (chips are view state); if a persisted
+   default is wanted later it joins `affine_key` without an options-version
+   bump (the LV-only convention) + `gen_help_schema.py` + a SettingDoc.
+
+### Architecture (files ≤ 400 lines; every file commented)
+
+```
+backend/volfit/models/localvol/dupire_surface.py   w(k, τ) surface builders over slice fits: `w_surface_buckets`
+                                                  (= api/localvol._w_surface, MOVED, byte-identical — localvol.py imports
+                                                  it) · `w_surface_pchip` (monotone C¹ in τ per k, w(0)=0) · the wing
+                                                  guard (5Δ boundary / display range, flat beyond, the box clip + count)
+                                                  · `DupireCounters`  [the hull-clip / hybrid-wing wrappers are the
+                                                  riders' — not in v1]
+backend/volfit/api/lv_compare.py                  the twin record: rows + lattice via affine_fit._resolve_grid, the
+                                                  displayed slices (`api/displayed.displayed_slice`, cached fits only —
+                                                  never triggers a parametric fit, as `_parametric_seed`), the
+                                                  extraction on the τ×x vertices → AffineVarianceSurface(bilinear) →
+                                                  reprice_affine_dupire on the calibration lattice (+ converged) →
+                                                  otm_implied_w smiles → per-expiry scores; the cache
+backend/volfit/api/schemas_affine.py              LvCompareResponse · LvCompareSmile · LvCompareScore · DupireCounters
+backend/volfit/api/routers/affine.py              POST /fit/affine/{ticker}/compare  body {fitMode, tails="model",
+                                                  tInterp="smooth"|"buckets"}  (404 no parametric fit · 422 unknown chip)
+backend/tests/test_dupire_surface.py              goldens (D1) · test_lv_compare.py + test_api_lv_compare.py (D2)
+frontend/src/state/useLvCompare.ts                the fetch hook (the useAffineView pattern, timeoutMs 300 s, chips →
+                                                  body, abort-supersede, hasData refreshing)
+frontend/src/lib/lvCompare.ts                     chip vocab (interp: smooth · buckets; tails: model only in v1, the
+                                                  group is built so the riders add chips), labels/titles, diff grid helper
+frontend/src/lib/volColormap.ts                   + a diverging ramp for signed sheets (one place, per its header)
+frontend/src/components/localvol/LvCompareView.tsx   layout: two SurfaceMesh (shared cameraKey) or the difference
+                                                  heatmap (LvRender gains "diff"), the IV panel (OverlayCurvesChart,
+                                                  node-following expiry), the score table; data-chart-card kept
+frontend/src/components/localvol/LvCompareChips.tsx  the interp chip group (+ the tails group, one chip in v1; CompareChips grammar)
+frontend/src/components/localvol/LvCompareTable.tsx  per-expiry scores + counters (ModelCompareTable grammar)
+frontend/src/components/localvol/LocalVolToolbar.tsx LvView "compare"; frontend/src/views/LocalVolViewer.tsx the case
+help: guides/lenses_b.ts (localvol tab list, twice) · glossary `dupire-twin` · tip (scope localvol) · whatsNew ·
+      scripts/ui_smoke.mjs `{ name: "Local Vol", subview: "Compare", slug: "lv-compare", hover: true }`
+```
+
+### Build phases (D0–D5; commit per green phase)
+
+- **D0 Contract** — DONE 2026-09-08: the four questions below answered by
+  the user; this section amended; memory note `lv-dupire-twin-compare-arc`.
+- **D1 Surface builders + goldens** — `dupire_surface.py`: the buckets
+  builder moved (byte-identity lock vs the old `_w_surface` on the
+  `test_api_localvol` universe), the PCHIP builder, the wing guard + box
+  clip, counters. Goldens: (i) a flat surface returns flat σ_loc to 1e-10
+  under both interpolants; (ii) an SVI surface with the closed-form Dupire
+  local variance (Gatheral ch. 1) matches to FD order at the vertices;
+  (iii) calendar-ordered slices ⇒ w_τ ≥ 0 at every vertex under PCHIP;
+  (iv) a crossing ⇒ counted, never repaired silently; (v) an
+  exponential-class wing's local variance grows linearly in |k| and the
+  box clip counts it (the tail-class gap the sheet shows).
+- **D2 Twin record + API** — `lv_compare.py`, schemas, router, cache; the
+  round-trip lock: the twin of a smooth arbitrage-free parametric ladder,
+  repriced on the affine lattice, reproduces the parametric IV inside the
+  quoted range to a measured bp figure on `tests/fixtures/lv_weekly_massive
+  .json` (locked with slack); `tails` other than `model` → 422; 404 without
+  a parametric fit; `GET /localvol` + the Stage-2b seed byte-identical
+  (existing locks).
+- **D3 Frontend tab** — hook, chips, sheets (side-by-side + diff), IV
+  panel, table, cues; vitest: chip vocab + dimming, diff grid, table
+  ordering, empty / cue states; `LvRender` "diff".
+- **D4 Help + smoke** — guide tab list, glossary, tip, What's new; the
+  smoke line; tsc · vitest · build · `npm run smoke:ui` LIVE.
+- **D5 Wrap** — a live SPY look (screenshots .smoke/lv-compare-*.png),
+  the measured costs, the STATUS block + memory note; riders recorded:
+  the three tail-target chips (Match LQD tails · Quoted range · Affine
+  wings, table above), analytic k-derivatives, a finer display lattice,
+  θ_ref = twin / the smooth twin as the Stage-2b seed (benchmark-pack
+  adjudicated), the twin on the Term chart.
+
+Exit criteria: with a parametric fit on SPY the tab draws both sheets and
+the four-curve smiles in < 100 ms warm; every chip combination is locked;
+`GET /localvol` and the Stage-2b seed stay byte-identical.
+
+### D0 — the assumptions, RATIFIED by the user 2026-09-08
+
+1. "Smooth" = C¹ in τ by PCHIP on total variance, the DEFAULT chip, with
+   today's bucket convention as the second chip. ✔
+2. Tail targets in v1: **Model wings only**; Match LQD tails · Quoted range
+   · Affine wings are riders (the chip group and the wire field are built
+   to take them). ✔
+3. Compare in **both spaces**: the two sheets + the difference sheet, AND
+   the repriced smiles with the score table and the round-trip error. ✔
+4. The twin is **read-only** in v1; θ_ref = twin and the seed replacement
+   are riders, benchmark-pack adjudicated. ✔
+Assumed without asking (stated, not ruled): a TICKER-level tab named
+"Compare" inside the Local Vol lens (not a row in the Parametric Compare);
+the displayed model (overlay when active, else LQD) is the parametric
+source, as for `GET /localvol`.
+
+---
+
 ## GRAPH ERGONOMICS ARC — adopted 2026-09-07 (current top arc)
 
 User brief (2026-09-07): "There are too many parameters at the same level,
@@ -1114,6 +1333,13 @@ below) — every recorded rider is closed except the ones listed here:
    2026-09-08 (Focus re-fit + floating card + F, toolbar row, plain-drag
    connect, "+ reverse", click-only bundle fold-back with the pair card, the
    midpoint handle) are ALL SHIPPED and help-documented.
+10. LV DUPIRE-TWIN COMPARE ARC (proposed 2026-09-08, section above the Graph
+   Ergonomics arc): a Local Vol lens "Compare" tab drawing the parametric
+   surface's Dupire twin (smooth in τ, tail-target chips) beside the affine
+   sheet, in LV space and repriced on the affine lattice. D0 RATIFIED
+   2026-09-08 (smooth default + buckets chip · v1 tails = model wings only ·
+   both spaces · read-only twin) — NEXT = D1 (surface builders + goldens),
+   then D2–D5 as listed; nothing built yet.
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
 wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
 replace the five scheduler fields, migrated on load; the `/scheduler` payload
