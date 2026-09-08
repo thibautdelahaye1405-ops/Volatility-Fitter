@@ -237,6 +237,113 @@ half-life/update-rule/D6 sweeps; §16.3 adoption gate) then Phase 6
 
 ---
 
+## LV OPERATOR ARC — adopted 2026-09-08 (the user's pick from the rider list: "Local Vol: do the front operator and the graded strike lattice"; both change the calibration operator, so the default flips ride the fixture evidence here and the benchmark-pack run stays the user's)
+
+The two Local Vol riders left after the Dupire-twin arc come from ONE design
+choice — a uniform strike lattice marched first-order in time — and the twin
+measured its cost in both directions: the fitted sheet ABSORBS the operator's
+error on short fronts (an implicit-Euler march of a one-month front with nine
+steps misprices even a flat surface by ~150 bp; the calibrated sheet's
+converged front score read 57 bp on SPY, 124 on NVDA), and the shortest rung
+sets the uniform step for every expiry (a 0–2-day daily makes a SPY fit take
+~25 s). This arc replaces the operator: a second-order, L-stable time scheme
+on a time grid graded from the payoff kink, and a strike lattice graded in
+each expiry's own resolution.
+
+### O0 — the measurements that shaped it (2026-09-08, scratch harness; flat
+control = a constant local variance marched on the fit's own lattice, whose
+exact reprice is known, so every bp is the operator's; "fitted" = the
+production implicit fit's surface repriced on each candidate grid against a
+256-steps-per-interval BDF2 reference)
+
+- Implicit Euler's payoff-kink error at the ATM is ~0.15 σ / N for N uniform
+  steps on ANY front (2-day SPY, 27-day SPY, 27-day NVDA alike: 82/86/217 bp
+  at 2 steps, 6/8/15 at 32) — first order; the whole-quote rms is 3–5× the
+  ATM figure (the wings invert small prices). Rannacher (CN) and BDF2 are
+  second order: at 8 steps they read 4–5 bp ATM where implicit reads 22–24.
+- On the fitted surfaces the production rule (implicit, dt ≤ 0.01, every
+  interval under 8 steps lifted to 32) carries 15–170 bp of operator error
+  per expiry (Bloomberg SPY 70/37/28/15/12, NVDA 170/28/16, the weekly
+  28/25/17/33/28/14/14, the user's SPY dailies snapshot 25/9/10/21/5). THIS is
+  what the calibration bends θ to cancel.
+- A pure geometric time grid (dt = c·t from the kink) resolves the kink but
+  under-resolves the slabs between VERTEX ROWS (the local variance is
+  piecewise-affine in t with kinks at rows): 12–22 bp at intermediate rungs.
+  Uniform-per-interval BDF2 suffers an Euler RESTART after each short front
+  (the step grows > 2× at the next expiry; variable-step BDF2 is only
+  zero-stable below 1 + √2): 38 bp on the dailies' 107-day rung.
+- The HYBRID grid fixes both: dt_0 = 1 % of the first mark, then
+  dt = min(0.25 t, 0.05, 1.25 dt_last, slab / 8) with every expiry AND every
+  vertex row a grid point. BDF2 on it: ≤ 5.2 bp on every expiry of every
+  case (Bloomberg SPY 2.6/0.8/0.6/2.3/0.6, NVDA 3.2/1.3/0.3, weekly
+  3.8/1.1/2.1/3.0/3.9/1.0/1.8, dailies 5.2/1.8/1.7/3.2/1.8) at 98–116 steps
+  where the production rule marches 51–271. Rannacher on the same grid reads
+  ≤ 1.6 bp but its sensitivity step costs ~2× (the Stage-7 finding); no
+  negative density on any case for either scheme on the reprice. Vertex rows
+  as marks are load-bearing (expiries-only: 11 bp on Bloomberg SPY's 181-day
+  rung); c = 0.15 vs 0.25 and dt_0 = 0.3 % vs 1 % change nothing.
+- The strike lattice's own floor at the front is 5–9 bp rms at the 0.15 σ√τ
+  step (halving dx: 2.5–4) — with a second-order time scheme the LATTICE is
+  the residual, which is what the graded strike lattice keeps fine where it
+  matters and coarse where nothing lives.
+
+### Design decisions (settled 2026-09-08)
+
+1. **Every scheme is one generic two-level step** (models/localvol/
+   time_schemes.py): (I − γΔt A^{n+1}) U^{n+1} = α U^n − β U^{n−1} +
+   εΔt A^n U^n; implicit (1, 1, 0, 0), Crank–Nicolson (½, 1, 0, ½), BDF2
+   (γ, α, β from ω = Δt_n/Δt_{n−1}, ε = 0). The sensitivities differentiate
+   the same relation, so BDF2 keeps the implicit kernel's single fused
+   source (one axpy more per level) — the reason it is the default candidate
+   over Crank–Nicolson.
+2. **BDF2 is the new default time scheme**, L-stable (the stiffest modes are
+   damped, where CN's amplification → −1 is the recorded non-monotone
+   finding); Rannacher stays opt-in and gains the compiled march; implicit
+   stays as the byte-identical legacy (every golden lock runs on it).
+   Confirmed by the O5 calibration campaign below before the flip.
+3. **The time grid is graded from the kink and marks every vertex row**
+   (the hybrid rule of O0), scheme-independent in shape; the implicit legacy
+   keeps its per-interval uniform rule (`_pde_grids`, byte-identical).
+4. **One compiled kernel per basis layout takes the plan** (affine_march2.py:
+   dense + sparse, any (γ, α, β, ε)); the implicit kernels of affine_march.py
+   are untouched (their fastmath bits are the goldens' bits).
+5. **The strike lattice is graded per expiry**: inside each expiry's traded
+   range padded to ±6 σ√τ the step is 0.15 σ√τ (its own resolution, the fix-#6
+   rule), capped at 0.01; outside every expiry's region it grows geometrically
+   (ratio ≤ 1.15 per cell) to the wing step 0.05; x = 1 is a node by
+   construction (built outward from it), 0 and x_max close it. Every lattice
+   consumer reads the nonuniform second difference (the uniform formula
+   stays for uniform lattices — byte-identical).
+6. **Two Options fields**: `timeScheme` gains "bdf2" (default), `lvLattice`
+   "uniform" | "graded" (default graded once O5 confirms); both LV-only
+   (affine_key). The converged reprice, the put twin, the display wing march
+   and the Compare tab's twin all ride the fit's scheme and lattice.
+
+### Build phases (O1–O6; commit per green phase)
+
+- **O1 Schemes** — time_schemes.py; BDF2 in solve_affine_dupire (value +
+  analytic sensitivities) and reprice; locks: implicit/rannacher byte-
+  identical, BDF2 second order, BDF2 sensitivities vs FD, restart rule.
+- **O2 Compiled march** — affine_march2.py generic dense + sparse kernels;
+  solve_affine_dupire dispatches non-implicit plans to them; locks vs the
+  banded march ≈ 1e-13, calibration parity, warm-up.
+- **O3 Time grid** — pde_grids.py `graded_time_grid` (the hybrid rule);
+  affine_fit / lv_compare pick it for bdf2 / rannacher, `_pde_grids` for
+  implicit; `refined_grids` subdivides any grid; expiry diagnostics.
+- **O4 Strike lattice** — pde_grids.py `graded_strike_grid` + `refine_cells`;
+  nonuniform second differences in `_lattice_density` / `_diagnostics`;
+  `display_lattice` extends a graded lattice with its wing step; `lvLattice`.
+- **O5 Calibration campaign + defaults** — real fits on the five cases
+  (defaults AND the user's saved options): converged rms, in-op rms, min
+  density / calendar flags, wall, n_x × n_t; flip the defaults on the
+  evidence; record in STATUS.
+- **O6 Wiring + docs** — schemas, gen_help_schema, frontend select + toggle,
+  settingsDocs, glossary, guide, What's new; the LaTeX note's new
+  subsections (generic step, BDF2, graded grids); methodology md; STATUS
+  wrap + memory.
+
+---
+
 ## LV DUPIRE-TWIN COMPARE ARC — adopted 2026-09-08 (D0 ratified the same day; Local Vol lens ▸ a "Compare" tab: the parametric surface differentiated the classical way, beside the surface fitted the forward way)
 
 User ask (2026-09-08): "In Local Vol I would like to add a comparison feature.

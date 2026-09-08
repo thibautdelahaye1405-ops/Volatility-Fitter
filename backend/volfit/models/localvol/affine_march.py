@@ -303,6 +303,9 @@ def warmup() -> None:
         np.array([0.5, 0.5]), np.array([1, 1]), np.array([-1, 0]),
         np.array([1.0, 0.0, 0.0]), 1, 1,
     )
+    from volfit.models.localvol.affine_march2 import warmup as warmup_plan  # lazy: no cycle
+
+    warmup_plan()  # the plan-generic kernels (Rannacher / BDF2) compile alongside
     _WARMED = True
 
 

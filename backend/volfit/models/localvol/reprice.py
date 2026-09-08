@@ -27,6 +27,7 @@ import numpy as np
 from scipy.linalg import solve_banded
 
 from volfit.models.localvol.affine import AffinePDESolution, AffineVarianceSurface
+from volfit.models.localvol.time_schemes import build_plan
 
 #: Refinement factors defining the "converged" operator: every calibration
 #: time step is subdivided by ``CONV_DT_FACTOR`` (so the front weekly interval
@@ -87,8 +88,10 @@ def reprice_affine_dupire(
     (the short-dated left-display-wing fix; see api.affine_views_ext).
     ``time_scheme``/``rannacher_steps`` mirror ``solve_affine_dupire`` so a
     display put march can ride the exact scheme its call march used — a
-    scheme mismatch would put the seam kink at k = 0. The default arguments
-    reproduce the historical implicit call march bit-for-bit (test-locked).
+    scheme mismatch would put the seam kink at k = 0. "bdf2" (2026-09-08)
+    marches the second-order, L-stable BDF2 step of ``time_schemes.build_plan``
+    (implicit Euler start and restarts). The default arguments reproduce the
+    historical implicit call march bit-for-bit (test-locked).
     """
     if payoff not in ("call", "put"):
         raise ValueError(f"payoff must be 'call' or 'put', got {payoff!r}")
@@ -117,8 +120,10 @@ def reprice_affine_dupire(
     # Dirichlet boundary values; for the call these are the historical (1, 0).
     bc_lo = 0.0 if is_put else 1.0
     bc_hi = float(x[-1] - 1.0) if is_put else 0.0
-    cn_enabled = time_scheme == "rannacher"
-    rann = max(int(rannacher_steps), 1)
+    # The per-step (γ, α, β, ε) plan of the scheme: implicit / Rannacher keep
+    # their legacy expressions below (byte-identical); BDF2 adds the two-level
+    # right-hand side α U^n − β U^{n−1} with its own implicit weight γ.
+    plan = build_plan(t, time_scheme, rannacher_steps)
 
     if is_put:
         u = np.maximum(x - 1.0, 0.0)  # payoff (x - 1)^+ incl. boundaries
@@ -126,20 +131,24 @@ def reprice_affine_dupire(
         u = np.maximum(1.0 - x, 0.0)  # payoff (1 - x)^+ incl. boundaries
     prices = np.empty((exps.size, n_x))
     nu_prev = None  # old-level nu, for the Crank-Nicolson explicit half
+    u_prev = None  # the level before the old one, for the BDF2 two-level step
     for n in range(t.size - 1):
         dt = t[n + 1] - t[n]
         # NEW time level, as the note; floored at 0 — the left-wing linear
         # continuation is "linear until zero, then flat" (negative variance is
         # anti-diffusion and explodes the march; see solve_affine_dupire).
         nu = np.maximum(surface.variance(x_int, float(t[n + 1])), 0.0)
-        is_cn = cn_enabled and n >= rann  # Rannacher: implicit start-up steps
-        frac = 0.5 if is_cn else 1.0  # theta-weight on the implicit operator
+        is_cn = plan.eps[n] > 0.0  # Crank-Nicolson step (Rannacher after start-up)
+        frac = float(plan.gamma[n])  # theta-weight on the implicit operator (1, ½, BDF2's γ)
         lo, di, up = nu * a_m, nu * a_0, nu * a_p
         ab = np.zeros((3, n_x - 2))  # banded (I - frac*dt*A^{n+1}) for solve_banded
         ab[0, 1:] = -frac * dt * up[:-1]
         ab[1, :] = 1.0 - frac * dt * di
         ab[2, :-1] = -frac * dt * lo[1:]
-        rhs = u[1:-1].copy()
+        if plan.beta[n] > 0.0:  # BDF2: α U^n − β U^{n−1} on the interior
+            rhs = plan.alpha[n] * u[1:-1] - plan.beta[n] * u_prev[1:-1]
+        else:
+            rhs = u[1:-1].copy()
         if is_cn:
             # explicit (old-level) half on the full stencil, boundaries included.
             au_old = a_m * u[:-2] + a_0 * u[1:-1] + a_p * u[2:]
@@ -149,6 +158,7 @@ def reprice_affine_dupire(
         else:
             rhs[0] += frac * dt * lo[0] * 1.0  # Dirichlet U_0 = 1
         sol_u = solve_banded((1, 1), ab, rhs, overwrite_b=True, check_finite=False)
+        u_prev = u
         u = np.concatenate(([bc_lo], sol_u, [bc_hi]))
         nu_prev = nu
         i_out = want.get(n + 1)

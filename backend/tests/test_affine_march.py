@@ -50,15 +50,17 @@ def test_numba_engine_value_only_falls_back_to_banded():
     assert np.array_equal(a.prices, b.prices)
 
 
-def test_numba_engine_rannacher_falls_back_to_banded():
-    """Rannacher (CN) is not covered by the kernel -> banded, identical to banded CN."""
+def test_numba_engine_rannacher_runs_the_generic_kernel():
+    """Rannacher (CN) used to fall back to banded; since the LV operator arc (O2)
+    it runs the plan kernel of affine_march2 and matches banded CN to rounding
+    (the byte-identical claim belongs to the banded path alone)."""
     surf = _surface()
     a = solve_affine_dupire(surf, X_GRID, T_GRID, EXPS, sensitivities=True,
                             time_scheme="rannacher", engine="numba")
     b = solve_affine_dupire(surf, X_GRID, T_GRID, EXPS, sensitivities=True,
                             time_scheme="rannacher", engine="banded")
-    assert np.array_equal(a.prices, b.prices)
-    assert np.array_equal(a.sens, b.sens)
+    assert np.allclose(a.prices, b.prices, rtol=0.0, atol=1e-13)
+    assert np.allclose(a.sens, b.sens, rtol=1e-9, atol=1e-12)
 
 
 def _heavy_case(n_t_vtx, n_x_vtx, expiries, strikes):

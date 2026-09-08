@@ -33,6 +33,8 @@ import numpy as np
 from scipy.linalg import solve_banded
 from scipy.spatial import Delaunay
 
+from volfit.models.localvol.time_schemes import build_plan
+
 _INTERP_MODES = ("delaunay", "tri_lower", "tri_upper", "bilinear")
 
 
@@ -567,6 +569,15 @@ def solve_affine_dupire(
     accuracy (note "higher-order time stepping"). Rannacher is only applied when
     ``fit_left_a`` is False (the free-left-slope dU/da column keeps the implicit
     recursion); a "rannacher" request with ``fit_left_a`` falls back to implicit.
+
+    "bdf2" (2026-09-08, the LV operator arc) marches the variable-step BDF2 step
+    of ``time_schemes.build_plan`` — second order like Crank–Nicolson but
+    L-stable, and its sensitivity recursion has the implicit step's shape
+    (α S^n − β S^{n−1} + γΔt ∂A^{n+1} U^{n+1}), so it carries the dU/da column
+    too. The first step and every restart (a step growing > BDF2_MAX_RATIO×)
+    are implicit Euler steps. Every scheme is the generic two-level step of
+    the note's eq. (generic_two_level_step); the implicit and Rannacher
+    branches below keep their historical expressions (byte-identical).
     """
     timed = timing is not None
     x = np.asarray(x_grid, dtype=float)
@@ -580,8 +591,9 @@ def solve_affine_dupire(
     # Crank-Nicolson is used only without the free-left-slope column (which keeps the
     # implicit dU/da recursion); the first ``rann`` steps stay implicit Euler to damp
     # the payoff kink (Rannacher start-up), so CN begins at step index ``rann`` >= 1.
-    cn_enabled = time_scheme == "rannacher" and not fit_left_a
-    rann = max(int(rannacher_steps), 1)
+    # BDF2 carries the dU/da column (same recursion shape), so it needs no fallback.
+    scheme = "implicit" if (time_scheme == "rannacher" and fit_left_a) else time_scheme
+    plan = build_plan(t, scheme, rannacher_steps)  # per-step (γ, α, β, ε)
     exps = np.array(sorted({float(e) for e in expiries}))
     pos = np.searchsorted(t, exps)
     if np.any(pos >= t.size) or not np.allclose(t[pos], exps, rtol=0.0, atol=1e-12):
@@ -613,7 +625,7 @@ def solve_affine_dupire(
     # numba unavailable) keeps the banded march.
     sparse_phi = steps.phi_vals is not None
     if engine == "numba" and sensitivities and not fit_left_a and not use_lin \
-            and time_scheme == "implicit" \
+            and plan.is_implicit \
             and (sparse_phi or isinstance(steps.phi, np.ndarray)):
         from volfit.models.localvol.affine_march import (
             march_value_sens, march_value_sens_sparse, numba_available,
@@ -635,6 +647,29 @@ def solve_affine_dupire(
                 )
             return AffinePDESolution(x_grid=x, expiries=exps, prices=pr, sens=se)
 
+    # LV operator arc (O2): every OTHER plan (Rannacher, BDF2) runs the generic
+    # compiled kernels of affine_march2 under the same conditions; the implicit
+    # kernels above keep their own bits. Banded fallback below otherwise.
+    if engine == "numba" and sensitivities and not fit_left_a and not use_lin             and not plan.is_implicit             and (sparse_phi or isinstance(steps.phi, np.ndarray)):
+        from volfit.models.localvol.affine_march import numba_available
+        from volfit.models.localvol.affine_march2 import march_plan, march_plan_sparse
+
+        if numba_available():
+            want_step = np.full(t.size - 1, -1, dtype=np.int64)
+            for p, i in want.items():
+                want_step[p - 1] = i
+            if sparse_phi:
+                pr, se = march_plan_sparse(
+                    steps.phi_vals, steps.phi_cols, theta, a_m, a_p, a_0, np.diff(t), plan,
+                    steps.active_k, want_step, u, exps.size, m,
+                )
+            else:
+                pr, se = march_plan(
+                    steps.phi, theta, a_m, a_p, a_0, np.diff(t), plan, steps.active_k,
+                    want_step, u, exps.size,
+                )
+            return AffinePDESolution(x_grid=x, expiries=exps, prices=pr, sens=se)
+
     if sparse_phi:
         from volfit.models.localvol.affine_steps import densify_step
 
@@ -642,8 +677,16 @@ def solve_affine_dupire(
     active_k = steps.active_k
     nu_prev = None  # nu at the current (old) time level, carried for the CN explicit half
     phi_prev = None  # basis at the old level (= phis[n-1]), for the CN dA^n source
+    u_prev = None  # U^{n-1}, the level before the old one (BDF2's two-level step)
+    sens_prev = None  # dU^{n-1}/dtheta, likewise
     for n in range(t.size - 1):
         dt = t[n + 1] - t[n]
+        # This step's coefficients: implicit (1, 1, 0, 0), CN (½, 1, 0, ½), BDF2's
+        # (γ, α, β, 0). ``frac`` is the historical name of the implicit weight.
+        is_cn = plan.eps[n] > 0.0
+        two_level = plan.beta[n] > 0.0
+        frac = float(plan.gamma[n])
+        alpha, beta = float(plan.alpha[n]), float(plan.beta[n])
         phi_lin_n = None
         if phis is not None:  # precomputed dense (the in-budget hot path)
             phi_base = phis[n]  # cached hat weights at the new level (flat-extrap base)
@@ -677,9 +720,6 @@ def solve_affine_dupire(
         if np.any(neg):
             nu = np.where(neg, 0.0, nu)
             phi = np.where(neg[:, None], 0.0, phi)
-        # Crank-Nicolson on this step? (Rannacher: implicit for the first ``rann``.)
-        is_cn = cn_enabled and n >= rann
-        frac = 0.5 if is_cn else 1.0  # theta-weight on the IMPLICIT (new-level) operator
         lo, di, up = nu * a_m, nu * a_0, nu * a_p
 
         ab = np.zeros((3, n_x - 2))  # banded (I - frac*dt*A^{n+1}) for solve_banded
@@ -688,7 +728,10 @@ def solve_affine_dupire(
         ab[2, :-1] = -frac * dt * lo[1:]
 
         u_old = u  # full array at the old level (boundaries included), for the CN half
-        rhs = u[1:-1].copy()
+        if two_level:  # BDF2: α U^n − β U^{n−1} on the interior (eq. (bdf2_step))
+            rhs = alpha * u[1:-1] - beta * u_prev[1:-1]
+        else:
+            rhs = u[1:-1].copy()
         au_old = None
         if is_cn:
             # explicit (old-level) half: + (1-frac)*dt * A^n U^n on the full stencil
@@ -702,6 +745,8 @@ def solve_affine_dupire(
             if timed:
                 timing["value_s"] += perf_counter() - _t0
             u_new = np.concatenate(([1.0], sol_u, [0.0]))
+            # A BDF2 step after this one needs S^n: snapshot before the in-place update.
+            sens_now = sens.copy() if plan.uses_two_levels else None
             # Source G[i, l] = phi_l(t_{n+1}, x_i) * (a- U_{i-1} + a0 U_i + a+ U_{i+1}).
             # Only the first ``k`` sensitivity columns can be non-zero so far
             # (the rest stay at their zero initialization); solving the prefix
@@ -709,7 +754,27 @@ def solve_affine_dupire(
             k = int(active_k[n])
             au = a_m * u_new[:-2] + a_0 * u_new[1:-1] + a_p * u_new[2:]
             _t0 = perf_counter() if timed else 0.0
-            if fit_left_a:
+            if two_level:
+                # BDF2's sensitivity step: the same relation differentiated —
+                # (I − γΔt A^{n+1}) S^{n+1} = α S^n − β S^{n−1} + γΔt (∂A^{n+1}) U^{n+1}
+                # (eq. (generic_sensitivity_step) with ε = 0); the dU/da column
+                # rides along. ``sens_prev`` is the copy taken before the previous
+                # update (S^{n−1}); a restart step ahead of this one was implicit.
+                if fit_left_a:
+                    glin = np.where(neg, 0.0, phi_lin_n @ theta)
+                    idx = np.concatenate([np.arange(k), [m]])
+                    src = np.concatenate(
+                        [phi[:, :k] * au[:, None], (glin * au)[:, None]], axis=1
+                    )
+                    rhs_s = alpha * sens[1:-1, idx] - beta * sens_prev[1:-1, idx] + (frac * dt) * src
+                    sens[1:-1, idx] = solve_banded((1, 1), ab, rhs_s, check_finite=False)
+                else:
+                    rhs_s = (
+                        alpha * sens[1:-1, :k] - beta * sens_prev[1:-1, :k]
+                        + (frac * dt) * phi[:, :k] * au[:, None]
+                    )
+                    sens[1:-1, :k] = solve_banded((1, 1), ab, rhs_s, check_finite=False)
+            elif fit_left_a:
                 # dU/da: same recursion, source (phi_lin @ theta) * gamma; appended
                 # as the m-th column (always live once the wing region is touched).
                 # Positivity-clamped rows have dnu/da = 0 (matching the theta rows).
@@ -740,6 +805,8 @@ def solve_affine_dupire(
                 sens[1:-1, :k] = solve_banded((1, 1), ab, rhs_s, check_finite=False)
             if timed:
                 timing["sens_s"] += perf_counter() - _t0
+            sens_prev = sens_now  # S^n becomes the next step's S^{n−1} (BDF2 plans only)
+            u_prev = u
             u = u_new
         else:
             _t0 = perf_counter() if timed else 0.0
@@ -748,6 +815,7 @@ def solve_affine_dupire(
             )
             if timed:
                 timing["value_s"] += perf_counter() - _t0
+            u_prev = u
             u = np.concatenate(([1.0], sol_u, [0.0]))
 
         nu_prev = nu  # becomes the old-level nu for the next step's CN half
