@@ -18,9 +18,10 @@ import type { ClockMode } from "../../state/useTerm";
 
 /** Chart-card sub-tabs, mirroring the Parametric workspace. "LV surface" is the
  *  nodal local-vol grid (3D mesh or heatmap); "IV surface" is the reconstructed
- *  implied-vol mesh (both over t × strike). */
+ *  implied-vol mesh (both over t × strike); "Compare" the parametric surface's
+ *  Dupire twin beside the affine sheet (LV Dupire-twin arc). */
 export type LvView =
-  | "smile" | "densities" | "term" | "lvsurface" | "ivsurface" | "stackedvar" | "table";
+  | "smile" | "densities" | "term" | "lvsurface" | "ivsurface" | "stackedvar" | "table" | "compare";
 /** NODE views: about the active tab's expiry. */
 export const LV_NODE_VIEWS: { id: LvView; label: string }[] = [
   { id: "smile", label: "Smile" },
@@ -33,17 +34,19 @@ export const LV_TICKER_VIEWS: { id: LvView; label: string }[] = [
   { id: "stackedvar", label: "Stacked IV" },
   { id: "lvsurface", label: "LV surface" },
   { id: "ivsurface", label: "IV surface" },
+  { id: "compare", label: "Compare" },
 ];
 /** Flat list (node views first) for any consumer that wants one vocabulary. */
 export const LV_VIEWS: { id: LvView; label: string }[] = [...LV_NODE_VIEWS, ...LV_TICKER_VIEWS];
 /** Which sub-tabs are per-expiry (follow the active node's expiry). */
 export const PER_EXPIRY: Record<LvView, boolean> = {
   smile: true, table: true,
-  densities: false, term: false, lvsurface: false, ivsurface: false, stackedvar: false,
+  densities: false, term: false, lvsurface: false, ivsurface: false, stackedvar: false, compare: false,
 };
 /** Views whose x-axis can switch coordinate, exactly like the Parametric Smile:
- *  the reconstructed smile, the density overlay, the IV surface and stacked var. */
-export const AXIS_MODE_VIEWS = new Set<LvView>(["smile", "densities", "ivsurface", "stackedvar"]);
+ *  the reconstructed smile, the density overlay, the IV surface, stacked var
+ *  and the Compare tab's smile panel. */
+export const AXIS_MODE_VIEWS = new Set<LvView>(["smile", "densities", "ivsurface", "stackedvar", "compare"]);
 
 /** LV-surface render mode: 3D local-variance mesh (default) or vertex heatmap. */
 export type LvRender = "mesh" | "heatmap";

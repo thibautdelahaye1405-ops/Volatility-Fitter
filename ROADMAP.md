@@ -439,9 +439,35 @@ help: guides/lenses_b.ts (localvol tab list, twice) · glossary `dupire-twin` ·
   extraction 20 ms; inversion 78 ms), cached thereafter — rider: precompute
   the hat basis for the twin's marches as the calibration does. The real
   weekly fixture has no test loader; its figure is D5's live look.
-- **D3 Frontend tab** — hook, chips, sheets (side-by-side + diff), IV
-  panel, table, cues; vitest: chip vocab + dimming, diff grid, table
-  ordering, empty / cue states; `LvRender` "diff".
+- **D3 Frontend tab** — SHIPPED 2026-09-08: `LvView "compare"` (a TICKER
+  view, axis-mode aware); `state/useLvCompare.ts` (the useAffineView
+  pattern, 300 s timeout, refreshing keeps the previous twin dimmed);
+  `lib/lvCompare.ts` (chip vocabularies — the three rider tail targets are
+  LISTED muted so the group reads as the axis it is —, sheet / difference
+  builders, score + repair formatting) + `lib/lvCompare.fixture.ts`;
+  `components/localvol/LvCompareChips.tsx` (time · tails · the Sheets /
+  Difference / Smiles mode switch · the pooled score strip with the repair
+  summary and a STALE badge), `LvCompareView.tsx` (Sheets = two SurfaceMesh
+  on ONE `cameraKey` with linked crosshairs and a Calibrate cue in the
+  affine panel; Difference = `LocalVolHeatmap` on a NEW diverging ramp
+  [`volColormap.divergingColor`, symmetric about zero, signed pt legend];
+  Smiles = `LocalVolSmile` with a NEW `overlays` prop — the affine
+  reconstruction stays sky, the parametric source lime, the twin orange
+  dashed — plus `LvCompareTable.tsx`, one row per expiry, click = that
+  node), the 404 "needs a parametric fit" card; `SurfaceMesh` gains
+  `compact` (half-width panels drop the count caption + hint — the first
+  live look showed the hint colliding with the neighbour's legend);
+  LocalVolViewer: the compare case draws BEFORE the LV fit exists (the twin
+  alone + cue), the two chips ride the per-tab view memory. Locks: vitest
+  26 new (lvCompare, volColormap, LvCompareChips, LvCompareTable) — 88
+  files / 629 tests green; tsc; build; `npm run smoke:ui` LIVE with the new
+  `{ name: "Local Vol", subview: "Compare", slug: "lv-compare" }` step;
+  `scripts/lv_compare_check.mjs` (port 4194) drives all three modes + the
+  Buckets chip live — screenshots .smoke/lv-compare-{sheets,difference,
+  smiles,buckets}.png. Riders: LocalVolViewer.tsx is 474 lines (its own
+  split); the counters are a strip + tooltip, not marks on the sheet
+  (SurfaceMesh has no per-vertex marker API); a Calibrate button on the cue
+  card needs the command id wired.
 - **D4 Help + smoke** — guide tab list, glossary, tip, What's new; the
   smoke line; tsc · vitest · build · `npm run smoke:ui` LIVE.
 - **D5 Wrap** — a live SPY look (screenshots .smoke/lv-compare-*.png),
@@ -1371,8 +1397,13 @@ below) — every recorded rider is closed except the ones listed here:
    counters, per-expiry twin / parametric / affine scores + the round trip),
    marched through the affine fit's own operator; measured round trip
    24.4 bp rms on the synthetic ladder (locked at 2×); 0.27 s uncached.
-   NEXT = D3 (the frontend tab: `useLvCompare`, chips, sheets + diff, the IV
-   panel, the score table).
+   D3 SHIPPED 2026-09-08: the Local Vol "Compare" tab — Sheets (two meshes,
+   one camera) · Difference (diverging heatmap) · Smiles (three curves on
+   the quotes + the score table), the time / tails chips, the score strip;
+   26 vitest locks, smoke step + `scripts/lv_compare_check.mjs` LIVE.
+   NEXT = D4 (help corpora: the localvol guide's tab list, glossary
+   `dupire-twin`, a tip, What's new; the smoke line is already in), then
+   D5 (wrap + a live SPY look on the user's :8000).
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
 wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
 replace the five scheduler fields, migrated on load; the `/scheduler` payload

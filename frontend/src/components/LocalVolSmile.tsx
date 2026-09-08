@@ -13,7 +13,7 @@
 // brush in log-moneyness under the plot.
 import { useId, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import type { AffineSmile } from "../state/useAffine";
+import type { AffineSmile, SmilePoint } from "../state/useAffine";
 import { useSmileSession } from "../state/smileSession";
 import { LocalVolTargetChip, LocalVolTargetLayer, useLvShowTarget } from "./LocalVolTarget";
 import { formatPct, linearScale, niceTicks } from "../lib/chartScale";
@@ -34,6 +34,17 @@ import {
 } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
 
+/** An extra curve drawn on the smile's axes (the Compare tab's parametric
+ *  source and Dupire twin): its points join the in-view y auto-fit. */
+export interface SmileOverlay {
+  label: string;
+  points: SmilePoint[];
+  color: string;
+  /** SVG stroke-dasharray; solid when absent. */
+  dash?: string;
+  width?: number;
+}
+
 interface LocalVolSmileProps {
   smile: AffineSmile;
   /** Strike-axis display mode (shared with the Parametric Smile). */
@@ -41,7 +52,11 @@ interface LocalVolSmileProps {
   /** Y auto-scale toggles + toggler (the Y center / Y fit buttons). */
   autoScaleY?: AutoScaleToggles;
   onToggleAutoScale?: (key: keyof AutoScaleToggles) => void;
+  /** Extra curves under the reconstructed model (Compare tab overlays). */
+  overlays?: SmileOverlay[];
 }
+
+const NO_OVERLAYS: SmileOverlay[] = [];
 
 const MARGIN = { top: 10, right: 14, bottom: 28, left: 44 };
 
@@ -50,6 +65,7 @@ export default function LocalVolSmile({
   axisMode = "logmoneyness",
   autoScaleY,
   onToggleAutoScale,
+  overlays = NO_OVERLAYS,
 }: LocalVolSmileProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -113,6 +129,7 @@ export default function LocalVolSmile({
   let vMax = -Infinity;
   for (const p of smile.model) if (inView(p.k)) { vMin = Math.min(vMin, p.vol); vMax = Math.max(vMax, p.vol); }
   for (const p of smile.prior ?? []) if (inView(p.k)) { vMin = Math.min(vMin, p.vol); vMax = Math.max(vMax, p.vol); }
+  for (const o of overlays) for (const p of o.points) if (inView(p.k)) { vMin = Math.min(vMin, p.vol); vMax = Math.max(vMax, p.vol); }
   for (const q of smile.quotes) if (inView(q.k)) { vMin = Math.min(vMin, q.bid); vMax = Math.max(vMax, q.ask); }
   if (vsLevel !== null) { vMin = Math.min(vMin, vsLevel); vMax = Math.max(vMax, vsLevel); }
   if (!(vMin <= vMax)) {
@@ -155,6 +172,14 @@ export default function LocalVolSmile({
   const priorPath = (smile.prior ?? [])
     .map((p, i) => `${i === 0 ? "M" : "L"}${x.map(tx(p.k)).toFixed(1)},${y.map(p.vol).toFixed(1)}`)
     .join("");
+
+  // Overlay curves (Compare tab): same axis mapping, drawn under the model.
+  const overlayPaths = overlays.map((o) => ({
+    ...o,
+    d: o.points
+      .map((p, i) => `${i === 0 ? "M" : "L"}${x.map(tx(p.k)).toFixed(1)},${y.map(p.vol).toFixed(1)}`)
+      .join(""),
+  }));
 
   const ready = plotW > 0 && plotH > 0 && smile.model.length > 1;
 
@@ -242,6 +267,14 @@ export default function LocalVolSmile({
               {priorPath !== "" && (
                 <path d={priorPath} fill="none" stroke="rgb(45 212 191 / 0.95)"
                   strokeWidth={1.5} strokeDasharray="2 3" />
+              )}
+
+              {/* Overlay curves (Compare tab), under the model */}
+              {overlayPaths.map((o) =>
+                o.d !== "" ? (
+                  <path key={o.label} d={o.d} fill="none" stroke={o.color}
+                    strokeWidth={o.width ?? 1.5} strokeDasharray={o.dash} data-overlay={o.label} />
+                ) : null,
               )}
 
               {/* Reconstructed model curve */}

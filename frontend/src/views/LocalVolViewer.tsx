@@ -38,7 +38,12 @@ import LocalVolToolbar, {
 } from "../components/localvol/LocalVolToolbar";
 import type { LvAxis, LvRender, LvView } from "../components/localvol/LocalVolToolbar";
 import LocalVolAside from "../components/localvol/LocalVolAside";
+import LvCompareChips from "../components/localvol/LvCompareChips";
+import LvCompareView from "../components/localvol/LvCompareView";
 import { lvMeshFormatX, lvMeshXTransform } from "../components/localvol/lvMeshAxis";
+import type { LvCompareMode } from "../lib/lvCompare";
+import { useLvCompare } from "../state/useLvCompare";
+import type { LvTInterp } from "../state/useLvCompare";
 import AxisModeSelect, { AxisUnitSelect } from "../components/charts/AxisModeSelect";
 import { lvCalendarMarker } from "../lib/stackedVariance";
 import { cropPoints, cropRangeAt } from "../lib/stackCrop";
@@ -82,14 +87,19 @@ export default function LocalVolViewer() {
   // heatmap) · x-axis scale of the 3D LV mesh · maturity clock (Term sub-tab)
   // · the Y center / Y fit chips of the 2-D charts (seeded from the same
   // persisted preference as the Parametric lens — lib/autoScaleY).
+  // The Compare tab adds its two chips (t-interpolation of the twin, the
+  // display mode) — remembered per tab like the rest (older memories lack
+  // them and fall back to the defaults).
   const [vs, patchView] = useLensViewMemory<{
     view: LvView; axisMode: AxisMode; lvRender: LvRender; lvAxis: LvAxis; axisClock: ClockMode;
-    autoScaleY: AutoScaleToggles;
+    autoScaleY: AutoScaleToggles; lvTInterp: LvTInterp; lvCompareMode: LvCompareMode;
   }>("localvol", () => ({
     view: "smile", axisMode: "logmoneyness", lvRender: "mesh", lvAxis: "moneyness", axisClock: "real",
-    autoScaleY: readSmileAutoScale(),
+    autoScaleY: readSmileAutoScale(), lvTInterp: "smooth", lvCompareMode: "sheets",
   }));
   const { view, axisMode, lvRender, lvAxis, axisClock, autoScaleY } = vs;
+  const lvTInterp: LvTInterp = vs.lvTInterp ?? "smooth";
+  const lvCompareMode: LvCompareMode = vs.lvCompareMode ?? "sheets";
   const setView = (view: LvView) => patchView({ view });
   const setAxisMode = (axisMode: AxisMode) => patchView({ axisMode });
   const toggleAutoScale = (key: keyof AutoScaleToggles) => {
@@ -123,6 +133,9 @@ export default function LocalVolViewer() {
   const table = useAffineView<AffineTableData>(
     "table", ticker, expiry, view === "table", lvReloadKey, fitMode,
   );
+  // The Dupire twin beside the affine sheet (LV Dupire-twin arc): its own
+  // endpoint, only while the Compare tab is up; a chip change refetches.
+  const compare = useLvCompare(ticker, view === "compare", lvReloadKey, fitMode, lvTInterp);
 
   const smile = data?.smiles[expiryIdx];
 
@@ -248,6 +261,7 @@ export default function LocalVolViewer() {
   // the two mesh views get none here (no doubled hint).
   const interactionHint =
     view === "smile" || view === "densities" || view === "stackedvar"
+      || (view === "compare" && lvCompareMode === "smiles")
       ? "scroll: zoom · drag: pan · dbl-click: reset"
       : view === "term"
         ? "click a point: select that expiry"
@@ -256,9 +270,28 @@ export default function LocalVolViewer() {
   /** Chart-card body for the active sub-tab. */
   const chartBody = () => {
     if (loading || data === null) return chartMessage("Calibrating local-vol surface…");
-    if (data.hasFit === false)
+    // The Compare tab draws the twin ALONE before the first LV calibration
+    // (the twin needs only the parametric fits; the affine panel shows the cue).
+    if (data.hasFit === false && view !== "compare")
       return chartMessage("No local-vol surface yet — press Calibrate.");
     switch (view) {
+      case "compare":
+        return (
+          <LvCompareView
+            ticker={ticker}
+            compare={compare.data}
+            loading={compare.loading}
+            error={compare.error}
+            affine={data}
+            mode={lvCompareMode}
+            expiry={wantedExpiry}
+            onSelectExpiry={selectExpiry}
+            axisMode={axisMode}
+            autoScaleY={autoScaleY}
+            onToggleAutoScale={toggleAutoScale}
+            formatExpiry={(iso, t) => formatExpiry(iso, t, format)}
+          />
+        );
       case "lvsurface":
         return lvRender === "mesh" && lvMesh
           ? (
@@ -376,11 +409,23 @@ export default function LocalVolViewer() {
               </span>
             )}
           </div>
+          {view === "compare" && (
+            <div className="mb-2 shrink-0">
+              <LvCompareChips
+                tInterp={lvTInterp}
+                onTInterpChange={(v) => patchView({ lvTInterp: v })}
+                mode={lvCompareMode}
+                onModeChange={(m) => patchView({ lvCompareMode: m })}
+                data={compare.data}
+                loading={compare.loading || compare.refreshing}
+              />
+            </div>
+          )}
           <div
             data-chart-card=""
             className={[
               "min-h-0 flex-1 transition-opacity duration-200",
-              refreshing ? "opacity-60" : "opacity-100",
+              refreshing || (view === "compare" && compare.refreshing) ? "opacity-60" : "opacity-100",
             ].join(" ")}
           >
             {chartBody()}

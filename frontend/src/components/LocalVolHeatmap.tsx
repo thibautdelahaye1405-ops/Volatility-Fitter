@@ -11,7 +11,7 @@
 import { useState } from "react";
 import { formatPct } from "../lib/chartScale";
 import { useElementSize } from "../lib/useElementSize";
-import { VOL_GRADIENT_CSS, volColor } from "../lib/volColormap";
+import { DIVERGING_GRADIENT_CSS, VOL_GRADIENT_CSS, divergingColor, volColor } from "../lib/volColormap";
 import { nearestGridPoint, useSurfaceHover } from "../state/surfaceHover";
 
 interface LocalVolHeatmapProps {
@@ -24,6 +24,13 @@ interface LocalVolHeatmapProps {
   legendLabel?: string;
   /** Hover/legend count caption suffix (e.g. "vertices" vs "cells"). */
   cellLabel?: string;
+  /** SIGNED sheet (the Compare tab's twin − affine): the diverging ramp on a
+   *  range symmetric about zero, so equal magnitudes of either sign read
+   *  equally strong. Off = the sequential vol ramp over [min, max]. */
+  diverging?: boolean;
+  /** Legend / hover value formatter (default a percentage — right for vols;
+   *  a signed sheet passes its own). */
+  formatValue?: (v: number) => string;
   /** Linked hover: the ticker + this chart's id. */
   ticker?: string;
   chartId?: string;
@@ -37,6 +44,8 @@ export default function LocalVolHeatmap({
   localVol,
   legendLabel = "σ_loc(t, x)",
   cellLabel = "vertices",
+  diverging = false,
+  formatValue = (v) => formatPct(v),
   ticker = "",
   chartId = "lv-heatmap",
 }: LocalVolHeatmapProps) {
@@ -47,9 +56,11 @@ export default function LocalVolHeatmap({
   const nT = tNodes.length;
   const nX = xNodes.length;
   const flat = localVol.flat();
-  const vMin = flat.length ? Math.min(...flat) : 0;
-  const vMax = flat.length ? Math.max(...flat) : 1;
+  const absMax = flat.length ? Math.max(...flat.map((v) => Math.abs(v))) || 1 : 1;
+  const vMin = diverging ? -absMax : flat.length ? Math.min(...flat) : 0;
+  const vMax = diverging ? absMax : flat.length ? Math.max(...flat) : 1;
   const vSpan = vMax - vMin || 1;
+  const fill = (v: number) => (diverging ? divergingColor(v / absMax) : volColor((v - vMin) / vSpan));
 
   // A point published by another chart of this ticker → the matching cell.
   const linked =
@@ -82,16 +93,16 @@ export default function LocalVolHeatmap({
       <div className="mb-1 flex shrink-0 items-center gap-3 px-1 text-[11px] text-slate-400">
         <span className="font-mono text-slate-500">{legendLabel}</span>
         <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-500">
-          {formatPct(vMin)}
-          <span className="h-2 w-24 rounded" style={{ background: VOL_GRADIENT_CSS }} />
-          {formatPct(vMax)}
+          {formatValue(vMin)}
+          <span className="h-2 w-24 rounded" style={{ background: diverging ? DIVERGING_GRADIENT_CSS : VOL_GRADIENT_CSS }} />
+          {formatValue(vMax)}
         </span>
         <span className="text-[10px] text-slate-500">
           {nT}×{nX} {cellLabel}
         </span>
         <span className={`ml-auto font-mono text-[10px] ${hover ? "text-slate-300" : "text-slate-500"}`}>
           {shown
-            ? `t ${tNodes[shown.i].toFixed(2)}y · x ${xNodes[shown.j].toFixed(2)} · ${formatPct(
+            ? `t ${tNodes[shown.i].toFixed(2)}y · x ${xNodes[shown.j].toFixed(2)} · ${formatValue(
                 localVol[shown.i][shown.j],
               )}${hover ? "" : " (linked)"}`
             : "hover a cell"}
@@ -112,7 +123,7 @@ export default function LocalVolHeatmap({
                     y={MARGIN.top + i * ch}
                     width={cw + 0.5}
                     height={ch + 0.5}
-                    fill={volColor((v - vMin) / vSpan)}
+                    fill={fill(v)}
                     stroke={active ? (hover ? "rgb(226 232 240)" : "rgb(56 189 248)") : "rgb(15 23 42 / 0.35)"}
                     strokeWidth={active ? 1.5 : 0.5}
                     onMouseEnter={() => enter(i, j)}

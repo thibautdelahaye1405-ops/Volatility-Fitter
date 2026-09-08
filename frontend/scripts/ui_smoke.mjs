@@ -40,6 +40,10 @@ const LENSES = [
   // (`T … · expiry · k … · σ …`) must render (wave 3, B2; live only).
   { name: "Parametric", subview: "Surface", slug: "surface-crosshair", hover: true },
   { name: "Local Vol" },
+  // The Dupire-twin Compare tab of the Local Vol lens (LV Dupire-twin arc):
+  // the two σ²_loc sheets side by side, or the "Calibrate first" cue on a
+  // server without parametric fits — never a page error either way.
+  { name: "Local Vol", subview: "Compare", slug: "lv-compare" },
   { name: "Quality" },
 ];
 const MENUS = ["File", "Universe", "Help", "View", "Layout"];

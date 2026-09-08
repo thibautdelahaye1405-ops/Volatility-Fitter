@@ -74,12 +74,16 @@ interface SurfaceMeshProps {
   linkK?: (k: number) => number;
   /** Expiry label for the badge (default the raw expiry string). */
   formatExpiry?: (iso: string, t: number) => string;
+  /** Half-width panels (the Local Vol Compare tab's two sheets): drop the
+   *  count caption and the interaction hint from the top bar so the legend
+   *  never collides with a neighbour's. */
+  compact?: boolean;
 }
 
 export default function SurfaceMesh({
   data, legendLabel = "σ(k, T)", axisMode = "logmoneyness", formatValue, formatX, countCaption,
   rowXTransform, triangulate = false, cellDiagMain, cameraKey, ticker = "", chartId = "surface",
-  linkK, formatExpiry,
+  linkK, formatExpiry, compact = false,
 }: SurfaceMeshProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -237,9 +241,11 @@ export default function SurfaceMesh({
             {fmtV(mesh.vMax)}
           </span>
         )}
-        <span className="text-[10px] text-slate-500">
-          {countCaption ?? `${data.expiries.length} expiries · ${data.k.length} strikes`}
-        </span>
+        {!compact && (
+          <span className="text-[10px] text-slate-500">
+            {countCaption ?? `${data.expiries.length} expiries · ${data.k.length} strikes`}
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           {isCameraMoved(cam) && (
             <button
@@ -266,7 +272,10 @@ export default function SurfaceMesh({
               </button>
             ))}
           </div>
-          <span className="hidden text-[10px] text-slate-600 xl:inline" title="Two-finger drag pans, pinch zooms">
+          <span
+            className={compact ? "hidden" : "hidden text-[10px] text-slate-600 xl:inline"}
+            title="Two-finger drag pans, pinch zooms"
+          >
             drag: rotate · shift+drag: pan · ctrl+drag: pitch · scroll: zoom · dbl-click: reset
           </span>
         </div>
