@@ -206,3 +206,25 @@ def local_step(x: np.ndarray, j: np.ndarray) -> np.ndarray:
     x = np.asarray(x, dtype=float)
     jj = np.clip(np.asarray(j, dtype=int), 0, x.size - 2)
     return x[jj + 1] - x[jj]
+
+
+def third_difference_weights(x: np.ndarray, j: np.ndarray) -> np.ndarray:
+    """Weights ``w`` (len(j) × 4) with Σ_k w_k c[j+k] = 6 h_j³ · c[x_j, …, x_{j+3}]
+    — six times the third divided difference, scaled by the first cell's width
+    cubed — so the row is (−1, 3, −3, 1) on a uniform stretch (the density-
+    smoothness rows' historical stencil) and EXACT for a cubic on any lattice:
+    a smooth price curve costs nothing where the step changes, which the raw
+    third difference does not give (it reads the lattice's own grading as
+    density slope — the graded-lattice campaign finding of 2026-09-08)."""
+    x = np.asarray(x, dtype=float)
+    j = np.asarray(j, dtype=int)
+    pts = np.stack([x[j], x[j + 1], x[j + 2], x[j + 3]], axis=1)
+    h3 = (x[j + 1] - x[j]) ** 3
+    w = np.empty((j.size, 4))
+    for k in range(4):
+        prod = np.ones(j.size)
+        for l in range(4):
+            if l != k:
+                prod = prod * (pts[:, k] - pts[:, l])
+        w[:, k] = 6.0 * h3 / prod
+    return w

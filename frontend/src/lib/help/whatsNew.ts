@@ -7,6 +7,16 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-08",
+    title: "Local Vol: a second-order march on graded grids — the operator error the fit used to absorb is gone, and a surface with dailies marches a fraction of the nodes",
+    items: [
+      "The Local Vol calibration's time stepping is now second-order (BDF2) on a time grid graded from the payoff kink, with every vertex row of the sheet a grid point. On every test surface the march's own error is a few basis points per expiry, where the old first-order march left tens to a hundred-plus basis points that the calibration bent the fitted sheet to cancel — and it gets there in two to three times fewer steps.",
+      "The strike lattice is graded per expiry: each expiry is resolved at its own step over its own range, the wings coarse, and the at-the-money row is always a node. A same-day or two-day expiry no longer forces ~1700 strike nodes on the whole surface (~400 now, the same near-money resolution), so Calibrate on a universe with dailies is several times faster.",
+      "Options ▸ Local Vol shows a **Time stepping** selector — BDF2 (default), Rannacher (opt-in: a few bp finer on the reprice, ~1.5× per step, not monotone) and Implicit Euler (legacy) — and a **Graded strike lattice** toggle. The legacy pair reproduces every historical fit exactly; both knobs touch the Local Vol cache only, never a parametric fit.",
+      "The **converged** figure beside each expiry's RMS and the Compare tab's **floor** now read the fit's own scheme and lattice. A large gap between the in-operator and converged figures points at the lattice or the data, not the time stepping.",
+    ],
+  },
+  {
+    date: "2026-09-08",
     title: "Local Vol: a Compare tab — the fitted sheet beside the parametric surface's Dupire twin; 3D surfaces crop and stay centred",
     items: [
       "The Local Vol lens gained a **Compare** view. It differentiates the calibrated parametric surface the classical way (Dupire's formula on the displayed model, its total variance carried between expiries by a smooth interpolation or the market's bucket staircase) and draws that **Dupire twin** beside the fitted local-vol sheet on the same lattice: **Sheets** side by side under one camera and one crop, their **Difference** on a diverging ramp, and the **Smiles** of both against the quotes with a per-expiry score table.",

@@ -653,16 +653,24 @@ class OptionsSettings(BaseModel):
     #: error per expiry on every fixture where implicit's per-interval rule left
     #: 15–170 bp for the calibration to absorb, at 2–3× fewer steps; the compiled
     #: march covers it (and Rannacher) since the same arc. Rannacher also marches
-    #: the graded grid now; var-swap fits under Rannacher keep implicit.
-    timeScheme: Literal["implicit", "rannacher", "bdf2"] = "implicit"
+    #: the graded grid now; var-swap fits under Rannacher keep implicit. DEFAULT
+    #: "bdf2" since the O5 campaign (converged rms on the five cases, defaults /
+    #: the user's options: Bloomberg SPY 32 → 3.4 / 20 → 5.2 bp, NVDA 56 → 14 /
+    #: 53 → 9.5, weekly 25 → 12 / 18 → 9.1, SPY dailies 12 → 8 / 14 → 7.4,
+    #: 14 → 7 / 11 → 6.5; in-operator rms unchanged; no arbitrage flag).
+    timeScheme: Literal["implicit", "rannacher", "bdf2"] = "bdf2"
     #: LV PDE strike lattice (LV operator arc, 2026-09-08). "uniform" = one step
     #: for the whole lattice, the SHORTEST rung's 0.15 σ√τ (a 2-day daily makes a
     #: SPY surface march ~1700 nodes at 1/800 to x = 2.5). "graded" = each expiry
     #: gets its own step over its own support (traded range ± 6 σ√τ), the wings
     #: 0.02, the step changing by ≤ 15 % per cell; x = 1 stays a node by
-    #: construction. Same near-money resolution, a fraction of the nodes.
-    #: LV-only: folded into affine_key, no options-version bump.
-    lvLattice: Literal["uniform", "graded"] = "uniform"
+    #: construction. Same near-money resolution, a fraction of the nodes: the
+    #: O5 campaign read the same in-operator and converged rms as the uniform
+    #: lattice on every case at 276 / 245 / 338 / 359 / 259 nodes against
+    #: 449 / 251 / 864 / 1655 / 1694 (the SPY dailies fit 12 s → 1 s). DEFAULT
+    #: "graded" since 2026-09-08. LV-only: folded into affine_key, no
+    #: options-version bump.
+    lvLattice: Literal["uniform", "graded"] = "graded"
     #: Early-stop the COLD LV fit when the quote-fit improvement stalls (Stage 8). The
     #: fit otherwise runs to the 200-eval cap though its tail evals barely move the
     #: surface; stopping at the stall point scales the WHOLE fit (march + assembly +

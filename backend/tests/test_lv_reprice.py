@@ -139,6 +139,9 @@ def test_fit_exposes_operator_compensation_on_coarse_march(monkeypatch):
     monkeypatch.setattr(affine_fit, "_DT_MAX", 10.0)  # 1 implicit step / interval
     monkeypatch.setattr(affine_fit, "_PDE_NT_FIRST_GATE", 0)  # fix #3 off
     state = AppState(REF_DATE)
+    # The legacy implicit march (its per-interval rule reads _DT_MAX); the BDF2
+    # default marches the graded time grid, which this pathology cannot reach.
+    state.set_options(state.options().model_copy(update={"timeScheme": "implicit"}))
     resp = affine_fit._fit(state, "ALPHA", AffineFitRequest())
     assert resp.rmsConvergedBp > 2.0 * resp.rmsIvErrorBp
     assert resp.rmsConvergedBp > 20.0  # material hidden error, in bp

@@ -157,9 +157,18 @@ export interface OptionsSettings {
   frontTieWeight: number;
   /** Adaptive local-vol cap = max(60%, lvVolCapMult x highest observed IV). */
   lvVolCapMult: number;
-  /** LV PDE time scheme: "rannacher" = 2nd-order Crank-Nicolson (~3x fewer time
-   *  steps at equal accuracy — faster), "implicit" = 1st-order backward Euler (legacy). */
-  timeScheme: 'implicit' | 'rannacher';
+  /** LV PDE time scheme (LV operator arc, 2026-09-08): "bdf2" = the 2nd-order,
+   *  L-stable BDF2 step on the graded time grid (default; ≤ 5 bp of operator
+   *  error where implicit left 15–170 bp for the fit to absorb, 2–3x fewer
+   *  steps); "rannacher" = Crank-Nicolson after damped start-up (opt-in: a few
+   *  bp better on the reprice, ~1.5x per step, not monotone); "implicit" =
+   *  1st-order backward Euler (legacy, byte-identical to historical fits). */
+  timeScheme: 'implicit' | 'rannacher' | 'bdf2';
+  /** LV PDE strike lattice: "graded" (default) = each expiry's own step over
+   *  its own support, coarse wings, x = 1 always a node; "uniform" = one step
+   *  for the whole lattice set by the SHORTEST expiry (a 2-day daily makes a
+   *  SPY surface march ~1700 nodes; graded ~400). LV-only (affine key). */
+  lvLattice: 'uniform' | 'graded';
   /** Early-stop the cold LV fit when the quote-fit improvement stalls (~1.45x on
    *  slow-converging names up to ~3.3x on fast ones, +0.1-0.25 bp; warm recals
    *  unaffected). */
@@ -292,7 +301,8 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   frontTie: true,
   frontTieWeight: 1e-2,
   lvVolCapMult: 3.0,
-  timeScheme: 'implicit',
+  timeScheme: 'bdf2',
+  lvLattice: 'graded',
   lvEarlyStop: true,
   lvFastKernel: true,
   lvSolver: 'gn',

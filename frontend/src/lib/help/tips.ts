@@ -295,7 +295,7 @@ export const TIPS: Tip[] = [
   {
     id: "lv-compare-twin",
     title: "Read the fitted sheet against the parametric surface's Dupire twin",
-    body: "The Local Vol **Compare** tab differentiates the calibrated parametric surface the classical way and draws that twin beside the fitted sheet — same lattice, one camera, one crop — with their difference and both smiles on the quotes. The twin's **round trip** against its own source, read beside the operator's **floor**, says how exact it is; a fitted sheet whose *conv* sits far above its *rms* on a short front is compensating its own calibration operator.",
+    body: "The Local Vol **Compare** tab differentiates the calibrated parametric surface the classical way and draws that twin beside the fitted sheet — same lattice, one camera, one crop — with their difference and both smiles on the quotes. The twin's **round trip** against its own source, read beside the operator's **floor**, says how exact it is. A fitted sheet whose *conv* sits far above its *rms* on a short front was the legacy implicit march compensating its own calibration operator — under the default BDF2 march the operator error is a few bp, so a wide gap now points at the lattice or the data.",
     scope: "localvol", level: "pro",
     action: { command: "help.open", arg: "glossary:dupire-twin", label: "Read about the Dupire twin" },
   },

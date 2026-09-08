@@ -281,7 +281,7 @@ haircut/var-swap/no-numba paths still run TRF.)*
   trust-region, 52%)** — the next lever if more is wanted (early-stop already attacks
   it by cutting the eval count).
 
-### Stage 7 — Rannacher 2nd-order time stepping  ⚠️ BUILT but only ~1.1× + arb risk — default OFF
+### Stage 7 — Rannacher 2nd-order time stepping  ⚠️ BUILT but only ~1.1× + arb risk — default OFF → SUPERSEDED by the LV operator arc (2026-09-08, below): BDF2 on graded grids is the default; Rannacher stays opt-in and now also runs compiled
 - **Built + validated:** Crank–Nicolson after 2 implicit-Euler kink-damping start-up
   steps, in `solve_affine_dupire(time_scheme="rannacher")` with the full analytic CN
   sensitivity recurrence (the dual-level ½Δt·dA sources + the explicit-half operator
@@ -326,6 +326,45 @@ haircut/var-swap/no-numba paths still run TRF.)*
 - Stacks with everything else (it is orthogonal to the march/optimizer). Rannacher
   (Stage 7, opt-in) would compound on top if enabled.
 
+### LV operator arc — BDF2 on graded grids  ✅ SHIPPED (2026-09-08)
+- **What:** the calibration OPERATOR replaced, not a per-eval trick. Every time scheme
+  is one generic two-level step `(I − γΔt A^{n+1}) U^{n+1} = α U^n − β U^{n−1} +
+  εΔt A^n U^n` (`models/localvol/time_schemes.py`; implicit (1,1,0,0), CN (½,1,0,½),
+  BDF2 from ω = Δt_n/Δt_{n−1} with ε = 0); **BDF2 is the default `timeScheme`**
+  (second order, L-stable — the stiffest modes damped where CN's amplification → −1),
+  marched by one compiled kernel per basis layout for any plan
+  (`affine_march2.py`; the implicit kernels of `affine_march.py` untouched — their
+  bits are the goldens' bits). The **time grid is graded from the payoff kink**
+  (`pde_grids.graded_time_grid`: dt_0 = 1 % of the first mark, dt = min(0.25 t, 0.05,
+  1.25 dt_last, slab/8), every expiry AND every vertex row a mark) and the **strike
+  lattice is graded per expiry** (`graded_strike_grid`, `lvLattice = graded`: each
+  expiry's traded range ± 6 σ√τ at its own clip(0.15 σ√τ, 1/800, 0.01) step, wings
+  0.02, ratio ≤ 1.15 per cell, x = 1 a node by construction). Implicit + uniform stay
+  as the byte-identical legacy (`timeScheme = implicit`, `lvLattice = uniform`).
+- **Why:** implicit Euler's kink error at the ATM is ~0.15 σ/N for N steps on ANY
+  front (82/86/217 bp at 2 steps, 6/8/15 at 32 on 2-day SPY / 27-day SPY / 27-day
+  NVDA), and the fitted sheet ABSORBS it — the production rule carried **15–170 bp of
+  operator error per expiry** on the fitted surfaces (Bloomberg SPY 70/37/28/15/12,
+  NVDA 170/28/16). Stage 7's lesson was that CN's sensitivity step costs ~2×; BDF2's
+  ε = 0 keeps the implicit kernel's single fused source (an implicit step plus one axpy
+  per level), which is what makes a second-order default affordable. The uniform
+  lattice took the SHORTEST rung's step everywhere (a 2-day daily: ~1700 nodes at
+  1/800, a ~25 s SPY fit); with a second-order time scheme the lattice is the residual.
+- **Measured** (scratch harness, flat control + fitted surfaces vs a
+  256-steps-per-interval BDF2 reference): BDF2 on the graded grid **≤ 5.2 bp on every
+  expiry of every case** (Bloomberg SPY 2.6/0.8/0.6/2.3/0.6, NVDA 3.2/1.3/0.3, weekly
+  3.8/1.1/2.1/3.0/3.9/1.0/1.8, SPY dailies 5.2/1.8/1.7/3.2/1.8) at **98–116 steps where
+  the production rule marched 51–271**; Rannacher on the same grid ≤ 1.6 bp at ~2× the
+  sensitivity cost; no negative density on any case for either scheme. Vertex-row
+  marks are load-bearing (expiries-only: 11 bp on Bloomberg SPY's 181-day rung); a pure
+  geometric grid under-resolves the slabs between rows (12–22 bp); uniform-per-interval
+  BDF2 suffers an Euler restart after a short front (38 bp on the dailies' 107-day
+  rung). The graded lattice: SPY with a 2-day rung ~1700 → ~400 nodes at the same
+  near-money resolution. Locks: implicit/Rannacher byte-identical, BDF2 second order,
+  BDF2 sensitivities vs FD, the restart rule, compiled vs banded ≈ 1e-13, calibration
+  parity. Full record: ROADMAP.md "LV OPERATOR ARC"; derivations: the LaTeX note's eqs.
+  (generic_two_level_step), (bdf2_step), (generic_sensitivity_step) + "Graded grids".
+
 ### Opportunistic (independent)
 - **Across-ticker parallelism** in the calibration job (was Stage 6's second half;
   pure-Python intra-fit threads are GIL-negative, but the per-ticker work-items
@@ -337,7 +376,7 @@ haircut/var-swap/no-numba paths still run TRF.)*
 
 ## Sequencing summary
 
-Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 6 ❌ → 6′ ✅ (6.5× march) → 8 ✅ (early-stop) → 5 ✅ (GN, now DEFAULT after the march got cheap) → 7 ⚠️ (opt-in) → 2b ✅ (#1 cold-start seed) → #3 ✅ (sparse reg)`.
+Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 6 ❌ → 6′ ✅ (6.5× march) → 8 ✅ (early-stop) → 5 ✅ (GN, now DEFAULT after the march got cheap) → 7 ⚠️ (opt-in) → 2b ✅ (#1 cold-start seed) → #3 ✅ (sparse reg) → LV operator arc ✅ (2026-09-08: BDF2 on graded grids — the structural answer Stage 7 pointed at; Rannacher opt-in, implicit/uniform the byte-identical legacy)`.
 The consolidated reference is `localvol_calibration_methodology.md`.
 Stages 0–2a took the default grid faster and recalibration ~instant; 4′ made the
 var-swap grid-robust. **Four approaches to cut the per-eval / per-step cost all

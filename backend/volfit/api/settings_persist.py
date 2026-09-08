@@ -238,6 +238,14 @@ def _migrate_options(raw: dict) -> dict:
     raw = dict(raw)
     if "priorPersistenceMode" not in raw:
         raw["priorPersistenceMode"] = "strike_gap" if raw.get("autoLoadPrior") else "off"
+    # LV operator arc (2026-09-08): a blob saved before ``lvLattice`` existed
+    # carries ``timeScheme = "implicit"`` only because that was the sole sane
+    # value then (Rannacher was the experimental opt-in). Lift it to the new
+    # BDF2 default so a restored desk gets the second-order march without a
+    # re-save; an explicit "rannacher" choice survives. Blobs that know
+    # ``lvLattice`` were saved under the new dialog and mean what they say.
+    if "lvLattice" not in raw and raw.get("timeScheme") == "implicit":
+        raw["timeScheme"] = "bdf2"
     return raw
 
 

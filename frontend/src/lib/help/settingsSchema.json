@@ -681,7 +681,7 @@
             "rannacher",
             "bdf2"
           ],
-          "default": "implicit"
+          "default": "bdf2"
         },
         {
           "name": "lvLattice",
@@ -690,7 +690,7 @@
             "uniform",
             "graded"
           ],
-          "default": "uniform"
+          "default": "graded"
         },
         {
           "name": "lvEarlyStop",

@@ -33,6 +33,7 @@ from volfit.models.localvol.pde_grids import (
     is_uniform,
     refine_cells,
     second_difference,
+    third_difference_weights,
 )
 from volfit.models.localvol.time_schemes import build_plan
 
@@ -201,3 +202,25 @@ def test_bdf2_fit_on_the_graded_lattice_prices_its_quotes_arb_free():
     sol = solve_affine_dupire(cal.surface, x, t, exps, time_scheme="bdf2")
     dens = second_difference(x, sol.prices)
     assert dens.min() > -1e-6
+
+
+def test_third_difference_weights_are_the_raw_stencil_on_uniform_and_exact_on_graded():
+    xu = 0.01 * np.arange(251)
+    j = np.arange(3, 240, 7)
+    w = third_difference_weights(xu, j)
+    assert np.allclose(w, np.array([-1.0, 3.0, -3.0, 1.0])[None, :])
+    xg = graded_strike_grid(_regions(), 2.5)
+    j = np.arange(1, xg.size - 4, 3)
+    w = third_difference_weights(xg, j)
+    cubic = 0.7 * xg**3 - 1.1 * xg**2 + 0.3 * xg - 2.0
+    row = w[:, 0] * cubic[j] + w[:, 1] * cubic[j + 1] + w[:, 2] * cubic[j + 2] + w[:, 3] * cubic[j + 3]
+    h3 = (xg[j + 1] - xg[j]) ** 3
+    assert np.allclose(row, 6.0 * 0.7 * h3, rtol=1e-9, atol=1e-14)  # 6 h^3 (third derivative / 6) = 4.2 h^3
+    # a density-smoothness spec on the graded lattice carries the weights
+    from volfit.models.localvol.affine_calib import OptionQuote, density_smoothness_rows
+
+    quotes = [OptionQuote(t=0.1, x=x, price=0.05, tol=1e-3) for x in (0.9, 0.95, 1.0, 1.05, 1.1)]
+    spec = density_smoothness_rows(xg, quotes, {0.1: 0.05}, 1.0)
+    assert spec and spec[0][3] is not None and spec[0][3].shape == (spec[0][1].size, 4)
+    spec_u = density_smoothness_rows(xu, quotes, {0.1: 0.05}, 1.0)
+    assert spec_u and spec_u[0][3] is None and np.isscalar(spec_u[0][2])

@@ -310,7 +310,9 @@ production implicit fit's surface repriced on each candidate grid against a
 5. **The strike lattice is graded per expiry**: inside each expiry's traded
    range padded to ±6 σ√τ the step is 0.15 σ√τ (its own resolution, the fix-#6
    rule), capped at 0.01; outside every expiry's region it grows geometrically
-   (ratio ≤ 1.15 per cell) to the wing step 0.05; x = 1 is a node by
+   (ratio ≤ 1.15 per cell) to the wing step 0.02 (the far wings hold few nodes
+   at any step, and the display's interpolation between nodes stays honest);
+   x = 1 is a node by
    construction (built outward from it), 0 and x_max close it. Every lattice
    consumer reads the nonuniform second difference (the uniform formula
    stays for uniform lattices — byte-identical).
@@ -321,23 +323,23 @@ production implicit fit's surface repriced on each candidate grid against a
 
 ### Build phases (O1–O6; commit per green phase)
 
-- **O1 Schemes** — time_schemes.py; BDF2 in solve_affine_dupire (value +
+- **O1 Schemes — SHIPPED 2026-09-08 (8840867)** — time_schemes.py; BDF2 in solve_affine_dupire (value +
   analytic sensitivities) and reprice; locks: implicit/rannacher byte-
   identical, BDF2 second order, BDF2 sensitivities vs FD, restart rule.
-- **O2 Compiled march** — affine_march2.py generic dense + sparse kernels;
+- **O2 Compiled march — SHIPPED 2026-09-08 (8840867)** — affine_march2.py generic dense + sparse kernels;
   solve_affine_dupire dispatches non-implicit plans to them; locks vs the
   banded march ≈ 1e-13, calibration parity, warm-up.
-- **O3 Time grid** — pde_grids.py `graded_time_grid` (the hybrid rule);
+- **O3 Time grid — SHIPPED 2026-09-08 (079a3b1)** — pde_grids.py `graded_time_grid` (the hybrid rule);
   affine_fit / lv_compare pick it for bdf2 / rannacher, `_pde_grids` for
   implicit; `refined_grids` subdivides any grid; expiry diagnostics.
-- **O4 Strike lattice** — pde_grids.py `graded_strike_grid` + `refine_cells`;
+- **O4 Strike lattice — SHIPPED 2026-09-08 (079a3b1)** — pde_grids.py `graded_strike_grid` + `refine_cells`;
   nonuniform second differences in `_lattice_density` / `_diagnostics`;
   `display_lattice` extends a graded lattice with its wing step; `lvLattice`.
-- **O5 Calibration campaign + defaults** — real fits on the five cases
+- **O5 Calibration campaign + defaults — DONE 2026-09-08 (wrap 2026-09-08c)** — real fits on the five cases
   (defaults AND the user's saved options): converged rms, in-op rms, min
   density / calendar flags, wall, n_x × n_t; flip the defaults on the
   evidence; record in STATUS.
-- **O6 Wiring + docs** — schemas, gen_help_schema, frontend select + toggle,
+- **O6 Wiring + docs — SHIPPED 2026-09-08 (wrap 2026-09-08c)** — schemas, gen_help_schema, frontend select + toggle,
   settingsDocs, glossary, guide, What's new; the LaTeX note's new
   subsections (generic step, BDF2, graded grids); methodology md; STATUS
   wrap + memory.
@@ -1581,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-08b (resume here)
+## STATUS — updated 2026-09-08c (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1630,12 +1632,14 @@ below) — every recorded rider is closed except the ones listed here:
    captures made before
    store schema v10 are unattributed and no longer offered by the picker
    (they still replay from a saved selection).
-8. LV WALL-TIME rider (wrap 2026-09-03c below): a wide ladder with a 0–2-day
-   front rung still costs ~25 s on SPY (the shortest rung sets the uniform
-   lattice step for every expiry). Structural fix = a graded strike lattice
-   (fine near x = 1, coarse in the wings; the march supports nonuniform
-   grids, `_pde_grids` / varswap_weights / the lattice density assume
-   uniform dx) — a perf item, benchmark-pack adjudicated.
+8. ~~LV WALL-TIME rider (wrap 2026-09-03c below): a wide ladder with a
+   0–2-day front rung still costs ~25 s on SPY (the shortest rung sets the
+   uniform lattice step for every expiry). Structural fix = a graded strike
+   lattice.~~ **CLOSED 2026-09-08c** (LV OPERATOR ARC, wrap below): the
+   strike lattice is graded per expiry (`lvLattice = graded`, the default) —
+   the SPY dailies snapshot marches 359 nodes instead of 1655 and its fit
+   takes 3.0 s instead of 14.1 (0.8 vs 2.7 on the two-rung one), the same
+   in-operator and converged rms.
 7. LV DENSITY-SMOOTHNESS PENALTY — BUILT 2026-09-03b (`densitySmoothWeight`,
    user-ratified DEFAULT 1; 0 = the pre-penalty fit byte-identical). Rider:
    a benchmark-pack regression run in the USER'S window to record the
@@ -1665,9 +1669,27 @@ below) — every recorded rider is closed except the ones listed here:
    spot, θ_ref = twin / the smooth seed (benchmark-pack), analytic LQD
    k-derivatives, an operator floor with the twin's wings, the hat-basis
    precompute, the cue card's Calibrate button, LocalVolViewer's split, the
-   Massive weekly fixture through `lv_benchmark.build_state`. FOR THE LV FIT:
-   the fix-#3 front gate (nine implicit steps on a one-month front) is a
-   benchmark-pack adjudication.
+   Massive weekly fixture through `lv_benchmark.build_state`. ~~FOR THE LV
+   FIT: the fix-#3 front gate (nine implicit steps on a one-month front) is a
+   benchmark-pack adjudication.~~ **CLOSED 2026-09-08c** (LV OPERATOR ARC,
+   wrap below): the default march is BDF2 on a time grid graded from the
+   kink — the Bloomberg SPY front's converged score reads 4–5 bp where it read
+   32–47.
+11. LV OPERATOR ARC riders (wrap 2026-09-08c below; none are gates): the
+   benchmark-pack regression run in the USER'S window records the full-
+   universe effect of the two default flips (`timeScheme = bdf2`,
+   `lvLattice = graded`; the legacy pair `implicit` + `uniform` reproduces
+   every historical fit byte-for-byte and is the rollback); a finer near-money
+   step (0.10 σ√τ instead of 0.15: Bloomberg SPY 2.9/1.6/2.5/2.4/0.7 →
+   2.2/0.6/1.4/2.1/0.5 bp at +23 % nodes) and 12 steps per slab instead of 8
+   (≤ 3 bp everywhere at +40 % steps) are the two accuracy dials the pack
+   could ratify; the var-swap source-PDE march (`varSwapMethod =
+   source_pde`) still steps backward with implicit Euler on the graded time
+   grid; the Compare tab's twin keeps its own Rannacher dt/8 dx/4 display
+   operator (its floor is unchanged); `affine.py` is 806 lines (the solver
+   loop could move out); under the user's haircut + 20-node options the
+   dailies fit is TRF-SVD-bound (11.9 s at 359 nodes) — the graded lattice
+   is not the lever there, the solver is.
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
 wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
 replace the five scheduler fields, migrated on load; the `/scheduler` payload
@@ -1681,6 +1703,107 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-08c) — LV OPERATOR ARC SHIPPED O0–O6: BDF2 ON A TIME GRID GRADED FROM THE KINK, THE STRIKE LATTICE GRADED PER EXPIRY — THE OPERATOR ERROR THE FIT USED TO ABSORB IS GONE, AND A SURFACE WITH DAILIES MARCHES A FIFTH OF THE NODES
+
+User: "Local Vol: do the front operator and the graded strike lattice" (the
+two riders picked from the list of what was left). Both came from one design
+choice — a uniform strike lattice marched first-order in time — and the arc
+replaced the operator in one go (arc section above; commits 8840867, 079a3b1
++ the O5/O6 commit).
+
+- **What shipped.** `models/localvol/time_schemes.py` — every scheme as one
+  generic two-level step (γ, α, β, ε) per step: implicit (1, 1, 0, 0),
+  Crank–Nicolson (½, 1, 0, ½), variable-step BDF2 (γ, α, β from ω = Δt_n /
+  Δt_{n−1}, ε = 0; implicit start, restarts above a 2× step growth);
+  `solve_affine_dupire` and `reprice_affine_dupire` march "bdf2" (analytic
+  sensitivities, the dU/da column included, so BDF2 applies to var-swap fits
+  too; Rannacher under a free left slope keeps implicit); `affine_march2.py`
+  — the plan-generic Numba vectorized-Thomas kernels (dense + sparse basis)
+  for every non-implicit plan: Rannacher no longer falls back to the banded
+  march (34 ms vs 294 on a 451 × 145 × 330 march), BDF2 reads 31 ms against
+  the implicit kernel's 22.5; `pde_grids.py` — `graded_time_grid` (dt_0 = 1 %
+  of the first mark, then dt = min(0.25 t, 0.05, 1.25 dt_last, slab / 8),
+  every expiry AND every vertex row a grid point, marks hit by splitting a
+  slab's remainder evenly so BDF2 never restarts after step 0),
+  `graded_strike_grid` (one region per expiry — its traded range widened to
+  ±6 σ√τ — at its own step clip(0.15 σ√τ, 1/800, 0.01), the wings at 0.02,
+  the requirements smoothed into a ratio-1.15 Lipschitz envelope walked
+  OUTWARD from x = 1, which is a node by construction), `refine_cells`,
+  `second_difference`, `third_difference_weights` (uniform formulas kept
+  bit-for-bit); `api/affine_lattice.pde_lattice` picks the fit's grids from
+  `timeScheme` × `lvLattice` (implicit keeps the per-interval uniform rule;
+  the Compare tab's twin, the converged reprice, the put twin, the display
+  wing march and the density-smoothness rows all ride the same lattice);
+  `OptionsSettings.timeScheme` gains "bdf2" (DEFAULT), `lvLattice` uniform |
+  graded (DEFAULT graded), both LV-only (affine_key); `settings_persist`
+  lifts a pre-arc blob's "implicit" (saved before `lvLattice` existed — the
+  only sane value then) to "bdf2", an explicit "rannacher" survives; the
+  Options ▸ Local Vol card's Rannacher toggle became a **Time stepping**
+  selector (BDF2 / Rannacher / Implicit legacy) beside a **Graded strike
+  lattice** toggle; help corpora (timeScheme rewritten, lvLattice doc,
+  glossary `graded-lattice`, the Local Vol guide, What's new); the LaTeX
+  note's new subsections (the generic step with its coefficient table and
+  the BDF2 derivation, eq. (generic_two_level_step) / (bdf2_step) /
+  (generic_sensitivity_step), "Graded grids"; 19 pages, rebuilt clean), the
+  methodology and perf-roadmap notes, the handoff forward-LV note and the
+  settings reference.
+- **O0, the operator's own error** (a flat local variance marched on the
+  fit's lattice; every bp is the scheme's): implicit Euler's ATM error is
+  ~0.15 σ / N on any front — first order; on the FITTED surfaces the
+  production rule (dt ≤ 0.01, short intervals lifted to 32 steps) carried
+  15–170 bp per expiry (Bloomberg SPY 70/37/28/15/12, NVDA 170/28/16, the
+  weekly 28/25/17/33/28/14/14, the user's SPY dailies 25/9/10/21/5) that the
+  calibration bent θ to cancel. A pure geometric grid resolves the kink but
+  under-resolves the slabs between vertex rows (12–22 bp mid-ladder);
+  uniform-per-interval BDF2 suffers an Euler restart after each short front
+  (38 bp on the dailies' 107-day rung); the hybrid grid fixes both: BDF2 on
+  it reads ≤ 5.2 bp on every expiry of every case at 98–116 steps where the
+  rule marched 51–271 (Rannacher ≤ 1.6 bp at ~1.5× the step cost; no
+  negative density on either). Vertex rows as marks are load-bearing
+  (expiries only: 11 bp on Bloomberg SPY's 181-day rung).
+- **O5, the calibration campaign** (five cases × defaults AND the user's
+  saved haircut / 20-node / convex-wing options; converged rms = the fit's
+  own scheme at dt/4 dx/2, in-operator rms in brackets): implicit + uniform
+  → BDF2 + graded: Bloomberg SPY 32.2 → 4.3 (2.4 → 2.4) / user 19.6 → 5.2
+  (2.2 → 2.2); NVDA 55.5 → 13.6 (12.2 → 12.3) / 53.1 → 9.5 (7.1 → 7.1); the
+  weekly 25.1 → 12.1 (10.8 → 10.9) / 18.1 → 9.1 (8.3 → 8.4); dailies 270:
+  11.9 → 8.0 (5.3 → 5.3) / 13.5 → 7.4 (5.0 → 5.0); dailies 272: 14.1 → 7.1
+  (6.7 → 6.7) / 11.3 → 6.5 (6.0 → 6.1). No arbitrage flag on any fit. Nodes
+  449 / 251 / 864 / 1655 / 1694 → 276 / 245 / 338 / 359 / 259; time steps
+  102 / 52 / 190 / 272 / 65 → 105 / 99 / 108 / 117 / 99. Clean walls
+  (defaults): 2.1 → 1.2 s, 0.5 → 0.5, 4.2 → 2.2, 14.1 → 3.0, 2.7 → 0.8; the
+  user's options 6.1 → 5.1, 3.0 → 3.3, 11.1 → 7.7, 28.7 → 11.9, 6.5 → 3.8
+  (TRF's dense SVD, not the lattice, is that fit's cost). BDF2 + graded
+  reprices the SAME fitted surface within 0.1 bp of BDF2 + uniform on every
+  rung — the lattice loses nothing where quotes live.
+- **Findings.** (1) The density-smoothness rows' raw third difference reads
+  a graded lattice's own step changes as density slope: the first graded
+  fits broke (the dailies at 220 bp in-operator, the weekly's back rungs at
+  40–100). Fixed with third divided-difference weights (exact for a cubic on
+  any lattice, (−1, 3, −3, 1) on a uniform stretch; the per-row scale from
+  the local step) — with them the graded fits match the uniform ones.
+  (2) A "never coarser than 0.75 × the median quote spacing" rule was
+  measured and REJECTED: Bloomberg chains carry $1 strikes near the money,
+  so the rule quadrupled the lattice (276 → 1019 nodes) for nothing the
+  uniform lattice ever honoured. (3) A one-year rung reading 6.7 bp against
+  2.0 in one campaign run was a different early-stop optimum, not the
+  lattice (the same surface reprices to 0.8 vs 0.7). (4) CN on the hybrid
+  grid is a few bp more accurate than BDF2 on the reprice; BDF2 stays the
+  default for L-stability (the recorded non-monotone finding) and the
+  cheaper sensitivity step; Rannacher is the opt-in that now runs compiled.
+- **Locks**: tests/test_affine_bdf2.py (9), test_affine_march2.py (10),
+  test_pde_grids.py (11), test_lv_scheme_migration.py (4), the Rannacher
+  routing lock and the options-defaults snapshot updated; backend suite 2309 passed / 7 skipped (two halves, 7.5 + 3.5 min); frontend 658 tests / 93 files, tsc + build; the LaTeX note rebuilt clean (19 pages).
+- **USER-side**: restart the long-running :8000 (new Options fields, the
+  schema literal, the migration); a store saved before today lifts
+  `timeScheme` implicit → bdf2 on load (an explicit Rannacher survives) and
+  takes `lvLattice = graded` as the new field's default — the first
+  Calibrate after the restart re-fits every LV surface on the new operator
+  (the affine key changed); the Quality tab's converged figures and the
+  Local Vol footer's `conv` drop accordingly, and the Compare tab's floor
+  reads the same twin operator as before. Rollback = Options ▸ Local Vol:
+  Time stepping "Implicit Euler (legacy)" + Graded strike lattice off.
 
 ### 🧭 SESSION WRAP (2026-09-08b) — LV DUPIRE-TWIN COMPARE ARC SHIPPED D0–D5: THE FITTED SHEET BESIDE THE PARAMETRIC SURFACE'S DUPIRE TWIN, DRAWN SMOOTH, ANCHORED, CROPPED AS ONE
 

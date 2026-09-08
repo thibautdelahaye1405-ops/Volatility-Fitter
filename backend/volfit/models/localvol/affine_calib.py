@@ -38,7 +38,7 @@ from scipy.optimize import least_squares
 from volfit.calib.band import MID_ANCHOR_WEIGHT, band_violation, band_violation_sign
 from volfit.models.localvol.affine_gn import LinearizedJacobian, gauss_newton
 from volfit.models.localvol.affine_stall import stall_block_size, stall_metric
-from volfit.models.localvol.pde_grids import is_uniform, local_step
+from volfit.models.localvol.pde_grids import is_uniform, local_step, third_difference_weights
 from volfit.models.localvol.affine_trace import AffineTrace, TraceRecorder
 from volfit.models.localvol.affine import (
     AffinePDESolution,
@@ -282,7 +282,7 @@ def density_smoothness_rows(
     stride: int = _DENSITY_STRIDE,
     window_sd: float = _DENSITY_WINDOW_SD,
 ) -> list[tuple[float, np.ndarray, float]]:
-    """Per-expiry ``(t, start_nodes, scale)`` of the density-smoothness block.
+    """Per-expiry ``(t, start_nodes, scale, weights)`` of the density-smoothness block.
 
     Row j of expiry t is ``scale · (−C_j + 3C_{j+1} − 3C_{j+2} + C_{j+3})`` on
     the uniform lattice, j stepping by ``stride`` through the window
@@ -303,7 +303,7 @@ def density_smoothness_rows(
     x = np.asarray(x_grid, dtype=float)
     uniform = is_uniform(x)
     dx = float(x[1] - x[0])
-    spec: list[tuple[float, np.ndarray, float | np.ndarray]] = []
+    spec: list[tuple[float, np.ndarray, float | np.ndarray, np.ndarray | None]] = []
     for t in sorted({float(o.t) for o in options}):
         xs = np.array([o.x for o in options if float(o.t) == t])
         s = float(density_std.get(t, 0.0))
@@ -317,11 +317,14 @@ def density_smoothness_rows(
         if j1 <= j0:
             continue
         j = np.arange(j0, j1, stride)
-        if uniform:  # the historical scalar scale (bit-identical)
+        if uniform:  # the historical scalar scale + raw stencil (bit-identical)
             scale: float | np.ndarray = float(np.sqrt(weight * stride) * s**1.5 / dx**2.5)
-        else:  # graded lattice: each row's scale from the step its stencil sees
+            spec.append((t, j, scale, None))
+        else:  # graded lattice: per-row scale from the local step, and the
+            # divided-difference weights that are exact for a cubic on any lattice
+            # (the raw stencil would price the lattice's grading as density slope)
             scale = np.sqrt(weight * stride) * s**1.5 / local_step(x, j) ** 2.5
-        spec.append((t, j, scale))
+            spec.append((t, j, scale, third_difference_weights(x, j)))
     return spec
 
 
@@ -339,14 +342,22 @@ def _density_block(
         return np.zeros(0), (np.zeros((0, n_cols)) if with_jac else None)
     exp_index = {float(t): i for i, t in enumerate(solution.expiries)}
     res, jac = [], []
-    for t, j, scale in spec:
+    for t, j, scale, wts in spec:
         i = exp_index[t]
         c = solution.prices[i]
-        res.append(scale * (-c[j] + 3.0 * c[j + 1] - 3.0 * c[j + 2] + c[j + 3]))
+        if wts is None:  # uniform lattice: the historical stencil (bit-identical)
+            res.append(scale * (-c[j] + 3.0 * c[j + 1] - 3.0 * c[j + 2] + c[j + 3]))
+        else:  # graded lattice: the divided-difference weights (pde_grids)
+            res.append(scale * (wts[:, 0] * c[j] + wts[:, 1] * c[j + 1]
+                                + wts[:, 2] * c[j + 2] + wts[:, 3] * c[j + 3]))
         if with_jac:
             s_ = solution.sens[i]
             sc = scale if np.isscalar(scale) else np.asarray(scale)[:, None]
-            jac.append(sc * (-s_[j] + 3.0 * s_[j + 1] - 3.0 * s_[j + 2] + s_[j + 3]))
+            if wts is None:
+                jac.append(sc * (-s_[j] + 3.0 * s_[j + 1] - 3.0 * s_[j + 2] + s_[j + 3]))
+            else:
+                jac.append(sc * (wts[:, [0]] * s_[j] + wts[:, [1]] * s_[j + 1]
+                                 + wts[:, [2]] * s_[j + 2] + wts[:, [3]] * s_[j + 3]))
     return np.concatenate(res), (np.vstack(jac) if with_jac else None)
 
 
@@ -997,7 +1008,7 @@ def calibrate_affine(
     n_opt_rows = (2 if band_mode else 1) * len(options)
     n_cvx_rows = int(cvx[0].size) if cvx_on else 0
     n_front_rows = int(front_rows.shape[0]) if front_on else 0
-    n_dens_rows = int(sum(j.size for _, j, _ in dens_spec))
+    n_dens_rows = int(sum(j.size for _, j, _, _ in dens_spec))
     residual_count = (
         n_opt_rows + len(varswaps) + len(baskets) + n_dens_rows
         + int(l_rows.shape[0]) + n_cvx_rows + n_front_rows

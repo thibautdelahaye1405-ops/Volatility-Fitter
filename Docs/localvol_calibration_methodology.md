@@ -1,6 +1,7 @@
 # Local-Volatility (Piecewise-Affine) Calibration — Methodology & Optimisation
 
-*Standalone technical note — 2026-06-20. Describes the Local-Vol calibration as it
+*Standalone technical note — 2026-06-20, updated 2026-09-08 (the LV operator arc: BDF2
+on graded grids — §2, §4, §6.12, §7). Describes the Local-Vol calibration as it
 now stands: the model, the pricing map, the calibration objective, the grid, the two
 solvers, every shipped optimisation, and everything that was tried and shelved (with
 the reason). Self-contained: readable without the companion roadmap files. The
@@ -27,8 +28,12 @@ Code map:
 
 | Concern | File |
 |---|---|
-| P1 surface, basis, implicit/CN Dupire pricer + forward sensitivities | `backend/volfit/models/localvol/affine.py` |
-| Numba vectorised-Thomas march (the compiled hot path) | `backend/volfit/models/localvol/affine_march.py` |
+| P1 surface, basis, Dupire pricer (implicit / Rannacher / BDF2) + forward sensitivities | `backend/volfit/models/localvol/affine.py` |
+| Time-stepping plans: the generic two-level step's per-step (γ, α, β, ε), BDF2 restarts | `backend/volfit/models/localvol/time_schemes.py` |
+| Numba vectorised-Thomas march, implicit Euler (the byte-identical legacy hot path) | `backend/volfit/models/localvol/affine_march.py` |
+| Numba march for any plan (BDF2 / Crank–Nicolson), dense + sparse basis | `backend/volfit/models/localvol/affine_march2.py` |
+| Graded time grid, graded strike lattice, `refine_cells`, nonuniform second difference | `backend/volfit/models/localvol/pde_grids.py` |
+| The fit's grid choice from `timeScheme` / `lvLattice` (`pde_lattice`, per-expiry regions) | `backend/volfit/api/affine_lattice.py` |
 | LSQ objective, roughness/convex/front-tie operators, var-swap, the TRF+GN drivers, early-stop | `backend/volfit/models/localvol/affine_calib.py` |
 | Matrix-free Gauss-Newton (operator, projected LM, lsmr step) | `backend/volfit/models/localvol/affine_gn.py` |
 | Backward source-PDE variance swap | `backend/volfit/models/localvol/varswap_pde.py` |
@@ -63,14 +68,41 @@ The surface is `ν_θ(t, x) = Σ_ℓ θ_ℓ φ_ℓ(t, x)` on a **tensor-product 
 `solve_affine_dupire` marches `∂_T c = ½ ν(T, x) x² ∂_xx c`, `c(0, x) = (1 − x)⁺`,
 Dirichlet `c(·, 0) = 1`, `c(·, x_max) = 0`, on:
 
-- **Spatial grid** (`_pde_grids`): uniform `x = {0, 0.01, 0.02, …}` to
-  `x_max = max(e^{k_hi}·1.4, 2.5)` — so `x = 1` (the var-swap anchor) is always a node;
-  ~251 nodes typically. Non-uniform central second difference.
-- **Time grid**: every quoted expiry forced onto the grid, refined to `dt ≤ dt_max`
-  (0.01 implicit / 0.03 Rannacher) ⇒ ~100–250 steps.
-- **Step**: fully implicit (backward) Euler `(I − Δt·A^{n+1}) U_I^{n+1} = U_I^n +
-  boundary`, a tridiagonal solve — unconditionally stable **M-matrix** (no pivoting
-  needed), first order in time, no Rannacher kink smoothing by default.
+- **Strike lattice** (`lvLattice`, default `graded` since 2026-09-08; `pde_grids.
+  graded_strike_grid`): `x ∈ [0, x_max]`, `x_max = max(e^{k_hi}·1.4, lvXMaxMin)`,
+  integrated OUTWARD from `x = 1` (the var-swap anchor and the ATM row — a node by
+  construction). Each expiry contributes a region — its traded range widened to
+  ±6 σ√τ in log-moneyness, beyond which the density is < e⁻¹⁸ of its peak — at its own
+  step `clip(0.15 σ√τ, 1/800, 0.01)`; the wings step 0.02; the union of requirements is
+  smoothed into a Lipschitz envelope `h(x) = min(0.02, min_j [h_j + 0.15·dist(x,
+  region_j)])` so consecutive cells differ by ≤ ~15 % (the non-uniform central second
+  difference's leading error term is ∝ (h_i − h_{i−1}), so a bounded ratio keeps it
+  second order in practice). `uniform` = the legacy `x = {0, dx, 2dx, …}` at the
+  SHORTEST rung's step (`_pde_dx`, §4), byte-identical — ~251 nodes on a normal
+  surface, ~1700 when a 2-day rung sets `dx = 1/800`.
+- **Time grid** (`pde_grids.graded_time_grid`, for `bdf2` / `rannacher`): geometric
+  from the payoff kink — the ATM price behaves like √t so its time scale is t itself —
+  `dt_0` = 1 % of the first mark, then `dt = min(0.25 t, 0.05, 1.25 dt_last, slab/8)`,
+  with every quoted expiry AND every vertex row a grid point (the local variance is
+  piecewise-affine in t with kinks at the rows, so a step straddling a row loses the
+  scheme's order) and ≥ 8 steps per slab; a mark is hit by splitting the slab's
+  remainder evenly, so a step never grows by more than 1.25× (no BDF2 restart after the
+  first step). ~100–120 steps on a real surface. `implicit` keeps the per-interval
+  uniform rule (`_pde_grids`: `dt ≤ 0.01`, intervals under 8 steps lifted to 32) ⇒
+  50–270 steps, byte-identical.
+- **Step** (`timeScheme`, default `bdf2` since 2026-09-08): every scheme is one generic
+  two-level relation on the interior unknowns, `(I − γΔt·A^{n+1}) U_I^{n+1} = α U_I^n −
+  β U_I^{n−1} + εΔt·A^n U_I^n + boundary` (note eq. generic_two_level_step): implicit
+  Euler (1, 1, 0, 0), Crank–Nicolson (½, 1, 0, ½), BDF2 with `ω = Δt_n/Δt_{n−1}`:
+  `γ = (1+ω)/(1+2ω), α = (1+ω)²/(1+2ω), β = ω²/(1+2ω), ε = 0` (eq. bdf2_step; α − β = 1
+  in every row). BDF2 is **second order and L-stable** — the stiffest modes (finest
+  strike cells, loaded by the payoff kink) are damped, where Crank–Nicolson's
+  amplification → −1 is the recorded non-monotone finding. The left matrix `I − γΔt·A`
+  is an **M-matrix** for any γ ∈ (0, 1], so every scheme is the same no-pivot
+  tridiagonal solve. The first step and any step growing > 2× are implicit Euler
+  (variable-step BDF2 is zero-stable only below 1 + √2). `implicit` = the first-order
+  legacy (every golden lock runs on it); `rannacher` = two implicit start-up steps then
+  CN, opt-in (on the graded grid, compiled). Var-swap fits under Rannacher keep implicit.
 
 ### 2.1 Sensitivities
 
@@ -84,6 +116,15 @@ column is exactly zero until the march reaches its hat support — bit-identical
 
 Cost per evaluation ≈ `O(N_t · N_x · m)`, dominated by the **multi-RHS sensitivity
 solve**.
+
+Under the generic step the sensitivities differentiate the same relation (note eq.
+generic_sensitivity_step): the θ-source is `γΔt·(∂A^{n+1})U^{n+1} + εΔt·(∂A^n)U^n`, so a
+scheme with `ε = 0` keeps the implicit kernel's single fused source and BDF2's
+sensitivity march costs an implicit one plus one axpy per level (`α S^n − β S^{n−1}`),
+where Crank–Nicolson's explicit half adds a stencil on every sensitivity column and a
+second source — roughly 2× per level, the Stage-7 finding. Every plan that is not pure
+implicit runs on the compiled `affine_march2` kernels (dense + sparse basis; the
+implicit kernels of `affine_march` are untouched, their bits being the goldens' bits).
 
 ---
 
@@ -147,7 +188,11 @@ left-wing slope `a` is a free parameter when a var-swap quote is present (analyt
   **since 2026-07-11 (daily-ladder pass): `0.15 ×`, capped at 800 nodes** — on 2-DTE
   dailies the quote spacing is finer than the lattice and the drawn smile wiggled at
   quote frequency until the step out-resolved it. A normal surface lands back on
-  `0.01` ⇒ byte-identical.
+  `0.01` ⇒ byte-identical. **Since 2026-09-08 this is the `lvLattice = uniform`
+  legacy**: the graded lattice (§2) applies the same `0.15 σ√τ` rule PER EXPIRY over
+  each expiry's own support instead of the shortest rung's step everywhere — the same
+  near-money resolution, a fraction of the nodes (a SPY surface with a 2-day rung:
+  ~1700 → ~400).
 - **2026-07-11 daily-ladder amendments** (the current short-end stack, Note 04 §3):
   - *Adaptive variance floor*: `ν_lo = min(request floor, (0.5·min ATM σ)²)`
     (`_LV_VOL_FLOOR_FRAC = 0.5`) — a low-vol short smile needs local vol below its
@@ -156,7 +201,8 @@ left-wing slope `a` is a free parameter when a var-swap quote is present (analyt
   - *PDE time refinement*: any short maturity interval that would receive fewer than
     8 implicit steps at the `dt = 0.01` ceiling is marched with 32 steps
     (`_PDE_NT_FIRST_GATE = 8`, `_PDE_NT_SHORT = 32`) — a 2-day interval otherwise
-    gets one.
+    gets one. (The `timeScheme = implicit` legacy rule; `bdf2` / `rannacher` march the
+    graded time grid of §2, which resolves the kink geometrically instead.)
   - *Even-gap coverage* (expiries ≤ 10 days, `_COVERAGE_GAP_MAX_T`): the count floor
     is side-blind, so for short expiries the widest boundary-augmented gap is split
     until none exceeds `range/(gridXMinPerExpiry − 1)` — the daily front stopped
@@ -308,6 +354,38 @@ reg): the LV **cold** fit is roughly **3–6× over the original banded baseline
 with grid size; **recalibrations were already ~instant** (Stage 2a). Golden example
 byte-identical throughout.
 
+### 6.12 LV operator arc (2026-09-08) — BDF2 + graded grids
+Not a per-eval speed-up but a change of the calibration OPERATOR, in the direction
+Stage 7 pointed and Stage 3 forbade: fewer time steps and fewer strike nodes at
+*higher* accuracy, so θ no longer absorbs the operator's own error. What the Dupire-twin
+compare measured first: implicit Euler's payoff-kink error at the ATM is ~0.15 σ/N for
+N uniform steps on ANY front (2-day SPY / 27-day SPY / 27-day NVDA: 82 / 86 / 217 bp at
+2 steps, 6 / 8 / 15 at 32 — first order; the whole-quote rms 3–5× the ATM figure), and
+on the fitted surfaces the production rule (implicit, `dt ≤ 0.01`, short intervals
+lifted to 32) carried **15–170 bp of operator error per expiry** (Bloomberg SPY
+70/37/28/15/12, NVDA 170/28/16, the weekly 28/25/17/33/28/14/14, the SPY dailies
+25/9/10/21/5) — what the calibration bends θ to cancel. Shipped (§2): the generic
+two-level step (`time_schemes.py`), **BDF2 as the default** (second order, L-stable, an
+implicit step plus one axpy per level for the sensitivities), the compiled march for
+any plan (`affine_march2.py`), the **graded time grid** (geometric from the kink,
+every vertex row a mark, ≥ 8 steps per slab, cap 0.05) and the **graded strike
+lattice** (per-expiry regions at their own 0.15 σ√τ step, wings 0.02, ratio ≤ 1.15,
+x = 1 a node). **Measured** (flat control + fitted surfaces vs a 256-steps-per-interval
+reference): BDF2 on the graded grid reads **≤ 5.2 bp on every expiry of every case**
+(Bloomberg SPY 2.6/0.8/0.6/2.3/0.6, NVDA 3.2/1.3/0.3, weekly 3.8/1.1/2.1/3.0/3.9/1.0/1.8,
+dailies 5.2/1.8/1.7/3.2/1.8) at **98–116 steps where the legacy rule marched 51–271**;
+Rannacher on the same grid ≤ 1.6 bp but ~2× the sensitivity cost; no negative density
+on any case for either scheme; a pure geometric grid (no vertex-row marks) left 12–22 bp
+at intermediate rungs and uniform-per-interval BDF2 38 bp after an Euler restart, which
+is why both rules are load-bearing; c = 0.15 vs 0.25 and dt_0 = 0.3 % vs 1 % change
+nothing. The strike lattice's own floor at the front is 5–9 bp rms at the 0.15 σ√τ step
+(halving dx: 2.5–4) — with a second-order time scheme the LATTICE is the residual — and
+the graded lattice takes a SPY surface with a 2-day rung from ~1700 to ~400 nodes at
+the same near-money resolution. Implicit + uniform remain the byte-identical legacy
+(`timeScheme = implicit`, `lvLattice = uniform`; every golden lock). Derivations: the
+note's eqs. (generic_two_level_step), (bdf2_step), (generic_sensitivity_step) and its
+"Graded grids" subsection; the measurement record in ROADMAP.md "LV OPERATOR ARC".
+
 ---
 
 ## 7. What was shelved, and why
@@ -322,7 +400,7 @@ once the march is cheap) helps.
 |---|---|---|
 | **Stage 3 — coarse calibration grid** | ❌ reverted | Coarsening the PDE grid biased θ by 0.08–0.47 in variance (up to ~26 vol-pts/node, ≫ tolerance), SPY went nan. The local-vol surface *is* the product output; the publication re-solve can't fix a θ the optimizer biased into the coarse-grid discretisation error. |
 | **Stage 6 — first Numba attempt** | ❌ ~1.2×, rebuilt | A column-OUTER scalar Thomas couldn't beat LAPACK's vectorised multi-RHS solve, and its dense `nu` loop lost to BLAS. The *loop order* was the whole problem — fixed in Stage 6′ (column-inner SIMD), which got 6.5×. |
-| **Stage 7 — Rannacher (CN) time stepping** | ⚠️ ~1.1×, default OFF | 2nd-order CN (validated 21× more accurate than implicit at dt=0.02) cut N_t 2.7×, but the **CN sensitivity step is ~2× costlier per step** (an explicit-half operator on the previous sensitivities + dual-level sources), ~cancelling the win, and the N_t-independent assembly+optimizer dilute the rest → ~1.12× net. CN is also **not monotone** (no M-matrix) and broke arbitrage-freedom on a coarse-x grid. Kept as a tested opt-in (`timeScheme`). |
+| **Stage 7 — Rannacher (CN) time stepping** | ⚠️ ~1.1×, default OFF → **SUPERSEDED by the LV operator arc (2026-09-08, §6.12)** | 2nd-order CN (validated 21× more accurate than implicit at dt=0.02) cut N_t 2.7×, but the **CN sensitivity step is ~2× costlier per step** (an explicit-half operator on the previous sensitivities + dual-level sources), ~cancelling the win, and the N_t-independent assembly+optimizer dilute the rest → ~1.12× net. CN is also **not monotone** (no M-matrix) and broke arbitrage-freedom on a coarse-x grid. The arc drew the conclusion the finding pointed at: a second-order scheme whose sensitivity step keeps the implicit kernel's single source — **BDF2** (L-stable, ε = 0) **on the graded time grid is the default**; the compiled march (`affine_march2`) now covers CN and BDF2, and Rannacher stays a tested opt-in (`timeScheme`) on the same graded grid. |
 | **GN for band/haircut fits** | falls back to TRF | The bid-ask/haircut objective is **non-smooth** (zero gradient inside the band), fragile for GN's smooth LM (it returns the mid surface — a valid but solver-specific in-band solution); TRF's trust region is robust there. |
 | **`tr_solver='lsmr'` inside trf** | ❌ diverges | Unpreconditioned LSMR inside scipy's trust-region hit the eval cap. The fix was a *purpose-built preconditioned GN* (Stage 5), a different animal. |
 | **Thread / process parallelism** | ❌ GIL / Windows | Intra-fit thread-parallel is GIL-negative (the scipy/PDE loops hold the GIL); process pools are Windows-spawn-hostile and risky for the live backend. A `nogil` Numba march now exists, so across-ticker threads are a viable *future* item. |
@@ -365,6 +443,13 @@ cold fits. These are *incremental* (~10–30%), not order-of-magnitude:
   + its SVD today) — a research item, not incremental.
 
 The order-of-magnitude wins (compiled march, SVD-avoidance, early-stop) are spent.
+So is the operator-accuracy lever (2026-09-08, §6.12): the time-step count and the
+lattice size are no longer open items — BDF2 on the graded time grid holds the
+operator error at ≤ 5 bp per expiry at 2–3× fewer steps, and the graded strike lattice
+keeps the near-money resolution at a fraction of the nodes. What remains of the
+operator is the lattice's own floor at the front (5–9 bp rms at the 0.15 σ√τ step,
+halving with the step): the fine-region step is the one knob left there, and it is a
+cost knob, not a structural one.
 
 **Open quality lever — short-dated robust weighting (fix #3).** After fixes #1/#2
 (§4) the residual on a true ~6-DTE weekly (~23 bp) is dominated by a near-ATM

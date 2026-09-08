@@ -408,6 +408,107 @@ diagonally dominant under the standard boundary treatment. It is therefore an
 $M$-matrix, so $M_n^{-1}\ge0$ componentwise. This is a useful stability and comparison
 property of the implicit scheme.
 
+\subsection{Higher-order time stepping: the generic two-level step}
+
+The implicit step \eqref{eq:implicit_step} is first order in time, and the payoff kink
+makes that order expensive. At the money the normalized call starts as
+$c(t,1)\approx\sqrt{\vloc\,t/(2\pi)}$, so $\partial_tc\propto t^{-1/2}$ and a step of
+length $\Delta t$ taken at time $t$ resolves the solution only to a relative accuracy of
+order $\Delta t/t$. On a front expiry marched with $N$ uniform steps the resulting
+implied-volatility error at the money is about $0.15\,\sigma/N$ whatever the expiry
+(measured: $82$, $86$ and $217$ bp at $N=2$ on a 2-day SPY, a 27-day SPY and a 27-day
+NVDA front; $6$, $8$ and $15$ bp at $N=32$), and the calibration then bends $\theta$ to
+cancel it. A second-order scheme removes the $1/N$ term; the question is which one keeps
+the stability of the implicit step.
+
+Every time scheme the march supports is one instance of a single two-level relation on
+the interior unknowns. With per-step coefficients
+$(\gamma_n,\alpha_n,\beta_n,\varepsilon_n)$,
+\begin{equation}
+  \left(I-\gamma_n\Delta t_n A^{n+1}_{II}(\theta)\right)U_I^{n+1}
+  =
+  \alpha_n U_I^n-\beta_n U_I^{n-1}
+  +\varepsilon_n\Delta t_n A^{n}_{II}(\theta)U_I^n
+  +\Delta t_n\left(\gamma_n b^{n+1}(\theta)+\varepsilon_n b^{n}(\theta)\right),
+  \label{eq:generic_two_level_step}
+\end{equation}
+where $b^{n}$ is the boundary vector of \eqref{eq:implicit_step} evaluated at level $n$.
+The schemes are the rows of the coefficient table:
+
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+scheme & $\gamma_n$ & $\alpha_n$ & $\beta_n$ & $\varepsilon_n$\\
+\midrule
+implicit Euler, eq.~\eqref{eq:implicit_step} & $1$ & $1$ & $0$ & $0$\\[1mm]
+Crank--Nicolson (after the Rannacher start-up) & $\tfrac12$ & $1$ & $0$ & $\tfrac12$\\[1mm]
+BDF2, eq.~\eqref{eq:bdf2_step} &
+  $\dfrac{1+\omega_n}{1+2\omega_n}$ &
+  $\dfrac{(1+\omega_n)^2}{1+2\omega_n}$ &
+  $\dfrac{\omega_n^2}{1+2\omega_n}$ & $0$\\[3mm]
+\bottomrule
+\end{tabular}
+\end{center}
+
+The BDF2 row is the variable-step backward differentiation formula. Let
+$\omega_n=\Delta t_n/\Delta t_{n-1}$ and take the quadratic through the three levels
+$(t_{n-1},U^{n-1})$, $(t_n,U^n)$, $(t_{n+1},U^{n+1})$; its derivative at $t_{n+1}$ is
+$\bigl[\tfrac{1+2\omega_n}{1+\omega_n}U^{n+1}-(1+\omega_n)U^n
++\tfrac{\omega_n^2}{1+\omega_n}U^{n-1}\bigr]/\Delta t_n$.
+Setting it equal to the operator at the new level, $A^{n+1}U^{n+1}$, and multiplying by
+$(1+\omega_n)/(1+2\omega_n)$ gives
+\begin{equation}
+  \gamma_n=\frac{1+\omega_n}{1+2\omega_n},\qquad
+  \alpha_n=\frac{(1+\omega_n)^2}{1+2\omega_n},\qquad
+  \beta_n=\frac{\omega_n^2}{1+2\omega_n},\qquad
+  \varepsilon_n=0,
+  \qquad
+  \omega_n=\frac{\Delta t_n}{\Delta t_{n-1}}.
+  \label{eq:bdf2_step}
+\end{equation}
+At $\omega_n=1$ these are the familiar $(\tfrac23,\tfrac43,\tfrac13,0)$.
+
+Three facts follow from the table.
+\begin{itemize}[leftmargin=1.1cm]
+\item \emph{Constants are preserved.} $\alpha_n-\beta_n=1$ in every row (for BDF2,
+      $(1+\omega_n)^2-\omega_n^2=1+2\omega_n$), and $A$ annihilates constants at interior
+      rows since $a_i^0=-(a_i^-+a_i^+)$; a constant vector with matching boundary data is
+      therefore a fixed point of every scheme, which is the consistency condition at
+      order zero.
+\item \emph{Order and damping.} The quadratic interpolant is exact for quadratics, so
+      BDF2 has local error $O(\Delta t^3)$ and is second order, like Crank--Nicolson.
+      They differ on the stiff modes. On $u'=\lambda u$ with $z=\lambda\Delta t$, the
+      implicit step amplifies by $1/(1-z)$, Crank--Nicolson by $(1+z/2)/(1-z/2)$, and
+      BDF2 by the roots of $(1-\gamma_nz)r^2-\alpha_nr+\beta_n=0$. As $z\to-\infty$ the
+      implicit and BDF2 factors tend to $0$ (both are L-stable) whereas the
+      Crank--Nicolson factor tends to $-1$. The stiffest modes of $A$ live on the finest
+      strike cells, $|\lambda|\sim\vloc x^2/h^2$, and the payoff kink at $x=1$ loads them
+      fully at $t=0$: Crank--Nicolson does not damp them but flips their sign at every
+      step, which is the oscillation that makes it non-monotone on fine strike lattices.
+      The Rannacher start-up (the first two steps implicit) damps the kink's high modes
+      before Crank--Nicolson takes over; BDF2 needs no such repair.
+\item \emph{The tridiagonal solve is unchanged.} The matrix on the left of
+      \eqref{eq:generic_two_level_step} is $I-\gamma_n\Delta t_nA^{n+1}_{II}$, which for
+      any $\gamma_n\in(0,1]$ has the sign pattern and strict diagonal dominance of $M_n$:
+      it is an $M$-matrix with a nonnegative inverse, and the no-pivot tridiagonal solve
+      of the implicit step applies to every scheme. What the two-level right-hand side
+      does not carry over is the implicit step's comparison principle (the coefficient of
+      $U^{n-1}$ is $-\beta_n<0$), so positivity of the marched density is checked on the
+      output rather than inherited from the step; on every fitted surface of the
+      measurement record of the subsection ``Graded grids'' the BDF2 reprice produced
+      none negative.
+\end{itemize}
+
+BDF2 reads $U^{n-1}$, so the first step of a march is an implicit Euler step. Growth of
+the step is limited: at $z=0$ the characteristic polynomial factors as
+$(r-1)(r-\beta_n)$, and the parasitic root $\beta_n=\omega_n^2/(1+2\omega_n)$ stays below
+$1$ exactly when $\omega_n<1+\sqrt2$, the zero-stability bound of variable-step BDF2.
+The march therefore restarts with an implicit Euler step whenever a step grows by more
+than a factor $2$ (a margin under that bound). Shrinking steps never restart:
+$\omega_n\to0$ sends $(\gamma_n,\alpha_n,\beta_n)\to(1,1,0)$ and the step tends to
+implicit Euler smoothly. On the graded time grid of the subsection ``Graded grids'' the
+growth never exceeds $1+c=1.25$, so a BDF2 march restarts only at its first step.
+
 \subsection{Observation operator}
 
 Let $R_j$ be the row vector that linearly interpolates grid values at strike $x_j$.
@@ -418,6 +519,75 @@ If $T_j$ coincides with a time step $t_{n(j)}$, then the model quote is
 If it does not, one may either include $T_j$ in the time grid or interpolate between
 adjacent time levels. In calibration, it is usually best to force all quoted expiries to
 be time steps.
+
+\subsection{Graded grids}
+
+\paragraph{Time grid.}
+The estimate $\partial_tc\propto t^{-1/2}$ at the money says that the solution's own
+time scale is $t$: a step $\Delta t$ taken at time $t$ resolves the kink to a relative
+accuracy of order $\Delta t/t$, so equal accuracy per step means geometric growth,
+$\Delta t_n\le c\,t_n$ with $c=0.25$, from a first step $\Delta t_0$ equal to $1\%$ of the
+first mark. Geometric growth alone is not enough. The local variance $\vloc_\theta$ is
+piecewise affine in $t$ with kinks at the vertex rows $t_i$, so $\partial_tc$ has a kink
+and $\partial_{tt}c$ a jump at every row; a step straddling a row loses the scheme's
+order, and the slabs between rows are exactly where a purely geometric grid has grown
+coarse (measured: $12$--$22$ bp at intermediate expiries). Every listed expiry
+\emph{and} every vertex row is therefore a grid point (a \emph{mark}), each slab between
+consecutive marks receives at least $8$ steps, and an absolute ceiling $\Delta t\le0.05$
+closes the rule:
+\[
+  \Delta t_n=\min\!\left(c\,t_n,\ 0.05,\ (1+c)\,\Delta t_{n-1},\ \tfrac18\,\text{slab}\right),
+\]
+a mark being hit exactly by splitting the slab's remainder evenly once fewer than three
+steps remain. A step consequently never grows by more than the factor $1+c$, so the BDF2
+march of \eqref{eq:bdf2_step} restarts only at its first step. The shape of the grid does
+not depend on the scheme; the implicit legacy keeps its per-interval uniform rule
+($\Delta t\le0.01$, any interval that would receive fewer than $8$ steps lifted to $32$)
+so that its results are unchanged bit for bit.
+
+\paragraph{Strike lattice.}
+A uniform lattice must take the shortest expiry's step everywhere: a 2-day front needs a
+cell of about $1/800$ near the money, so a uniform lattice carries some $1700$ nodes over
+$[0,\xmax]$ for every expiry, though that front's density lives within a few percent of
+$x=1$. The graded lattice grants each expiry its own region and step. With
+$\sigma_j\sqrt{\tau_j}$ the at-the-money standard deviation of expiry $j$, its region
+$[x_{\mathrm{lo}}^j,x_{\mathrm{hi}}^j]$ is its traded strike range widened to
+$\pm6\,\sigma_j\sqrt{\tau_j}$ in log-moneyness (beyond which the density is below
+$e^{-18}$ of its peak), and its step is
+\[
+  h_j=\operatorname{clip}\!\left(0.15\,\sigma_j\sqrt{\tau_j},\ \tfrac1{800},\ 0.01\right),
+\]
+the resolution its own quotes require. Outside every region the step is the wing step
+$h_{\mathrm{wing}}=0.02$. The union of these requirements is a step function, and a
+lattice cannot follow it abruptly: the truncation error of the nonuniform stencil
+\eqref{eq:nonuniform_second_derivative} is
+$\tfrac13(h_i-h_{i-1})\,\partial_{xxx}U+O(h^2)$, first order in general, second order
+in practice only while consecutive cells differ by a small factor. The requirements are
+therefore smoothed into the Lipschitz envelope
+\[
+  h(x)=\min\Bigl(h_{\mathrm{wing}},\ \min_j\bigl[h_j+(r-1)\operatorname{dist}(x,\text{region}_j)\bigr]\Bigr),
+  \qquad r=1.15,
+\]
+the largest step function below every requirement whose slope is at most $r-1$; walking
+with step $h(x)$ then changes the cell by at most a factor of about $r$ between
+neighbours, and the leading error term above is bounded by $(r-1)h/3$. The lattice is
+integrated outward from $x=1$ in both directions, which makes $x=1$ a node by
+construction --- the static replication \eqref{eq:variance_swap_static_replication}
+splits its put and call legs there and the at-the-money row of the triangulation sits
+there, both of which need it exactly --- and closes on $0$ and $\xmax$ with a last cell
+between one half and one and a half steps.
+
+\paragraph{Measured effect.}
+On the fitted surfaces of the measurement record (a Bloomberg SPY and NVDA chain, a
+true-weekly capture and a SPY daily ladder), BDF2 on the graded time grid reads at most
+$5$ bp of operator error per expiry, repriced against a reference marched with $256$
+steps per interval, at $98$--$116$ steps, where the uniform per-interval implicit rule
+marched $51$--$271$ steps and left $15$--$170$ bp per expiry for the calibration to
+absorb. With a second-order time scheme the strike lattice is the residual --- its own
+floor at the front is $5$--$9$ bp rms at the $0.15\,\sigma\sqrt\tau$ step, $2.5$--$4$
+with the step halved --- which is what the graded lattice keeps fine where the density
+lives and coarse where nothing does: a SPY surface carrying a 2-day rung drops from
+about $1700$ to about $400$ strike nodes at the same near-the-money resolution.
 
 \section{Variance swaps}
 
@@ -623,6 +793,29 @@ Since the same tridiagonal matrix $M_n$ is used for all $m$ sensitivities, all c
 $S^{n+1}$ can be solved simultaneously by a tridiagonal solve with multiple right-hand
 sides.
 
+The generic step \eqref{eq:generic_two_level_step} differentiates the same way. The
+operator is linear in $\theta$ and the coefficients do not depend on it, so
+\begin{equation}
+  \left(I-\gamma_n\Delta t_nA^{n+1}\right)S^{n+1}
+  =
+  \alpha_nS^n-\beta_nS^{n-1}
+  +\varepsilon_n\Delta t_nA^nS^n
+  +\gamma_n\Delta t_n\left(\frac{\partial A^{n+1}}{\partial\theta}U^{n+1}\right)
+  +\varepsilon_n\Delta t_n\left(\frac{\partial A^{n}}{\partial\theta}U^{n}\right),
+  \qquad S^0=S^{-1}=0,
+  \label{eq:generic_sensitivity_step}
+\end{equation}
+with the row-wise source of the previous display at each level and the boundary
+derivative again omitted; for implicit Euler this is \eqref{eq:discrete_sensitivity}.
+The cost per level is read off the terms. The tridiagonal solve is shared by all $m$
+columns as before. With $\varepsilon_n=0$ the source keeps the implicit step's single
+term, evaluated at the new level, and the only addition is the combination
+$\alpha_nS^n-\beta_nS^{n-1}$, one vector operation per column. BDF2's sensitivity march
+therefore costs an implicit one plus that combination, whereas Crank--Nicolson
+($\varepsilon_n=\tfrac12$) adds the stencil $A^nS^n$ on every column and a second source
+at the old level, roughly doubling the work per level. This is why BDF2, not
+Crank--Nicolson, is the default second-order scheme.
+
 \subsection{Discrete adjoint gradient}
 
 When $m$ is large, an adjoint is more efficient. Suppose the objective contributes a
@@ -667,7 +860,9 @@ A robust implementation is as follows.
       For example, $\underline v=(1\%)^2$ and $\overline v=(200\%)^2$ in extreme equity
       markets, or tighter product-specific values.
 \item \textbf{Price for a trial $\theta$.}
-      Solve \eqref{eq:implicit_step}; record $U^n$ at quote maturities.
+      Solve \eqref{eq:implicit_step}, or the generic step \eqref{eq:generic_two_level_step}
+      with the BDF2 coefficients \eqref{eq:bdf2_step} on the graded grids; record $U^n$
+      at quote maturities.
 \item \textbf{Compute residuals.}
       Apply interpolation rows for option quotes. Compute variance-swap model values by
       either \eqref{eq:variance_swap_static_replication} or
@@ -998,8 +1193,9 @@ A continuous piecewise-affine local-variance surface on a triangulated grid give
 flexible but controlled way to fit sparse option and variance-swap quotes. The forward
 Dupire PDE provides the pricing map from local variance to European option prices, while
 the log-contract identity or a source PDE incorporates variance swaps. Positivity of the
-nodal variances gives positivity of the entire $P_1$ surface, and a fully implicit
-finite-difference method gives stable tridiagonal solves. The final calibration is a
+nodal variances gives positivity of the entire $P_1$ surface, and an implicit
+finite-difference method (implicit Euler, or second-order BDF2 on grids graded from the
+payoff kink and from each expiry's own width) gives stable tridiagonal solves. The final calibration is a
 bound-constrained nonlinear least-squares problem whose regularization should be treated
 as part of the model specification.
 

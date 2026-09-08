@@ -2,10 +2,11 @@
 // PDE lattice and solver (SettingsSectionId "opt-localvol"). One SettingDoc per
 // OptionsSettings field that shapes the LV fit beyond the vertex grid: the
 // convex-wing hinge and its weight, the front tie, the adaptive local-vol cap,
-// the Dupire time scheme, early stop, the compiled march, the solver choice,
-// the left-wing extrapolation slope and the lattice right-edge floor. The
-// workspace gate and vertex-grid knobs live in localvol_grid.ts; localvol.ts
-// concatenates both into LOCALVOL_DOCS.
+// the Dupire time scheme and the PDE strike lattice (LV operator arc,
+// 2026-09-08), early stop, the compiled march, the solver choice, the
+// left-wing extrapolation slope, the lattice right-edge floor and the
+// density-smoothness weight. The workspace gate and vertex-grid knobs live in
+// localvol_grid.ts; localvol.ts concatenates both into LOCALVOL_DOCS.
 //
 // Meaning is taken from the `#:` comments of volfit/api/schemas.py
 // OptionsSettings (authoritative), Docs/handoff/SETTINGS_REFERENCE.md §2.8,
@@ -135,25 +136,67 @@ export const LV_WINGS_SOLVER_DOCS: SettingDoc[] = [
     key: "timeScheme",
     model: "options",
     section: "opt-localvol",
-    label: "2nd-order time stepping (experimental)",
-    summary: "Time discretisation of the Dupire march: implicit Euler, or Rannacher (Crank–Nicolson after damped start-up).",
+    label: "Time stepping (BDF2 / Rannacher / implicit)",
+    summary: "Time discretisation of the Dupire march: the second-order BDF2 step on the graded time grid (default), Rannacher (Crank–Nicolson after damped start-up, opt-in), or the first-order implicit Euler legacy.",
     details:
-      "`rannacher` reaches the same accuracy at ~3× larger time steps, so each eval marches " +
-      "fewer steps. It stays opt-in for two measured reasons: net speed-up was only ~1.1× " +
-      "(the heavier sensitivity step cancels the win), and Crank–Nicolson is not monotone — " +
-      "its explicit factor breaks the CFL-like bound on coarse-x, high-vol lattices, and an " +
-      "arbitrage violation appeared on a coarse strike grid. Implicit Euler keeps the " +
-      "maximum principle at first order.\n\n" +
-      "Var-swap fits keep implicit either way, and the compiled march falls back to the " +
-      "banded solver under Rannacher. The real cold-fit lever is fewer evals (`lvEarlyStop`, " +
-      "`lvSolver`), not fewer time steps. The dialog shows this as a toggle (on = `rannacher`).",
+      "`bdf2` is the second-order, L-stable backward-differentiation step on a time grid graded " +
+      "from the payoff kink: geometric at the start, every expiry AND every vertex row of the " +
+      "sheet a grid point, at least 8 steps per slab between rows, no step above 0.05 years. " +
+      "Measured on every fixture (Bloomberg SPY and NVDA, the weekly, the dailies snapshot): " +
+      "≤ 5 bp of operator error per expiry where implicit Euler's per-interval rule left " +
+      "15–170 bp — error the calibration then bent the fitted sheet to cancel — at 2–3× fewer " +
+      "time steps. L-stability damps the stiffest modes, which keeps the monotone behaviour " +
+      "Crank–Nicolson lacks, and its sensitivities ride the implicit kernel's single fused " +
+      "source, so the compiled march covers it at the implicit march's cost per step.\n\n" +
+      "`rannacher` marches the same graded grid and reads a few bp finer on the reprice, but its " +
+      "sensitivity step costs ~1.5× and Crank–Nicolson is not monotone (an arbitrage violation " +
+      "once appeared on a coarse strike lattice), so it stays opt-in. `implicit` is the " +
+      "first-order legacy on its per-interval uniform rule, byte-identical to every historical " +
+      "fit. The compiled march (`lvFastKernel`) covers all three. Var-swap fits under Rannacher " +
+      "keep implicit; BDF2 applies to them too. The converged reprice, the display wing march " +
+      "and the Compare tab's twin ride the fit's scheme. The dialog shows this as a selector.",
     example:
-      "Turn it on: the eval count is unchanged, wall time is about the same, and on a coarse " +
-      "strike grid the LV diagnostics may report a butterfly violation the implicit scheme " +
-      "did not produce.",
+      "A one-month SPY front under `implicit` reads a converged figure tens of bp above its " +
+      "in-operator RMS — the sheet is compensating the operator. Under `bdf2` the two figures sit " +
+      "within a few bp of each other and the fit marches about a third of the steps; `rannacher` " +
+      "moves the reprice by a couple of bp more at ~1.5× the per-step cost.",
     cacheEffect: "lv-affine-key",
     surfaced: true,
-    related: ["lvEarlyStop", "lvSolver", "lvFastKernel"],
+    related: ["lvLattice", "lvEarlyStop", "lvSolver", "lvFastKernel"],
+    docs: ["04_local_volatility_forward"],
+  },
+  {
+    key: "lvLattice",
+    model: "options",
+    section: "opt-localvol",
+    label: "Graded strike lattice",
+    summary: "The PDE strike lattice the LV march runs on: one uniform step set by the shortest expiry, or a step graded per expiry over its own support (default).",
+    details:
+      "This is the lattice of the Dupire march, not the vertex grid of the fitted sheet (the " +
+      "resolved-grid readout counts vertices and is untouched).\n\n" +
+      "`uniform` is the historical lattice: one step for the whole surface, the SHORTEST " +
+      "expiry's 0.15 σ√τ. A same-day or two-day rung then sets the resolution of every expiry — " +
+      "a 2-day SPY daily makes the whole surface march ~1700 nodes at a 1/800 step out to " +
+      "x = 2.5, which was the \"SPY LV stalls\" wall time.\n\n" +
+      "`graded` (the default) gives each expiry its own step over its own support: inside its " +
+      "traded range widened to ± 6 σ√τ in log-moneyness the step is that expiry's own 0.15 σ√τ; " +
+      "outside every expiry's region the step grows geometrically, by at most 15 % per cell, to " +
+      "the wing step 0.02. x = 1 — the ATM row and the var-swap anchor — is a node by " +
+      "construction (the lattice is built outward from it). Same near-money resolution where " +
+      "the quotes live, a fraction of the nodes where nothing does. Every lattice consumer — " +
+      "the density, the diagnostics, the display wing march, the converged reprice and the " +
+      "Compare tab's twin — reads the nonuniform second difference; a uniform lattice keeps the " +
+      "uniform formula, byte-identical. With a second-order time scheme (`timeScheme`) the " +
+      "strike lattice is what remains of the operator error, which is why it stays fine where " +
+      "it matters and coarse where nothing lives.",
+    example:
+      "A SPY universe with a same-day or 2-day expiry among the monthlies: under `uniform` every " +
+      "expiry marches ~1700 strike nodes; under `graded` about 400, with the same near-money " +
+      "resolution and the same var-swap anchor at x = 1. Calibrate on that universe finishes " +
+      "several times faster and the quoted-region fit is unchanged to a few bp.",
+    cacheEffect: "lv-affine-key",
+    surfaced: true,
+    related: ["timeScheme", "gridXMinPerExpiry", "lvXMaxMin"],
     docs: ["04_local_volatility_forward"],
   },
   {
@@ -188,7 +231,8 @@ export const LV_WINGS_SOLVER_DOCS: SettingDoc[] = [
       "No-pivot Thomas, SIMD across the sensitivity columns, fused source: ~6× the " +
       "scipy/LAPACK banded march, which is the bulk of the per-eval cost. Output matches the " +
       "banded march to ~1e-15. It falls back to the banded march automatically when numba is " +
-      "missing, for var-swap fits and under `rannacher`.\n\n" +
+      "missing and for var-swap fits only — since the 2026-09-08 operator arc the compiled " +
+      "march covers every `timeScheme` (BDF2 and Rannacher included).\n\n" +
       "It is also a precondition for the Gauss-Newton solver: with the kernel off, " +
       "`lvSolver = gn` routes to TRF.",
     example:

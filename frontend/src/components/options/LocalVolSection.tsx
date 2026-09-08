@@ -1,8 +1,9 @@
 // Options ▸ Local-Vol surface: the master calibration switch, the vertex grid,
-// wing/front regularizers and solver features. Feature-dependent knobs render
-// ONLY while their feature toggle is on (convex-wing weight, front-tie weight,
-// the left-wing slope used by the convex wing). Turning the master switch off
-// collapses the whole section to just the switch.
+// wing/front regularizers, the PDE operator (time stepping + strike lattice,
+// LV operator arc 2026-09-08) and solver features. Feature-dependent knobs
+// render ONLY while their feature toggle is on (convex-wing weight, front-tie
+// weight, the left-wing slope used by the convex wing). Turning the master
+// switch off collapses the whole section to just the switch.
 import { api } from "../../state/api";
 import { NumberRow, PenaltyTable, Toggle } from "../OptionsControls";
 import type { OptionsSettings } from "../../state/useOptions";
@@ -193,7 +194,7 @@ export default function LocalVolSection({
           <div className="flex items-center justify-between">
             <span
               className={rowLabel}
-              title="LV calibration solver. TRF = scipy trust-region (default). Gauss-Newton = matrix-free GN that avoids trf's dense SVD (~52% of an eval) — ~1.3-1.65x faster with the fast compiled march + early-stop. Trade-off: GN converges to a slightly different local optimum on stiff data, so the surface can differ by up to ~0.25 vol-bp (sometimes better). Needs the fast kernel + early-stop; var-swap fits always use TRF."
+              title="LV calibration solver. Gauss-Newton (default) = matrix-free GN that avoids trf's dense SVD (~52% of an eval) — ~1.3-1.65x faster with the fast compiled march + early-stop. Trade-off: GN converges to a slightly different local optimum on stiff data, so the surface can differ by up to ~0.25 vol-bp (sometimes better). Needs the fast kernel + early-stop; var-swap fits always use TRF."
             >
               LV solver
             </span>
@@ -220,13 +221,31 @@ export default function LocalVolSection({
               checked={draft.lvEarlyStop} disabled={!live}
               onChange={(v) => patch({ lvEarlyStop: v })}
             />
-            <Toggle
-              label="2nd-order time stepping (experimental)"
-              hint="Rannacher (Crank-Nicolson after implicit-Euler start-up) reaches the same accuracy at ~3x larger time steps but benchmarked at only ~1.1x net and is not monotone (an arb violation appeared on a coarse-x grid) — OFF by default. Off = 1st-order implicit Euler. Var-swap fits always use implicit."
-              checked={draft.timeScheme === "rannacher"} disabled={!live}
-              onChange={(v) => patch({ timeScheme: v ? "rannacher" : "implicit" })}
-            />
           </div>
+          <div className="mt-2 flex items-center justify-between">
+            <span
+              className={rowLabel}
+              title="Time discretisation of the LV Dupire march. BDF2 (default) = second-order and L-stable on the graded time grid (geometric from the payoff kink, every vertex row a grid point, ≥ 8 steps per slab): ≤ 5 bp of operator error per expiry where implicit Euler left 15–170 bp for the fit to absorb, at 2–3x fewer steps. Rannacher (Crank–Nicolson after damped start-up) = a few bp more accurate on the reprice, but ~1.5x per sensitivity step and not monotone — opt-in. Implicit Euler = the first-order legacy, byte-identical to every historical fit. The compiled march covers all three; var-swap fits under Rannacher keep implicit. LV-only: no parametric refit."
+            >
+              Time stepping
+            </span>
+            <select
+              value={draft.timeScheme}
+              disabled={!live}
+              onChange={(e) => patch({ timeScheme: e.target.value as OptionsSettings["timeScheme"] })}
+              className={numInput}
+            >
+              <option value="bdf2">BDF2 — 2nd order, graded grid (default)</option>
+              <option value="rannacher">Rannacher — Crank–Nicolson (opt-in)</option>
+              <option value="implicit">Implicit Euler (legacy, 1st order)</option>
+            </select>
+          </div>
+          <Toggle
+            label="Graded strike lattice"
+            hint="Each expiry is resolved at its own step over its own support (its traded range widened to ±6 σ√τ), the wings coarse, the step changing by at most 15% per cell; x = 1 (ATM, the var-swap anchor) is always a node. Off = one uniform step for the whole lattice, set by the SHORTEST expiry — a same-day or 2-day rung makes a surface with dailies march many times more nodes (SPY: ~1700 vs ~400). Same near-money resolution either way. LV-only: no parametric refit."
+            checked={draft.lvLattice === "graded"} disabled={!live}
+            onChange={(v) => patch({ lvLattice: v ? "graded" : "uniform" })}
+          />
 
           <h4 className={subTitle}>Penalties</h4>
           <PenaltyTable group="lv" />
