@@ -195,8 +195,11 @@ try {
     const tLabels = await page.evaluate(() =>
       Array.from(document.querySelectorAll("main svg text")).map((t) => t.textContent).filter((t) => /^T /.test(t)));
     console.log(`     corner T labels on both sheets: ${tLabels.join(" · ")}`);
-    if (tLabels.length !== 4 || tLabels[0] !== tLabels[2] || tLabels[1] !== tLabels[3])
-      throw new Error("the sheets' corner labels differ after the shared crop");
+    // The upper bound is shared verbatim; the lower corner label is each
+    // sheet's FIRST ROW inside the window (the smooth twin sample has rows
+    // between the vertices, so it may start a little earlier than the sheet).
+    if (tLabels.length !== 4 || tLabels[1] !== tLabels[3])
+      throw new Error("the sheets' upper corner labels differ after the shared crop");
     await page.screenshot({ path: `${OUT}surface-crop-compare.png` });
     if (pageErrors.length) throw new Error(pageErrors.join("; "));
   });

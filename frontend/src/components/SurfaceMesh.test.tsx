@@ -64,6 +64,33 @@ describe("SurfaceMesh shared windows", () => {
     expect(tButtons[1].className).toContain("text-accent-400");
   });
 
+  it("grids of different density over the same extents crop together (the smooth twin beside the affine sheet)", () => {
+    // Twice the rows and columns over the SAME (k, T) extents — the smooth
+    // twin sample beside the vertex sheet.
+    const fine: SurfaceMeshData = {
+      expiries: ["a", "b", "c", "d", "e", "f", "g"],
+      t: [0.1, 0.175, 0.25, 0.375, 0.5, 0.75, 1.0],
+      k: [-0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4],
+      vol: Array.from({ length: 7 }, () => Array.from({ length: 9 }, () => 0.2)),
+    };
+    render(
+      <div>
+        <SurfaceMesh data={fine} chartId="twin" windowKey="cmp" />
+        <SurfaceMesh data={DATA} chartId="affine" windowKey="cmp" />
+      </div>,
+    );
+    const lowers = screen.getAllByLabelText("Lower maturity bound") as HTMLElement[];
+    dragLowerMaturity(lowers[0], 0.5); // 0.55 on the fine grid keeps two rows: no snap
+    expect(lowers[0].getAttribute("aria-valuenow")).toBe("0.55");
+    // The coarse sheet reads the same window but re-snaps it to ITS grid — a
+    // single row inside would blank it — so it shows the nearest two rows.
+    expect(lowers[1].getAttribute("aria-valuenow")).toBe("0.5");
+    // A window both grids can hold is shared verbatim.
+    dragLowerMaturity(lowers[0], 0.25); // 0.325 keeps ≥ 2 rows on both
+    expect(lowers[0].getAttribute("aria-valuenow")).toBe("0.325");
+    expect(lowers[1].getAttribute("aria-valuenow")).toBe("0.325");
+  });
+
   it("keyless sheets keep their own windows", () => {
     render(
       <div>

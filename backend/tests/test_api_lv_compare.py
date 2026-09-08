@@ -180,3 +180,26 @@ def test_anchored_under_a_spot_move(client, compare):
         assert len(cache) == n_before
     finally:
         assert client.put("/spot/ALPHA", json={"spotReturn": 0.0}).status_code == 200
+
+
+def test_smooth_sheet_sample_passes_through_the_vertices(compare):
+    """The drawn twin is the smooth surface sampled on the subdivided lattice:
+    the vertex values sit inside it bit-for-bit, the samples between are inside
+    the box, and the subdivision respects the renderer's column cap."""
+    t_fine, x_fine = np.array(compare["tNodesFine"]), np.array(compare["xNodesFine"])
+    fine = np.array(compare["localVolTwinFine"])
+    n_t, n_x = len(compare["tNodes"]), len(compare["xNodes"])
+    assert t_fine.size == 4 * (n_t - 1) + 1
+    sub_x = (x_fine.size - 1) // (n_x - 1)
+    assert 1 <= sub_x <= 4 and x_fine.size <= 48
+    assert fine.shape == (t_fine.size, x_fine.size)
+    np.testing.assert_array_equal(t_fine[::4], np.array(compare["tNodes"]))
+    np.testing.assert_array_equal(x_fine[::sub_x], np.array(compare["xNodes"]))
+    np.testing.assert_array_equal(fine[::4, ::sub_x], np.array(compare["localVolTwin"]))  # bit-for-bit
+    # Between the vertices the samples are the smooth twin's own values: a
+    # sample next to a vertex sits close to it (no interpolant kink).
+    assert np.max(np.abs(fine[::4, 1::sub_x] - fine[::4, :-1:sub_x])) < 0.5 * np.ptp(fine)
+    lo, hi = np.sqrt(compare["varLo"]), np.sqrt(compare["varHi"])
+    assert np.all(fine >= lo - 1e-12) and np.all(fine <= hi + 1e-12)
+    assert np.all(np.diff(t_fine) > 0) and np.all(np.diff(x_fine) > 0)
+    assert "samples of the smooth twin" in compare["message"]

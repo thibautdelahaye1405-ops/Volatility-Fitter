@@ -604,6 +604,25 @@ help: guides/lenses_b.ts (localvol tab list, twice) · glossary `dupire-twin` ·
   together on a drag and share the T switch; keyless sheets stay apart);
   the live check drags the first sheet's handle and asserts the second's
   value and corner labels follow.
+  **SIXTH LOOK (user, same day: "the actual twin LV surface is smooth, not
+  affine per triangle — can the charted surface be smooth, through the same
+  grid points?").** Yes, and honestly: the payload now carries the SMOOTH
+  twin sampled on the vertex lattice subdivided (`tNodesFine` /
+  `xNodesFine` / `localVolTwinFine`: rows by 4, columns to the renderer's
+  48-column cap — `lv_compare._fine_sample`), the vertex positions stamped
+  with the extraction's own values bit-for-bit (the same stencil on another
+  array differs in the twelfth digit through the FD amplification of
+  last-bit vectorization differences — the lock caught it), the samples
+  between them the smooth twin's own values, never an interpolant. The
+  Compare tab draws the twin from it as a QUAD mesh (the affine fit keeps
+  its triangles — it IS affine per triangle) with the caption "N×M samples
+  through the vertices"; the difference sheet, the counters and the raw
+  values stay on the vertex lattice. The shared crop key became the axis
+  EXTENTS (not the node count) so the fine twin and the coarse affine
+  sheet keep one window. Locks: the API sample (shape, cap, the vertices
+  bit-for-bit, the box), `lvCompare.test` (the twin mesh prefers the sample,
+  refuses a mismatched one), `SurfaceMesh.test` (two densities over one
+  extent crop together).
 - **D4 Help + smoke** — guide tab list, glossary, tip, What's new; the
   smoke line; tsc · vitest · build · `npm run smoke:ui` LIVE.
 - **D5 Wrap** — a live SPY look (screenshots .smoke/lv-compare-*.png),
@@ -1557,6 +1576,9 @@ below) — every recorded rider is closed except the ones listed here:
    FIFTH LOOK same day: the two Compare sheets' brushes (and √T/T) are
    LOCKED through `state/surfaceWindows` (`windowKey`), so LV and twin
    are cropped as one.
+   SIXTH LOOK same day: the twin is DRAWN SMOOTH — the smooth surface
+   sampled on the subdivided lattice (vertices bit-for-bit), a quad mesh
+   beside the affine sheet's triangles; the shared crop key is the extents.
    NEXT = D4 (help corpora: the localvol guide's tab list, glossary
    `dupire-twin`, a tip, What's new; the smoke line is already in), then
    D5 (wrap + a live SPY look on the user's :8000).

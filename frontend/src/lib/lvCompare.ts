@@ -79,10 +79,23 @@ export function meshOf(
   };
 }
 
-/** `meshOf` for one named sheet of a payload. */
+/** The twin's DRAWN sheet: the smooth sample when the payload carries one
+ *  (its vertices are the lattice's, bit-for-bit), else the vertex sheet. */
+export function twinSheetArrays(c: LvCompareResponse): {
+  tNodes: number[]; xNodes: number[]; rows: number[][]; smooth: boolean;
+} {
+  const fine = c.localVolTwinFine;
+  if (fine && fine.length > 1 && c.tNodesFine && c.xNodesFine && fine.length === c.tNodesFine.length)
+    return { tNodes: c.tNodesFine, xNodes: c.xNodesFine, rows: fine, smooth: true };
+  return { tNodes: c.tNodes, xNodes: c.xNodes, rows: c.localVolTwin, smooth: false };
+}
+
+/** `meshOf` for one named sheet of a payload (the twin from its smooth sample). */
 export function sheetMesh(c: LvCompareResponse | null, which: "twin" | "affine"): SurfaceMeshData | null {
   if (c === null) return null;
-  return meshOf(c.tNodes, c.xNodes, which === "twin" ? c.localVolTwin : c.localVolAffine);
+  if (which === "affine") return meshOf(c.tNodes, c.xNodes, c.localVolAffine);
+  const a = twinSheetArrays(c);
+  return meshOf(a.tNodes, a.xNodes, a.rows);
 }
 
 /** The signed difference sheet twin − affine (vol), only on the matching

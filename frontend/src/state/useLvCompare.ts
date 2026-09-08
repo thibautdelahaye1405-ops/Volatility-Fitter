@@ -95,6 +95,13 @@ export interface LvCompareResponse {
   xNodes: number[];
   /** sqrt of the twin's nodal variance inside the box, one row per t-node. */
   localVolTwin: number[][];
+  /** The smooth twin SAMPLED on the vertex lattice subdivided (rows by 4,
+   *  columns to the renderer's cap) — the sheet the Compare tab draws, so the
+   *  twin reads as the smooth surface it is; the vertices sit inside it
+   *  bit-for-bit. Absent on older payloads (the vertex sheet is drawn). */
+  tNodesFine?: number[];
+  xNodesFine?: number[];
+  localVolTwinFine?: number[][];
   /** Per-cell diagonal of the lattice's Delaunay triangulation (the twin's
    *  own = the affine sheet's on the same vertices); the 3D meshes draw the
    *  pricing triangulation. Absent on older payloads. */

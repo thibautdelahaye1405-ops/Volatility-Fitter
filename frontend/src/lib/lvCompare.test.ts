@@ -4,8 +4,8 @@
 import { describe, expect, it } from "vitest";
 import {
   LV_COMPARE_MODES, LV_TAIL_OPTIONS, LV_T_INTERP_OPTIONS,
-  compareSmileFor, diffSheet, formatBp, formatSignedPts, maxAbs, repairDetail, repairSummary,
-  repairTotals, scoreBp, sheetMesh,
+  compareSmileFor, diffSheet, formatBp, formatSignedPts, maxAbs, meshOf, repairDetail, repairSummary,
+  repairTotals, scoreBp, sheetMesh, twinSheetArrays,
 } from "./lvCompare";
 import { lvCompareFixture } from "./lvCompare.fixture";
 
@@ -25,17 +25,35 @@ describe("chip vocabularies", () => {
 
 describe("sheets on the compare lattice", () => {
   const c = lvCompareFixture();
-  it("builds the twin and affine σ²_loc meshes (vol squared, rows = t vertices)", () => {
-    const twin = sheetMesh(c, "twin")!;
-    expect(twin.t).toEqual(c.tNodes);
-    expect(twin.k).toEqual(c.xNodes);
-    expect(twin.vol[0][0]).toBeCloseTo(0.22 * 0.22, 12);
+  it("builds the vertex and affine σ²_loc meshes (vol squared, rows = t vertices)", () => {
+    const vertexTwin = meshOf(c.tNodes, c.xNodes, c.localVolTwin)!;
+    expect(vertexTwin.t).toEqual(c.tNodes);
+    expect(vertexTwin.k).toEqual(c.xNodes);
+    expect(vertexTwin.vol[0][0]).toBeCloseTo(0.22 * 0.22, 12);
     expect(sheetMesh(c, "affine")!.vol[2][3]).toBeCloseTo(0.21 * 0.21, 12);
   });
+  it("draws the twin from its smooth sample when the payload carries one, with the vertices inside", () => {
+    const twin = sheetMesh(c, "twin")!;
+    expect(twin.t).toEqual(c.tNodesFine);
+    expect(twin.k).toEqual(c.xNodesFine);
+    expect(twin.vol).toHaveLength(5);
+    expect(twinSheetArrays(c).smooth).toBe(true);
+    // Without the sample the vertex sheet is drawn (older payloads).
+    const bare = lvCompareFixture({ tNodesFine: [], xNodesFine: [], localVolTwinFine: [] });
+    expect(twinSheetArrays(bare).smooth).toBe(false);
+    expect(sheetMesh(bare, "twin")!.t).toEqual(bare.tNodes);
+    // A sample whose rows do not match its own t axis is refused, not drawn wrong.
+    const broken = lvCompareFixture({ tNodesFine: [0, 1], localVolTwinFine: [[0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]] });
+    expect(twinSheetArrays(broken).smooth).toBe(false);
+  });
+
   it("returns null without the sheet or on a degenerate lattice", () => {
     expect(sheetMesh(null, "twin")).toBeNull();
     expect(sheetMesh(lvCompareFixture({ localVolAffine: [] }), "affine")).toBeNull();
-    expect(sheetMesh(lvCompareFixture({ tNodes: [0.1], localVolTwin: [[0.2, 0.2, 0.2, 0.2]] }), "twin")).toBeNull();
+    // A degenerate VERTEX lattice with no smooth sample draws nothing.
+    expect(sheetMesh(lvCompareFixture({
+      tNodes: [0.1], localVolTwin: [[0.2, 0.2, 0.2, 0.2]], tNodesFine: [], xNodesFine: [], localVolTwinFine: [],
+    }), "twin")).toBeNull();
   });
   it("the difference sheet exists only on the matching lattice", () => {
     expect(diffSheet(c)![0][0]).toBeCloseTo(0.02, 12);

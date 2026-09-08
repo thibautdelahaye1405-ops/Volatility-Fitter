@@ -27,7 +27,7 @@ import type { AutoScaleToggles } from "../../lib/autoScaleY";
 import type { AxisMode } from "../../lib/axisModes";
 import {
   AFFINE_COLOR, PARAMETRIC_COLOR, TWIN_COLOR, TWIN_DASH,
-  compareSmileFor, diffSheet, formatSignedPts, meshOf,
+  compareSmileFor, diffSheet, formatSignedPts, meshOf, twinSheetArrays,
 } from "../../lib/lvCompare";
 import type { LvCompareMode } from "../../lib/lvCompare";
 import { buttonClass, cardClass, chartMessageClass } from "../../lib/ui";
@@ -78,8 +78,14 @@ export default function LvCompareView({
   // lands an unchanged record keeps them (useLvCompare keeps their identity),
   // so the sheets never rebuild their scene on a live tick.
   const tNodes = compare?.tNodes, xNodes = compare?.xNodes;
-  const twinRows = compare?.localVolTwin, affineRows = compare?.localVolAffine;
-  const twin = useMemo(() => meshOf(tNodes, xNodes, twinRows), [tNodes, xNodes, twinRows]);
+  const affineRows = compare?.localVolAffine;
+  // The twin is drawn from its SMOOTH sample (the vertex lattice subdivided,
+  // the vertices kept bit-for-bit) as a quad mesh — it is a smooth surface,
+  // not a sheet affine per triangle; the affine fit IS, and keeps its triangles.
+  const twinArrays = compare === null ? null : twinSheetArrays(compare);
+  const twinT = twinArrays?.tNodes, twinX = twinArrays?.xNodes, twinRows = twinArrays?.rows;
+  const twinSmooth = twinArrays?.smooth ?? false;
+  const twin = useMemo(() => meshOf(twinT, twinX, twinRows), [twinT, twinX, twinRows]);
   const aff = useMemo(() => meshOf(tNodes, xNodes, affineRows), [tNodes, xNodes, affineRows]);
   const cellDiagMain = compare?.cellDiagMain ?? affine?.cellDiagMain;
 
@@ -104,15 +110,22 @@ export default function LvCompareView({
     return (
       <div className="flex h-full min-h-0 gap-3">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <Caption text={`σ²_loc Dupire twin · ${compare.tInterp} · ${caption}`} color={TWIN_COLOR} />
+          <Caption
+            text={
+              twinSmooth
+                ? `σ²_loc Dupire twin · ${compare.tInterp} · ${twin?.t.length ?? 0}×${twin?.k.length ?? 0} samples through the ${caption}`
+                : `σ²_loc Dupire twin · ${compare.tInterp} · ${caption}`
+            }
+            color={TWIN_COLOR}
+          />
           {twin
             ? (
               <SurfaceMesh
                 data={twin}
                 legendLabel="σ²_loc twin"
                 formatValue={(v) => Number(v.toPrecision(3)).toString()}
-                triangulate
-                cellDiagMain={cellDiagMain}
+                triangulate={!twinSmooth}
+                cellDiagMain={twinSmooth ? undefined : cellDiagMain}
                 cameraKey="localvol:compare"
                 windowKey="localvol:compare"
                 ticker={ticker}

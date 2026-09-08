@@ -88,6 +88,42 @@ from volfit.models.localvol.reprice import refined_grids, reprice_affine_dupire
 
 _CACHE_ATTR = "_lv_compare_cache"  # AppState side-dict (affine_fit._side_dict)
 
+#: The twin's DISPLAY sample: the affine vertex lattice subdivided so the
+#: sheet reads as the smooth surface it is (the fitted sheet is affine per
+#: triangle; the twin is not). Every vertex is kept exactly; the samples in
+#: between are the smooth twin's own values, never an interpolant. Columns
+#: stay under the mesh renderer's stride cap (48), rows subdivide by 4.
+FINE_MAX_COLS = 48
+FINE_SUB_MAX = 4
+
+
+def _refine_nodes(nodes: np.ndarray, n_sub: int) -> np.ndarray:
+    """``nodes`` with each interval split into ``n_sub`` equal parts (the
+    original nodes kept bit-for-bit as the interval endpoints)."""
+    nodes = np.asarray(nodes, dtype=float)
+    if n_sub <= 1 or nodes.size < 2:
+        return nodes.copy()
+    out = [nodes[:1]]
+    for a, b in zip(nodes[:-1], nodes[1:]):
+        out.append(np.linspace(a, b, n_sub + 1)[1:-1])
+        out.append(np.array([b]))
+    return np.concatenate(out)
+
+
+def _fine_sample(smooth, t_nodes: np.ndarray, x_nodes: np.ndarray, theta: np.ndarray):
+    """``(t_fine, x_fine, sigma_fine)``: the smooth twin's local VOL on the
+    subdivided vertex lattice (module constants). The vertex positions carry
+    the extraction's own values ``theta`` bit-for-bit — the drawn sheet passes
+    through the grid points by construction (evaluating the same stencil on
+    another array differs in the twelfth digit through the FD amplification
+    of last-bit vectorization differences)."""
+    n_sub_x = max(1, min(FINE_SUB_MAX, (FINE_MAX_COLS - 1) // max(1, x_nodes.size - 1)))
+    t_fine = _refine_nodes(t_nodes, FINE_SUB_MAX)
+    x_fine = _refine_nodes(x_nodes, n_sub_x)
+    var = np.vstack([smooth.variance(x_fine, float(t)) for t in t_fine])
+    var[::FINE_SUB_MAX, ::n_sub_x] = theta
+    return t_fine, x_fine, np.sqrt(var)
+
 
 class ParametricFitMissing(LookupError):
     """Fewer than two expiries carry a displayed parametric fit (404 on the wire)."""
@@ -229,6 +265,7 @@ def _twin_record(
     flat_vol = float(np.sqrt(flat_var))
     flat_sol = march(FlatSurface(flat_var), x_fine)
     sheet_sol = march(surface, x_fine)  # the nodal sheet on the same operator
+    t_show, x_show, sigma_show = _fine_sample(smooth, t_nodes, x_nodes, twin.theta)  # the smooth sheet drawn
     exp_index = {float(e): i for i, e in enumerate(sol.expiries)}
 
     if affine is None:  # the displayed LV payload (settles the pointer; stale flag)
@@ -327,6 +364,7 @@ def _twin_record(
         f"({n_diff} strikes differentiated); repairs: butterfly {c.total_butterfly}, "
         f"calendar {c.total_calendar}, floored {c.total_floored}, capped {c.total_capped}"
         f"; smile on the {TWIN_SCHEME} operator dt/{TWIN_DT_FACTOR} dx/{TWIN_DX_FACTOR}"
+        f"; drawn from {t_show.size} x {x_show.size} samples of the smooth twin"
     )
     if skipped:
         message += f"; no parametric fit on {len(skipped)} expiries (skipped)"
@@ -339,6 +377,9 @@ def _twin_record(
         tNodes=[float(v) for v in t_nodes],
         xNodes=[float(v) for v in x_nodes],
         localVolTwin=local_vol.tolist(),
+        tNodesFine=[float(v) for v in t_show],
+        xNodesFine=[float(v) for v in x_show],
+        localVolTwinFine=sigma_show.tolist(),
         cellDiagMain=[[bool(v) for v in row] for row in surface.cell_diag_main()],
         rawLocalVariance=[[None if not np.isfinite(v) else float(v) for v in row] for row in raw],
         differentiated=[bool(v) for v in twin.differentiated],

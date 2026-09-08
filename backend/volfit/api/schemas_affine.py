@@ -306,6 +306,14 @@ class LvCompareResponse(BaseModel):
     tNodes: list[float]
     xNodes: list[float]
     localVolTwin: list[list[float]]
+    #: The smooth twin SAMPLED on the vertex lattice subdivided (rows by 4,
+    #: columns to the renderer's cap): the sheet the Compare tab draws, so the
+    #: twin reads as the smooth surface it is. The vertices are kept exactly
+    #: (``localVolTwin`` sits inside at the subdivision stride); the samples
+    #: between them are the smooth twin's own values. Empty on older payloads.
+    tNodesFine: list[float] = []
+    xNodesFine: list[float] = []
+    localVolTwinFine: list[list[float]] = []
     #: Per-cell diagonal of the lattice's Delaunay triangulation (the twin's
     #: own surface = the affine sheet's on the same vertices), so the 3D
     #: meshes draw the pricing triangulation without the displayed LV payload.

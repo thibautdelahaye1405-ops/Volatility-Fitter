@@ -115,10 +115,17 @@ export default function SurfaceMesh({
 
   const fullK: [number, number] = data.k.length ? [data.k[0], data.k[data.k.length - 1]] : [-1, 1];
   const fullT: [number, number] = data.t.length ? [data.t[0], data.t[data.t.length - 1]] : [0, 1];
-  const kKey = `${fullK[0]},${fullK[1]},${data.k.length}`;
-  const tKey = `${fullT[0]},${fullT[1]},${data.t.length}`;
-  const [kLo, kHi] = kWindow !== null && kWindow.key === kKey ? kWindow.range : fullK;
-  const [tLo, tHi] = tWindow !== null && tWindow.key === tKey ? tWindow.range : fullT;
+  // Keyed on the axis EXTENTS (not the node count): two grids of different
+  // density over the same range — the smooth twin sample beside the affine
+  // sheet — must share one window.
+  const kKey = `${fullK[0]},${fullK[1]}`;
+  const tKey = `${fullT[0]},${fullT[1]}`;
+  // A shared window is re-snapped to THIS grid on read: a window chosen on a
+  // finer sheet (the smooth twin) may hold a single row of a coarser one
+  // (the affine sheet), which widens to its two nearest rows instead of
+  // blanking — the two crops then differ by at most one coarse interval.
+  const [kLo, kHi] = snapWindow(data.k, ...(kWindow !== null && kWindow.key === kKey ? kWindow.range : fullK));
+  const [tLo, tHi] = snapWindow(data.t, ...(tWindow !== null && tWindow.key === tKey ? tWindow.range : fullT));
   // A crop re-centres the sheet: the pan is dropped so the cropped rectangle
   // sits in the middle of the window (yaw / pitch / zoom are kept).
   const recentre = () => { if (cam.panX !== 0 || cam.panY !== 0) setCam({ ...cam, panX: 0, panY: 0 }); };
