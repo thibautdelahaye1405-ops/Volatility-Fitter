@@ -1104,11 +1104,16 @@ below) — every recorded rider is closed except the ones listed here:
    wings at the last quote — sizing it by the image estimate (or a
    log-linear far-field condition) changes those fits: benchmark-pack
    adjudication.
-9. GRAPH ERGONOMICS riders (wrap 2026-09-07f below; none are gates): the
-   Layered DEFAULT vs the intraday campaign's verdict is a benchmark-pack
-   adjudication candidate (the UI ORDER is ruled); a resizable drawer for
-   very large Relations lists; live-preview lag on a 1k-node universe rides
-   the P7 sparse-solve rider.
+9. GRAPH ERGONOMICS riders (wraps 2026-09-07f + 2026-09-08a below; none are
+   gates): the Layered DEFAULT vs the intraday campaign's verdict is a
+   benchmark-pack adjudication candidate (the UI ORDER is ruled); a resizable
+   drawer for very large Relations lists; live-preview lag on a 1k-node
+   universe rides the P7 sparse-solve rider; pod collapse / bundle expansion
+   are chart-local (not persisted in the workspace file); a plain drag means
+   CONNECT — moving pods would need a modifier. The first-use fixes of
+   2026-09-08 (Focus re-fit + floating card + F, toolbar row, plain-drag
+   connect, "+ reverse", click-only bundle fold-back with the pair card, the
+   midpoint handle) are ALL SHIPPED and help-documented.
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
 wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
 replace the five scheduler fields, migrated on load; the `/scheduler` payload
@@ -1200,6 +1205,17 @@ Focus kept the pre-focus framing (a tiny graph in a huge canvas).
   bows further out (`BUNDLE_BOW_EXPANDED` 0.3 vs 0.12) clear of its arrows.
   Locks: chart (handle after every arrow in the scene, toggles both ways)
   + live step 6b (scoped to one pair).
+- **2026-09-08g — help corpus aligned**: the Graph guide's canvas section
+  (toolbar row + F, gestures ⓘ chip, plain-drag connect, handle + fold-back,
+  wider bow, Focus keeps editing), a 2026-09-08 What's new entry, the
+  connect tip. Commits 2026-09-08: c32848e · 7db2240 · fddbff9 · 2150128 ·
+  82ea2ea · a677c46 · d6f7e25. Live check = 10 steps green
+  (`scripts/graph_ergonomics_check.mjs`); vitest 602; build clean.
+- Riders carried from this follow-up (none are gates): pod collapse and
+  bundle expansion are chart-local (not in the workspace file); the handle
+  hides the curve's midpoint readout under a 9 px disc — a very short
+  bundle (adjacent pods) is mostly handle; moving pods by drag would need a
+  modifier (a plain drag means connect).
 
 ### 🧭 SESSION WRAP (2026-09-07f) — GRAPH ERGONOMICS ARC E0–E6 SHIPPED: LAYERED BY DEFAULT, SLIDERS, ARROWS YOU EDIT ON THE CANVAS
 
