@@ -113,7 +113,9 @@ export default function LvCompareChips({
             {data.sheetRoundTripBp != null ? ` · sheet ${formatBp(data.sheetRoundTripBp)}` : ""}
           </span>
           <span
-            title={repairDetail(data.counters, data.tNodes)}
+            title={`${repairDetail(data.counters, data.tNodes)}
+
+butterfly = the implied surface carries strike arbitrage there (filled from the nearest strike) · calendar = its variance decreases in time (floored) · floored = below the fit's floor · capped = ABOVE the fit's variance cap: reported, not clipped (only the 400 % ceiling clips) — where the twin's wings leave the box the affine sheet lives in`}
             className={data.counters.clean ? "text-emerald-400/90" : "text-amber-400/90"}
           >
             {repairSummary(data.counters)}

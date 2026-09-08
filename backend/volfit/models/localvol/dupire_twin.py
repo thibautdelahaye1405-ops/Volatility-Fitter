@@ -50,7 +50,8 @@ class DupireTwinSurface:
     ``[k_lo, k_hi]`` hold flat from the nearest inside one), the same box
     clip; every repair is COUNTED (totals over the build) and the nearest-
     valid fill keeps the march positive. ``t`` below one stencil step reads
-    the short-end limit at ``t = dt``.
+    the short-end limit at ``t = dt``. ``report_hi`` is the level ``n_capped``
+    reads against when it differs from the clip cap.
     """
 
     def __init__(
@@ -65,6 +66,7 @@ class DupireTwinSurface:
         k_hi: float | None = None,
         dk: float = DK_DEFAULT,
         dt: float | None = None,
+        report_hi: float | None = None,
     ) -> None:
         if t_interp not in T_INTERPS:
             raise ValueError(f"t_interp must be one of {T_INTERPS}, got {t_interp!r}")
@@ -75,6 +77,7 @@ class DupireTwinSurface:
         self.edges = np.concatenate([[0.0], self.ts])
         self.t_interp = t_interp
         self.var_lo, self.var_hi = float(var_lo), float(var_hi)
+        self.report_hi = float(var_hi if report_hi is None else report_hi)  # the `capped` counter's level
         self.k_lo, self.k_hi = k_lo, k_hi
         self.dk = float(dk)
         self.dt = float(dt) if dt is not None else _default_dt(self.ts)
@@ -117,7 +120,7 @@ class DupireTwinSurface:
             var = _fill_nearest(var, k)
         self.n_calendar += int(np.sum(var <= 0.0))
         self.n_floored += int(np.sum(var < self.var_lo))
-        self.n_capped += int(np.sum(var > self.var_hi))
+        self.n_capped += int(np.sum(var > self.report_hi))
         row = np.clip(var, self.var_lo, self.var_hi)
         return np.interp(k_all, k, row)  # flat beyond the guard (np.interp clamps)
 

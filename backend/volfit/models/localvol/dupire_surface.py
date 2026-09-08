@@ -272,6 +272,7 @@ def extract_twin(
     k_hi: float | None = None,
     dk: float = DK_DEFAULT,
     dt: float | None = None,
+    report_hi: float | None = None,
 ) -> TwinExtraction:
     """Dupire local variance of ``w_surface`` on the vertices ``(t_nodes, x_nodes)``.
 
@@ -280,12 +281,16 @@ def extract_twin(
     ``k = ln x`` outside ``[k_lo, k_hi]`` (either bound optional) are the
     guarded ones: never differentiated, held flat from the nearest
     differentiated vertex. The t = 0 vertex (and any row closer than one
-    step) is differentiated at ``t = dt`` — the short-end limit.
+    step) is differentiated at ``t = dt`` — the short-end limit. ``report_hi``
+    (default ``var_hi``) is the level the ``capped`` counter reads against: the
+    Compare tab clips the twin only at the absolute ceiling and reports how
+    many cells exceed the LV fit's own cap.
     """
     if t_interp not in T_INTERPS:
         raise ValueError(f"t_interp must be one of {T_INTERPS}, got {t_interp!r}")
     if not (0.0 < var_lo < var_hi):
         raise ValueError("need 0 < var_lo < var_hi")
+    cap_report = float(var_hi if report_hi is None else report_hi)
     ts = np.asarray(ts, dtype=float)
     x = np.asarray(x_nodes, dtype=float)
     t = np.asarray(t_nodes, dtype=float)
@@ -330,7 +335,7 @@ def extract_twin(
             var = _fill_nearest(var, k)
         calendar[i] = int(np.sum(var <= 0.0))
         floored[i] = int(np.sum(var < var_lo))
-        capped[i] = int(np.sum(var > var_hi))
+        capped[i] = int(np.sum(var > cap_report))
         row = np.clip(var, var_lo, var_hi)
         # Guarded vertices: flat from the nearest differentiated vertex in k
         # (np.interp clamps at the ends, affine in between is never used

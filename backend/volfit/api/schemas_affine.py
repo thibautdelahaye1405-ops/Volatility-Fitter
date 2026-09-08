@@ -321,6 +321,9 @@ class LvCompareResponse(BaseModel):
     rawLocalVariance: list[list[float | None]]
     differentiated: list[bool]
     counters: DupireCountersOut
+    #: The LV fit's variance box. The twin is clipped only at the absolute
+    #: 400 % ceiling; ``counters.capped`` / ``twinRepairs`` count the cells
+    #: ABOVE ``varHi`` — where its wings leave the box the affine sheet lives in.
     varLo: float
     varHi: float
     localVolAffine: list[list[float]] = []

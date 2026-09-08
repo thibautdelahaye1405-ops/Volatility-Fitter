@@ -218,13 +218,20 @@ def _twin_record(
         raise ValueError("expiry clocks must increase strictly for the twin")
     t_nodes, x_nodes, k_hi, _ = affine_fit._resolve_grid(rows, opts)
     var_lo, var_hi = affine_fit._lv_bounds(rows, opts, request.varLo, request.varHi)
+    # The twin clips only at the ABSOLUTE ceiling (400 % vol): the fit's
+    # adaptive cap is the calibration's stability device, not a property of
+    # the twin — clipped into it, NVDA's twin read 8.9 bp against its own
+    # source (5.6 on the front) where the ceiling reads 3.4 (D5 look,
+    # 2026-09-08). The cells ABOVE the fit's cap are still counted (``capped``):
+    # where the twin's wings leave the box the affine sheet lives in.
+    var_hi_twin = float(affine_fit._LV_VAR_CEILING)
 
     # 3. the twin on the vertices
     slices = [displayed_slice(rec) for rec in records]
     w_surface = build_w_surface(request.tInterp, ts, slices)
     twin = extract_twin(
         w_surface, ts, x_nodes, t_nodes, t_interp=request.tInterp,
-        var_lo=var_lo, var_hi=var_hi, k_lo=K_DISPLAY_LO, k_hi=K_DISPLAY_HI,
+        var_lo=var_lo, var_hi=var_hi_twin, k_lo=K_DISPLAY_LO, k_hi=K_DISPLAY_HI, report_hi=var_hi,
     )
     surface = AffineVarianceSurface(t_nodes=t_nodes, x_nodes=x_nodes, theta=twin.theta)
 
@@ -244,8 +251,8 @@ def _twin_record(
     )
     x_fine, t_fine = refined_grids(x_grid, t_grid, TWIN_DX_FACTOR, TWIN_DT_FACTOR)
     smooth = DupireTwinSurface(
-        w_surface, ts, t_interp=request.tInterp, var_lo=var_lo, var_hi=var_hi,
-        k_lo=K_DISPLAY_LO, k_hi=K_DISPLAY_HI,
+        w_surface, ts, t_interp=request.tInterp, var_lo=var_lo, var_hi=var_hi_twin,
+        k_lo=K_DISPLAY_LO, k_hi=K_DISPLAY_HI, report_hi=var_hi,
     )
 
     def march(surf, x, payoff: str = "call"):

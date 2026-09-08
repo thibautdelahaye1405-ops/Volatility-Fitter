@@ -60,8 +60,11 @@ def test_shapes_on_the_affine_lattice(compare, client):
     assert compare["tNodes"] == affine["tNodes"] and compare["xNodes"] == affine["xNodes"]
     twin = np.array(compare["localVolTwin"])
     assert twin.shape == (n_t, n_x)
-    lo, hi = np.sqrt(compare["varLo"]), np.sqrt(compare["varHi"])
-    assert np.all(twin >= lo - 1e-12) and np.all(twin <= hi + 1e-12)
+    # The twin clips only at the 400 % ceiling; varHi is the FIT's cap, which
+    # the capped counter reads against (the synthetic ladder stays inside it).
+    lo = np.sqrt(compare["varLo"])
+    assert np.all(twin >= lo - 1e-12) and np.all(twin <= 4.0 + 1e-12)
+    assert np.all(twin <= np.sqrt(compare["varHi"]) + 1e-12)
     x = np.array(compare["xNodes"])
     inside = (x > 0.0) & (np.log(np.where(x > 0, x, 1.0)) >= -1.4) & (np.log(np.where(x > 0, x, 1.0)) <= 1.0)
     assert compare["differentiated"] == inside.tolist()
@@ -199,7 +202,7 @@ def test_smooth_sheet_sample_passes_through_the_vertices(compare):
     # Between the vertices the samples are the smooth twin's own values: a
     # sample next to a vertex sits close to it (no interpolant kink).
     assert np.max(np.abs(fine[::4, 1::sub_x] - fine[::4, :-1:sub_x])) < 0.5 * np.ptp(fine)
-    lo, hi = np.sqrt(compare["varLo"]), np.sqrt(compare["varHi"])
-    assert np.all(fine >= lo - 1e-12) and np.all(fine <= hi + 1e-12)
+    lo = np.sqrt(compare["varLo"])
+    assert np.all(fine >= lo - 1e-12) and np.all(fine <= 4.0 + 1e-12)
     assert np.all(np.diff(t_fine) > 0) and np.all(np.diff(x_fine) > 0)
     assert "samples of the smooth twin" in compare["message"]
