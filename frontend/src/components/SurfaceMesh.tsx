@@ -40,6 +40,7 @@ import {
 import type { GridHit } from "../lib/surfaceCamera";
 import { useSurfaceCamera } from "../state/surfaceCameras";
 import { nearestGridPoint, useSurfaceHover } from "../state/surfaceHover";
+import { useSurfaceWindows } from "../state/surfaceWindows";
 import RangeBrush from "./RangeBrush";
 import SurfaceCrosshair, { CrosshairBadge, surfaceReadout } from "./charts/SurfaceCrosshair";
 
@@ -82,23 +83,28 @@ interface SurfaceMeshProps {
    *  count caption and the interaction hint from the top bar so the legend
    *  never collides with a neighbour's. */
   compact?: boolean;
+  /** Share the crop windows and the √T/T mode with every mesh under the same
+   *  key (state/surfaceWindows) — the Compare sheets, cropped as one. */
+  windowKey?: string;
 }
 
 export default function SurfaceMesh({
   data, legendLabel = "σ(k, T)", axisMode = "logmoneyness", formatValue, formatX, countCaption,
   rowXTransform, triangulate = false, cellDiagMain, cameraKey, ticker = "", chartId = "surface",
-  linkK, formatExpiry, compact = false,
+  linkK, formatExpiry, compact = false, windowKey,
 }: SurfaceMeshProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [cam, setCam] = useSurfaceCamera(cameraKey);
-  const [timeMode, setTimeMode] = useState<TimeAxisMode>("sqrt");
-  // The crop rectangle in (k, T): a strike window (the brush under the plot)
-  // and a maturity window (the brush beside it). Both are kept with the data
-  // extents they were made for and fall back to the full range when the
-  // grid changes (another ticker, a refit with other expiries).
-  const [kWindow, setKWindowState] = useState<{ range: [number, number]; key: string } | null>(null);
-  const [tWindow, setTWindowState] = useState<{ range: [number, number]; key: string } | null>(null);
+  // The crop rectangle in (k, T) — a strike window (the brush under the plot)
+  // and a maturity window (the brush beside it) — plus the √T/T mode: local
+  // to this mesh, or shared under `windowKey` (state/surfaceWindows). Each
+  // window is kept with the data extents it was made for and falls back to
+  // the full range when the grid changes (another ticker, a refit).
+  const [win, patchWin] = useSurfaceWindows(windowKey);
+  const timeMode = win.timeMode;
+  const setTimeMode = (m: TimeAxisMode) => patchWin({ timeMode: m });
+  const kWindow = win.k, tWindow = win.t;
   const [hit, setHit] = useState<GridHit | null>(null);
   const { hover, publish } = useSurfaceHover(chartId);
   // Active pointers (two-finger pan / pinch) + the drag gesture in flight.
@@ -118,8 +124,8 @@ export default function SurfaceMesh({
   const recentre = () => { if (cam.panX !== 0 || cam.panY !== 0) setCam({ ...cam, panX: 0, panY: 0 }); };
   // A window always keeps two grid values inside (snapWindow): a brush
   // dragged past the last row or column widens instead of blanking the sheet.
-  const setKWindow = (range: [number, number]) => { setKWindowState({ range: snapWindow(data.k, ...range), key: kKey }); recentre(); };
-  const setTWindow = (range: [number, number]) => { setTWindowState({ range: snapWindow(data.t, ...range), key: tKey }); recentre(); };
+  const setKWindow = (range: [number, number]) => { patchWin({ k: { range: snapWindow(data.k, ...range), key: kKey } }); recentre(); };
+  const setTWindow = (range: [number, number]) => { patchWin({ t: { range: snapWindow(data.t, ...range), key: tKey } }); recentre(); };
 
   const mesh = useMemo(
     () => buildSceneMesh(data, kLo, kHi, timeMode, axisMode, rowXTransform, tLo, tHi),

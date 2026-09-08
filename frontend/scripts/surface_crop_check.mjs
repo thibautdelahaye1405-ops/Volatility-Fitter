@@ -6,7 +6,8 @@
 //      cropped sheet sits centred; ten wheel notches at an off-centre point
 //      zoom in without the sheet's centre leaving the middle of the window;
 //      a Shift-drag far off is clamped so the centre stays inside the window.
-//   2. Local Vol → Compare → Sheets: both meshes carry the maturity brush.
+//   2. Local Vol → Compare → Sheets: both meshes carry the maturity brush and
+//      the brushes are LOCKED — a drag on one crops both.
 // Port 4195 (never 4190). Screenshots in .smoke/surface-crop-*.png.
 // Prereqs: npm run build, Edge, ../.venv.
 import { existsSync, mkdirSync } from "node:fs";
@@ -174,6 +175,28 @@ try {
     await waitFor(page, () => document.querySelectorAll("main svg.cursor-grab").length >= 2, "the two sheets", 40000);
     const n = await page.evaluate(() => document.querySelectorAll('main [aria-label="Lower maturity bound"]').length);
     if (n !== 2) throw new Error(`expected a maturity brush on each sheet, found ${n}`);
+    // The two sheets' brushes are locked: drag the FIRST sheet's lower
+    // maturity handle up, the SECOND sheet's handle and corner label follow.
+    const [first] = await page.$$('main [aria-label="Lower maturity bound"]');
+    const hb = await first.boundingBox();
+    const track = await page.evaluate((el) => {
+      const r = el.parentElement.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, x: r.left + r.width / 2 };
+    }, first);
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(track.x, track.top + (track.bottom - track.top) * 0.6, { steps: 8 });
+    await page.mouse.up();
+    await sleep(400);
+    const values = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('main [aria-label="Lower maturity bound"]')).map((h) => h.getAttribute("aria-valuenow")));
+    if (values[0] === values[1] && Number(values[0]) > 0.01) console.log(`     both sheets' lower maturity bound: ${values[0]}`);
+    else throw new Error(`the sheets' brushes are not locked: ${values.join(" vs ")}`);
+    const tLabels = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("main svg text")).map((t) => t.textContent).filter((t) => /^T /.test(t)));
+    console.log(`     corner T labels on both sheets: ${tLabels.join(" · ")}`);
+    if (tLabels.length !== 4 || tLabels[0] !== tLabels[2] || tLabels[1] !== tLabels[3])
+      throw new Error("the sheets' corner labels differ after the shared crop");
     await page.screenshot({ path: `${OUT}surface-crop-compare.png` });
     if (pageErrors.length) throw new Error(pageErrors.join("; "));
   });

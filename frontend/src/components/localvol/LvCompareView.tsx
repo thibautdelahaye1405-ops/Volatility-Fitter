@@ -2,8 +2,9 @@
 // parametric surface's Dupire twin beside the affine sheet, in both spaces.
 //
 //   Sheets      the two σ²_loc meshes side by side on ONE lattice (the affine
-//               vertex grid), sharing a camera (rotate one, both turn) and the
-//               linked crosshair; the affine panel shows a Calibrate cue when
+//               vertex grid), sharing a camera (rotate one, both turn), the
+//               crop windows and the √T/T mode (brush one, both crop — the
+//               sheets stay directly comparable) and the linked crosshair; the affine panel shows a Calibrate cue when
 //               no LV fit is displayed.
 //   Difference  the signed sheet twin − affine (vol) as a heatmap on the
 //               diverging ramp, symmetric about zero.
@@ -113,6 +114,7 @@ export default function LvCompareView({
                 triangulate
                 cellDiagMain={cellDiagMain}
                 cameraKey="localvol:compare"
+                windowKey="localvol:compare"
                 ticker={ticker}
                 chartId="localvol:compare:twin"
                 linkK={Math.log}
@@ -133,6 +135,7 @@ export default function LvCompareView({
                 triangulate
                 cellDiagMain={cellDiagMain}
                 cameraKey="localvol:compare"
+                windowKey="localvol:compare"
                 ticker={ticker}
                 chartId="localvol:compare:affine"
                 linkK={Math.log}

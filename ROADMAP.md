@@ -591,6 +591,19 @@ help: guides/lenses_b.ts (localvol tab list, twice) · glossary `dupire-twin` ·
   zooms ten notches off-centre and pans wildly on the Parametric surface
   and asserts the frame's centroid stays in the middle, then checks the two
   Compare sheets carry the brush — screenshots .smoke/surface-crop-*.png.
+  **FIFTH LOOK (user, same day: "make the two Compare sheets' sliders locked
+  in sync so LV and twin are directly comparable").** `state/surfaceWindows`
+  — a keyed module store on the surfaceCameras pattern (not persisted: a
+  window is tied to its grid's extents key) holding the strike window, the
+  maturity window and the √T/T mode; `SurfaceMesh` gains `windowKey` and
+  reads / writes its windows there (local state without a key); both
+  Compare sheets take `windowKey="localvol:compare"` beside their shared
+  camera key, so a brush on either crops both and the time axis follows.
+  Locks: `surfaceWindows.test.ts` (same key shares, keys apart, keyless
+  local), `SurfaceMesh.test.tsx` (new: two sheets under one key crop
+  together on a drag and share the T switch; keyless sheets stay apart);
+  the live check drags the first sheet's handle and asserts the second's
+  value and corner labels follow.
 - **D4 Help + smoke** — guide tab list, glossary, tip, What's new; the
   smoke line; tsc · vitest · build · `npm run smoke:ui` LIVE.
 - **D5 Wrap** — a live SPY look (screenshots .smoke/lv-compare-*.png),
@@ -1541,6 +1554,9 @@ below) — every recorded rider is closed except the ones listed here:
    and centres the scene —, a wheel zoom about the sheet's centre and clamped
    pans (the sheet never leaves the window); locked + live-checked
    (`scripts/surface_crop_check.mjs`).
+   FIFTH LOOK same day: the two Compare sheets' brushes (and √T/T) are
+   LOCKED through `state/surfaceWindows` (`windowKey`), so LV and twin
+   are cropped as one.
    NEXT = D4 (help corpora: the localvol guide's tab list, glossary
    `dupire-twin`, a tip, What's new; the smoke line is already in), then
    D5 (wrap + a live SPY look on the user's :8000).
