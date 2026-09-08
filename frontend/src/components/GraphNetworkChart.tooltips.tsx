@@ -118,7 +118,7 @@ export function BundleTooltip({ geo, t, bounds }: { geo: BundleGeo; t: Transform
       {b.fromTicker} {b.bidirectional ? "↔" : "→"} {b.toTicker} ·{" "}
       {b.count} {b.count === 1 ? "relation" : "relations"} · σ̄ {fmtSigmaPts(meanP)} pt
       · β̄ {b.meanBeta.toFixed(2)}
-      <div className="text-[10px] text-slate-500">click to expand · click an arrow to edit</div>
+      <div className="text-[10px] text-slate-500">click to expand / collapse · click an arrow to edit</div>
     </div>
   );
 }

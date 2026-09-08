@@ -90,6 +90,15 @@ describe("GraphNetworkChart (E3)", () => {
     // Clicking the expanded arrow selects that relation.
     fireEvent.click(arrows[0]?.querySelectorAll("line")[1] as SVGLineElement);
     expect(onEdgeClick).toHaveBeenLastCalledWith({ kind: "relation", key: `SPY|${E1}>AAPL|${E1}` });
+    // A second bundle click collapses it AT ONCE, even with the pointer still on it.
+    const twin = bundle.querySelectorAll("path")[1] as SVGPathElement;
+    fireEvent.mouseEnter(twin);
+    fireEvent.click(twin);
+    expect(container.querySelectorAll("[data-relation]")).toHaveLength(0);
+    // Hover alone never expands (the readout is the hover feedback).
+    fireEvent.mouseLeave(twin);
+    fireEvent.mouseEnter(twin);
+    expect(container.querySelectorAll("[data-relation]")).toHaveLength(0);
   });
 
   it("Shift-drag from a node to another reports informer → receiver and does not toggle", () => {

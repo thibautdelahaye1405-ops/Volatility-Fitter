@@ -7,8 +7,11 @@
 // polygons (SVG markers cannot take a per-use colour). Three families:
 //
 //   bundles   one Bézier per ticker pair (Σp width, p-weighted mean β);
-//             heads on the ends information flows INTO; hovered OR expanded
-//             (sticky, click) bundles also draw their individual arrows;
+//             heads on the ends information flows INTO; a CLICK expands the
+//             bundle into its individual arrows and the next click collapses
+//             it at once (hover only shows the readout — user report
+//             2026-09-08: a hover-driven expansion kept the arrows alive
+//             after the collapsing click until the pointer left the curve);
 //   arrows    the individual cross relations of an expanded bundle, offset
 //             sideways when the mirror direction exists, selectable;
 //   calendar  one hop per adjacent expiry pair of a spine, heads on the
@@ -205,9 +208,9 @@ export default function GraphEdgeLayer({
         );
       })}
 
-      {/* Expanded bundles: the individual relations as arrows */}
+      {/* Expanded bundles: the individual relations as arrows (click-only) */}
       {bundleGeos
-        .filter((g) => expanded.has(g.key) || hoverBundleKey === g.key)
+        .filter((g) => expanded.has(g.key))
         .map((g) => {
           const details = layout.pairDetails(g.b.fromTicker, g.b.toTicker);
           const keys = new Set(

@@ -1183,6 +1183,10 @@ Focus kept the pre-focus framing (a tiny graph in a huge canvas).
   exactly ONE line (the Connect hint joins it on the left) and the overlay
   starts BELOW it (`top-14`, right-aligned with the row); the live Focus
   step asserts the two rectangles never intersect.
+- **2026-09-08d — bundle expansion is click-only**: a hover-driven expansion
+  (P5 heritage) kept the individual arrows alive after the collapsing click
+  until the pointer left the curve. Now one click expands, the next click
+  collapses at once; hover shows the readout only (chart lock added).
 
 ### 🧭 SESSION WRAP (2026-09-07f) — GRAPH ERGONOMICS ARC E0–E6 SHIPPED: LAYERED BY DEFAULT, SLIDERS, ARROWS YOU EDIT ON THE CANVAS
 
