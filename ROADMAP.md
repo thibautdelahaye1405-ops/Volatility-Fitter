@@ -638,7 +638,12 @@ help: guides/lenses_b.ts (localvol tab list, twice) · glossary `dupire-twin` ·
   centring. The content locks (43) pass; the smoke step
   `{ name: "Local Vol", subview: "Compare", slug: "lv-compare" }` was in
   since D3.
-- **D5 Wrap** — a live SPY look (screenshots .smoke/lv-compare-*.png),
+- **D5 Wrap** — SHIPPED 2026-09-08 (wrap 2026-09-08b in STATUS): the
+  real-ticker look on the Bloomberg fixture (SPY round trip 1.35 bp vs a
+  0.26 floor, NVDA 3.43 vs 0.66 once the twin clips only at the 400 %
+  ceiling — the fit's cap is a calibration device; the cells above it are
+  counted), the user's :8000 answering the route, counts, riders. The
+  original plan of this line — a live SPY look (screenshots .smoke/lv-compare-*.png),
   the measured costs, the STATUS block + memory note; riders recorded:
   the three tail-target chips (Match LQD tails · Quoted range · Affine
   wings, table above), analytic k-derivatives, a finer display lattice,
@@ -1469,7 +1474,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-08 (resume here)
+## STATUS — updated 2026-09-08b (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1544,57 +1549,18 @@ below) — every recorded rider is closed except the ones listed here:
    2026-09-08 (Focus re-fit + floating card + F, toolbar row, plain-drag
    connect, "+ reverse", click-only bundle fold-back with the pair card, the
    midpoint handle) are ALL SHIPPED and help-documented.
-10. LV DUPIRE-TWIN COMPARE ARC (proposed 2026-09-08, section above the Graph
-   Ergonomics arc): a Local Vol lens "Compare" tab drawing the parametric
-   surface's Dupire twin (smooth in τ, tail-target chips) beside the affine
-   sheet, in LV space and repriced on the affine lattice. D0 RATIFIED
-   2026-09-08 (smooth default + buckets chip · v1 tails = model wings only ·
-   both spaces · read-only twin). D1 SHIPPED 2026-09-08:
-   `models/localvol/dupire_surface.py` (the bucket builder MOVED out of
-   `api/localvol` byte-identically — `_w_surface` stays as an alias for the
-   Stage-2b seed —, `w_surface_pchip` monotone C¹ in τ with a per-k memo,
-   `extract_twin` on the affine vertices with the per-interpolant t stencil
-   [backward inside the bucket / central, one-sided on the last row], the
-   k guard, the box clip, `DupireCounters` per row) + `tests/
-   test_dupire_surface.py` (11 goldens: byte-identity, flat, SVI closed form
-   both interpolants to 2e-4, PCHIP monotone, crossing counted, the
-   exponential wing grows linearly and the cap counts, the guard, gates).
-   D2 SHIPPED 2026-09-08: `api/lv_compare.py` + `POST /fit/affine/{ticker}/
-   compare` (`LvCompareRequest` chips · `LvCompareResponse`: both sheets on
-   the affine lattice, the difference, the unrepaired values, per-row
-   counters, per-expiry twin / parametric / affine scores + the round trip),
-   marched through the affine fit's own operator; measured round trip
-   24.4 bp rms on the synthetic ladder (locked at 2×); 0.27 s uncached.
-   D3 SHIPPED 2026-09-08: the Local Vol "Compare" tab — Sheets (two meshes,
-   one camera) · Difference (diverging heatmap) · Smiles (three curves on
-   the quotes + the score table), the time / tails chips, the score strip;
-   26 vitest locks, smoke step + `scripts/lv_compare_check.mjs` LIVE.
-   FIRST-USE FIX 2026-09-08 (the tab re-calculated on every live spot
-   tick and the build was starved by aborts): hard / soft fetch keys in
-   `useLvCompare`, the comparison ANCHORED at the calibration spot (no spot
-   version in the key, `spotShift` attached on read, ANCHOR badge) — locked
-   on both sides and live-checked under six ticks (see the D3 phase text).
-   THIRD LOOK same day (the twin "diverged" from the parametric): the
-   operator, not the twin — the smile and scores now come from the SMOOTH
-   twin on a second-order display operator (Rannacher dt/8 dx/4, chosen by a
-   flat control: 2.0 bp vs a 2.3 floor); round trip 0.93 bp pooled, the twin
-   scores the quotes like its source; the coarse sheet's own round trip
-   (14 bp) is reported as what the lattice loses. Rider recorded: the LV
-   fit's own front operator (fix-#3 gate) is a benchmark-pack matter.
-   FOURTH LOOK same day: every 3D surface (both lenses + the Compare sheets)
-   gained a maturity brush beside the strike brush — a (k, T) crop that fills
-   and centres the scene —, a wheel zoom about the sheet's centre and clamped
-   pans (the sheet never leaves the window); locked + live-checked
-   (`scripts/surface_crop_check.mjs`).
-   FIFTH LOOK same day: the two Compare sheets' brushes (and √T/T) are
-   LOCKED through `state/surfaceWindows` (`windowKey`), so LV and twin
-   are cropped as one.
-   SIXTH LOOK same day: the twin is DRAWN SMOOTH — the smooth surface
-   sampled on the subdivided lattice (vertices bit-for-bit), a quad mesh
-   beside the affine sheet's triangles; the shared crop key is the extents.
-   D4 SHIPPED 2026-09-08 (guide section, glossary `dupire-twin`, tip, What's
-   new). NEXT = D5 (wrap + a live SPY look on the user's :8000 — never
-   smoke on :8000; the riders recorded in the phase text).
+10. LV DUPIRE-TWIN COMPARE ARC — COMPLETE 2026-09-08 (D0–D5, wrap
+   2026-09-08b below): the Local Vol "Compare" tab (the parametric surface's
+   Dupire twin drawn smooth beside the affine sheet, difference, smiles +
+   scores, anchored at the calibration spot), every 3D surface's (k, T)
+   crop with the centred zoom, the help corpora. Riders (none gates, listed
+   in the wrap): the three tail-target chips, transport the twin with the
+   spot, θ_ref = twin / the smooth seed (benchmark-pack), analytic LQD
+   k-derivatives, an operator floor with the twin's wings, the hat-basis
+   precompute, the cue card's Calibrate button, LocalVolViewer's split, the
+   Massive weekly fixture through `lv_benchmark.build_state`. FOR THE LV FIT:
+   the fix-#3 front gate (nine implicit steps on a one-month front) is a
+   benchmark-pack adjudication.
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
 wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
 replace the five scheduler fields, migrated on load; the `/scheduler` payload
@@ -1608,6 +1574,86 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-08b) — LV DUPIRE-TWIN COMPARE ARC SHIPPED D0–D5: THE FITTED SHEET BESIDE THE PARAMETRIC SURFACE'S DUPIRE TWIN, DRAWN SMOOTH, ANCHORED, CROPPED AS ONE
+
+User ask: "In Local Vol add a comparison feature: when a parametric model is
+calibrated, a comparison tab can calibrate a smooth LV surface from the
+parametric model (with different target options for the tails) with the
+classical Dupire differentiation." Then six same-day looks at the live tab
+(each recorded in the arc section above the Graph Ergonomics arc, phase D3):
+the tab re-calculated on every live spot tick; unreadable chips and a
+refreshing top line; the twin "diverged substantially" from the parametric
+fit; a vertical crop slider and a zoom that keeps the sheet in the window,
+for every 3D surface; the two Compare sheets' sliders locked; the twin drawn
+smooth through the grid points.
+
+- **What shipped** — `POST /fit/affine/{ticker}/compare` (`api/lv_compare.py`)
+  and the Local Vol lens's **Compare** view: Sheets (the smooth twin sample
+  as a quad mesh beside the affine sheet's triangles, one camera, one crop),
+  Difference (a diverging heatmap on the vertex lattice), Smiles (affine ·
+  parametric · twin on the quotes, a per-expiry score table); the time chips
+  (Smooth PCHIP in τ · Buckets), the tails chip (Model wings; the three
+  riders listed muted), a score strip (twin · affine conv · param; round
+  trip · max · floor · sheet; the repairs; STALE / ANCHOR badges);
+  `models/localvol/dupire_surface.py` (the bucket builder moved byte-
+  identically + memoized, the PCHIP builder, `extract_twin` with per-row
+  counters, `snapWindow`), `dupire_twin.py` (`DupireTwinSurface` evaluated
+  where the march asks, `FlatSurface` the operator control, the display
+  operator Rannacher dt/8 dx/4); the help corpora (guide section, glossary
+  `dupire-twin`, tip, What's new); every 3D surface's (k, T) crop with the
+  centred zoom, clamped pans and the shared-window store.
+- **The findings that shaped it** (all measured, all locked): (1) a live
+  feed bumps the view version every second and starved the twin build
+  through abort-supersede → hard / soft fetch keys, and the comparison
+  anchored at the calibration spot (no spot version in the key); (2) the
+  twin's "divergence" was the fit's own first-order operator — a FLAT
+  surface misprices a one-month front by 154 bp on it, 51 on the dt/4 dx/2
+  "converged" one — so the twin's smile and scores come from the smooth
+  surface on a second-order operator chosen by that control (2.0 bp vs a
+  2.3 floor), the floor is reported beside every round trip, and the
+  affine sheet's converged front score (115 bp synthetic, 57 SPY, 124 NVDA)
+  is recorded as REAL operator compensation of the LV fit (rider below);
+  (3) the fit's adaptive variance cap is a calibration device, not a
+  property of the twin — clipped into it NVDA's twin read 8.9 bp against
+  its own source, 3.4 clipped only at the 400 % ceiling; the cells above
+  the fit's cap are counted, not clipped.
+- **Measured** (the production path on the Bloomberg 2026-06-20 fixture,
+  `lv_benchmark.build_state`; the backend suite ran alongside):
+  SPY 11 × 16 vertices — round trip **1.35 bp** rms / 5.8 max against a
+  0.26 floor (front 1.0 vs 0.56; one year 0.20 vs 0.04), the twin scores
+  the quotes at 4.8 bp vs the parametric's 4.7, the affine sheet 2.4 in-op /
+  32.2 converged; the coarse vertex sample's own round trip 102 bp (what
+  the lattice loses); the extraction's repairs on the smooth twin: 1005
+  butterfly, 48 029 calendar, 74 201 floored cells over the march — the LQD
+  ladder's wings are NOT calendar-ordered outside the quoted range (the
+  calendar coupling is confined to the common support by design) and the
+  twin says so; 209 649 cells above the fit's cap. NVDA 11 × 12 — round
+  trip **3.43 bp** / 10.5 max vs a 0.66 floor (front 6.3 vs 1.55), twin 12.5
+  vs parametric 12.1, affine 12.2 / 55.5; 59 202 cells above the fit's cap.
+  Builds 2.3 s (SPY) / 0.9 s (NVDA) uncached. Synthetic ladder: 0.93 bp vs
+  0.78 (locked at 2 bp). The user's :8000 runs the new code (the route
+  answers) with nothing calibrated in that session — the "Calibrate first"
+  cue is what it shows; the Massive weekly fixture does not build through
+  `lv_benchmark.build_state` ("x = 1 must be a grid point") — a rider.
+- **Locks**: backend 2277 passed / 7 skipped; frontend 658 tests / 93 files
+  (lvCompare, useLvCompare, LvCompareChips/Table, surfaceMesh, surfaceCamera,
+  surfaceWindows, SurfaceMesh, RangeBrush, help content); tsc · build ·
+  `npm run smoke:ui` LIVE; `scripts/lv_compare_check.mjs` (all three modes,
+  six spot ticks, the Buckets chip) and `scripts/surface_crop_check.mjs`
+  (crop · centred zoom · clamped pan · locked Compare brushes) LIVE.
+- **Riders** (none are gates): the three tail targets (Match LQD tails ·
+  Quoted range · Affine wings — the wire and the chip group take them);
+  transport the twin with the spot like the affine sheet (today: ANCHOR);
+  θ_ref = twin / the smooth twin as the Stage-2b seed (benchmark-pack);
+  analytic k-derivatives (LQD); an operator floor with the twin's own wings
+  (the flat control under-reads it on NVDA's front: 6.3 vs 1.55); precompute
+  the hat basis for the twin's marches; a Calibrate button on the cue card;
+  LocalVolViewer.tsx at 474 lines; the counters as marks on the sheet;
+  the Massive weekly fixture through the harness. **For the LV fit itself**:
+  the fix-#3 gate lets a one-month front through with nine implicit steps
+  and the calibrated sheet compensates it — raise the gate or march the fit
+  with Rannacher by default: a benchmark-pack adjudication.
 
 ### 🧭 SESSION WRAP (2026-09-08a) — GRAPH ERGONOMICS FOLLOW-UP: FOCUS THAT RE-FITS AND STILL EDITS, PLAIN-DRAG CONNECT, "+ REVERSE"
 
