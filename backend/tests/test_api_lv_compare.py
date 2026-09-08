@@ -146,3 +146,26 @@ def test_gates_and_cache(client, compare):
     again = client.post("/fit/affine/ALPHA/compare", json={}).json()
     assert again == compare
     assert len(cache) == n_before  # served from the cache, no new entry
+
+
+def test_anchored_under_a_spot_move(client, compare):
+    """A spot move never rebuilds the twin: the comparison is anchored at the
+    calibration spot (the same sheets, the same lattice match, the same
+    figures), the response reports the shift, and the cache serves it."""
+    state = client.app.state.volfit
+    cache = getattr(state, "_lv_compare_cache")
+    n_before = len(cache)
+    assert client.put("/spot/ALPHA", json={"spotReturn": 0.012}).status_code == 200
+    try:
+        moved = client.post("/fit/affine/ALPHA/compare", json={}).json()
+        assert moved["spotShift"] == pytest.approx(0.012)
+        assert moved["affineLatticeMatches"] is True
+        assert moved["localVolTwin"] == compare["localVolTwin"]
+        assert moved["localVolAffine"] == compare["localVolAffine"]
+        assert moved["roundTripBp"] == compare["roundTripBp"]
+        assert "compared at the calibration spot" in moved["message"]
+        assert all(len(s["affine"]) > 10 for s in moved["smiles"])
+        # Anchored ⇒ the same cache entry served it (no spot version in the key).
+        assert len(cache) == n_before
+    finally:
+        assert client.put("/spot/ALPHA", json={"spotReturn": 0.0}).status_code == 200

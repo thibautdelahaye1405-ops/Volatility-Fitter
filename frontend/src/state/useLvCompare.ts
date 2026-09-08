@@ -6,14 +6,29 @@
 // twin off the affine vertex lattice, marches it through the LV fit's own
 // operator and scores it beside the displayed LV sheet — a read-only view,
 // never a fit (the twin is a reference like the eSSVI row). Only the active
-// sub-tab's hook runs (`enabled`); a chip change refetches with the previous
-// payload kept on screen dimmed (`refreshing`), like the surface fit. The
-// build is value-only (~0.3 s uncached, cached server-side thereafter) but
-// the LV bootstrap it may trigger on a never-calibrated ticker is not, hence
-// the surface fit's own 300 s timeout.
+// sub-tab's hook runs (`enabled`).
+//
+// Two kinds of change drive it, and they must not behave alike (the first
+// live use on a streaming feed showed why — 2026-09-08):
+//
+//   HARD  the ticker, the fit mode, the interpolation chip, the tab opening:
+//         abort whatever is in flight and fetch now; the previous payload
+//         stays on screen dimmed (`refreshing`) until the new one lands.
+//   SOFT  the session's view version (`reloadKey`): a live feed bumps it on
+//         every real spot tick — up to once a second — while a twin build
+//         takes ~0.3 s. Aborting the build on each bump starved it forever
+//         (the sheets sat dimmed, "recalculating", and never updated). A
+//         soft bump therefore NEVER aborts: a build in flight is left to
+//         land, further bumps coalesce into ONE trailing refetch, a landed
+//         build is not repeated within SOFT_REFRESH_MIN_MS, the refetch is
+//         silent (`updating`, no dimming), a failed one keeps the sheets, and
+//         a byte-identical payload keeps the same object — no repaint.
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import type { QuoteBand, SmilePoint } from "./useAffine";
+
+/** Minimum gap between two SILENT refreshes of the twin (spot ticks). */
+export const SOFT_REFRESH_MIN_MS = 2000;
 
 /** The t-interpolation chip: monotone PCHIP in τ vs the market's staircase. */
 export type LvTInterp = "smooth" | "buckets";
@@ -54,6 +69,8 @@ export interface LvCompareSmile {
   twinExt?: SmilePoint[];
   parametric: SmilePoint[];
   quotes: QuoteBand[];
+  /** The affine sheet's own reconstruction at the anchor spot; empty without an LV fit. */
+  affine?: SmilePoint[];
   twinScore: LvCompareScore;
   parametricScore: LvCompareScore;
   affineScore?: LvCompareScore | null;
@@ -85,6 +102,10 @@ export interface LvCompareResponse {
   hasAffine: boolean;
   affineStale: boolean;
   affineLatticeMatches: boolean;
+  /** The ticker's active spot shift; the comparison is built AT THE ANCHOR
+   *  whatever the shift (the twin is not transported), so a non-zero value
+   *  is flagged. Absent on older payloads. */
+  spotShift?: number;
   smiles: LvCompareSmile[];
   skippedExpiries?: string[];
   twinScore: LvCompareScore;
@@ -118,8 +139,10 @@ export interface UseLvCompareResult {
   data: LvCompareResponse | null;
   /** First load (nothing on screen yet). */
   loading: boolean;
-  /** A refetch with the previous payload still shown (dimmed). */
+  /** A HARD refetch with the previous payload still shown (dimmed). */
   refreshing: boolean;
+  /** A SOFT (silent) refetch in flight — a spinner, never a dimming. */
+  updating: boolean;
   error: string | null;
 }
 
@@ -132,39 +155,127 @@ export function useLvCompare(
 ): UseLvCompareResult {
   const [data, setData] = useState<LvCompareResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasDataRef = useRef(false);
+  const jsonRef = useRef("");
+  const inflight = useRef<AbortController | null>(null);
+  const pending = useRef(false);
+  const timer = useRef<number | undefined>(undefined);
+  const lastLanded = useRef(0);
+  const justHard = useRef(false);
+  const args = useRef({ ticker, fitMode, tInterp });
+  args.current = { ticker, fitMode, tInterp };
+  const hardKey = enabled && ticker !== "" ? `${ticker}|${fitMode}|${tInterp}` : "";
 
-  useEffect(() => {
-    if (!enabled || ticker === "") return;
+  // The runner: the latest closure lives in a ref so a trailing refetch
+  // scheduled from a landed promise always reads the current arguments.
+  const fns = useRef({
+    start: (_soft: boolean) => {},
+    schedule: (_soft: boolean) => {},
+  });
+  fns.current.schedule = (soft: boolean) => {
+    window.clearTimeout(timer.current);
+    const wait = soft ? Math.max(0, SOFT_REFRESH_MIN_MS - (Date.now() - lastLanded.current)) : 0;
+    if (wait > 0) timer.current = window.setTimeout(() => fns.current.start(soft), wait);
+    else fns.current.start(soft);
+  };
+  fns.current.start = (soft: boolean) => {
+    const { ticker: tk, fitMode: fm, tInterp: ti } = args.current;
     const controller = new AbortController();
-    setLoading(true);
-    setError(null);
+    inflight.current = controller;
+    if (soft) setUpdating(true);
+    else {
+      setLoading(true);
+      setError(null);
+    }
+    const settle = () => {
+      inflight.current = null;
+      lastLanded.current = Date.now();
+      setLoading(false);
+      setUpdating(false);
+      if (pending.current) {
+        pending.current = false;
+        fns.current.schedule(true);
+      }
+    };
     api
-      .post<LvCompareResponse>(`/fit/affine/${ticker}/compare`, {
-        body: { fitMode, tInterp, tails: "model" },
+      .post<LvCompareResponse>(`/fit/affine/${tk}/compare`, {
+        body: { fitMode: fm, tInterp: ti, tails: "model" },
         signal: controller.signal,
         timeoutMs: 300_000,
       })
       .then((res) => {
-        setData(res);
+        if (controller.signal.aborted) return;
+        const json = JSON.stringify(res);
+        if (json !== jsonRef.current) {
+          jsonRef.current = json;
+          setData(res);
+        }
         hasDataRef.current = true;
-        setLoading(false);
+        setError(null);
+        settle();
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return; // superseded or unmounted
-        setData(null);
-        hasDataRef.current = false;
-        setError(messageOf(err));
-        setLoading(false);
+        // A failed SILENT refresh keeps the sheets on screen (the next tick
+        // retries); a hard one, or the first, surfaces the error.
+        if (!soft || !hasDataRef.current) {
+          hasDataRef.current = false;
+          jsonRef.current = "";
+          setData(null);
+          setError(messageOf(err));
+        }
+        settle();
       });
-    return () => controller.abort();
-  }, [ticker, enabled, reloadKey, fitMode, tInterp]);
+  };
+
+  // HARD changes: abort, drop any trailing refetch, fetch now.
+  useEffect(() => {
+    window.clearTimeout(timer.current);
+    timer.current = undefined;
+    pending.current = false;
+    if (inflight.current !== null) {
+      inflight.current.abort();
+      inflight.current = null;
+    }
+    setLoading(false);
+    setUpdating(false);
+    justHard.current = true;
+    if (hardKey === "") return;
+    fns.current.start(false);
+  }, [hardKey]);
+
+  // SOFT changes: coalesce onto the build in flight, else a throttled silent refetch.
+  useEffect(() => {
+    if (justHard.current) {
+      justHard.current = false; // the hard effect of this very commit already fetched
+      return;
+    }
+    if (hardKey === "") return;
+    if (inflight.current !== null) {
+      pending.current = true;
+      return;
+    }
+    fns.current.schedule(true);
+    // reloadKey alone is the soft key by design (the hard key has its own effect).
+  }, [reloadKey]);
+
+  // Unmount: nothing may land into a gone component.
+  useEffect(
+    () => () => {
+      window.clearTimeout(timer.current);
+      inflight.current?.abort();
+      inflight.current = null;
+    },
+    [],
+  );
 
   return {
     data,
     loading: loading && !hasDataRef.current,
     refreshing: loading && hasDataRef.current,
+    updating,
     error,
   };
 }

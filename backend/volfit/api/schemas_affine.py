@@ -267,6 +267,9 @@ class LvCompareSmile(BaseModel):
     twinExt: list[SmilePoint] = []
     parametric: list[SmilePoint]
     quotes: list[QuoteBand]
+    #: The affine sheet's own reconstruction at the ANCHOR spot (the
+    #: calibration cache's ``AffineSmile.model``); empty without an LV fit.
+    affine: list[SmilePoint] = []
     twinScore: LvCompareScore
     parametricScore: LvCompareScore
     affineScore: LvCompareScore | None = None
@@ -305,6 +308,10 @@ class LvCompareResponse(BaseModel):
     hasAffine: bool
     affineStale: bool
     affineLatticeMatches: bool
+    #: The ticker's active spot shift (proportional return vs the anchor). The
+    #: comparison is built AT THE ANCHOR whatever the shift — the lens flags a
+    #: non-zero value (the twin is not transported; a rider).
+    spotShift: float = 0.0
     smiles: list[LvCompareSmile]
     skippedExpiries: list[str] = []  # rows with quotes but no displayed parametric fit
     twinScore: LvCompareScore

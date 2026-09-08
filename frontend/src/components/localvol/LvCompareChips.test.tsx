@@ -70,6 +70,13 @@ describe("LvCompareChips", () => {
     expect(screen.getByText("butterfly 1 · floored 1 · capped 2")).toBeTruthy();
   });
 
+  it("flags a moved spot with the ANCHOR badge (the comparison stays at the calibration spot)", () => {
+    renderChips(lvCompareFixture({ spotShift: 0.012 }));
+    const badge = screen.getByText("ANCHOR");
+    expect(badge.getAttribute("title")).toContain("1.20%");
+    expect(badge.getAttribute("title")).toContain("calibration spot");
+  });
+
   it("shows no strip before the first payload", () => {
     render(
       <LvCompareChips tInterp="buckets" onTInterpChange={() => {}} mode="smiles" onModeChange={() => {}} data={null} loading />,

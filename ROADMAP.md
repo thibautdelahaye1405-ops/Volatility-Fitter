@@ -468,6 +468,40 @@ help: guides/lenses_b.ts (localvol tab list, twice) · glossary `dupire-twin` ·
   split); the counters are a strip + tooltip, not marks on the sheet
   (SurfaceMesh has no per-vertex marker API); a Calibrate button on the cue
   card needs the command id wired.
+  **FIRST-USE FIX (user, 2026-09-08: "the tab keeps on re-calculating and
+  trying to refresh the surfaces, even after both sheets are displayed").**
+  Root cause, two layers: (i) the hook refetched on the session's view
+  version, which a live feed bumps on every real spot tick (the 1 s spot
+  poll + the workflow poll), and its cleanup ABORTED the twin request in
+  flight on each bump — a ~0.3 s build was starved by sub-second ticks, the
+  sheets sat dimmed, nothing ever landed; (ii) the backend key carried the
+  per-ticker spot version and the twin read the TRANSPORTED parametric
+  records against the anchor lattice, so each own-ticker tick rebuilt it and
+  the transported affine sheet no longer matched the lattice (the difference
+  vanished under a spot move). Fixes: `useLvCompare` now has a HARD key
+  (ticker · fit mode · chip · tab) that aborts and refetches with the
+  dimming, and a SOFT key (the view version) that never aborts a build in
+  flight, coalesces bumps into ONE trailing refetch, waits out
+  `SOFT_REFRESH_MIN_MS` = 2 s, lands silently (`updating` = a chip spinner,
+  no dimming), keeps the sheets on a failed silent refresh and keeps the
+  SAME object for a byte-identical payload (no repaint); `api/lv_compare` is
+  ANCHORED — the parametric source is `service.displayed_base` (the anchor
+  record), the affine sheet + curves come from the calibration cache behind
+  the displayed pointer (`LvCompareSmile.affine` now on the wire, the smile
+  panel draws every curve from the payload), the key drops the spot version
+  (a tick is a cache hit), the active shift is attached at READ time
+  (`spotShift` + the message suffix; a cached record is served whole — the
+  first cut baked it in and the lock caught it) and the chips show an ANCHOR
+  badge. Locks: `useLvCompare.test.ts` (6: no abort on a soft bump, one
+  trailing silent refetch after the throttle, identical payload = same
+  object, a chip change aborts + dims, a failed silent refresh keeps the
+  sheets, unmount aborts), the API lock `test_anchored_under_a_spot_move`
+  (same sheets / lattice / figures at +1.2 %, `spotShift` reported, same
+  cache entry), the chips' ANCHOR badge; the live check gained
+  `compare-under-spot-ticks` (six shifts 400 ms apart: the strip lands, the
+  card is never dimmed, the figures and the lattice match are unchanged, the
+  badge is up). Rider: transport the twin like the affine sheet so the
+  comparison follows the spot instead of flagging it.
 - **D4 Help + smoke** — guide tab list, glossary, tip, What's new; the
   smoke line; tsc · vitest · build · `npm run smoke:ui` LIVE.
 - **D5 Wrap** — a live SPY look (screenshots .smoke/lv-compare-*.png),
@@ -1401,6 +1435,11 @@ below) — every recorded rider is closed except the ones listed here:
    one camera) · Difference (diverging heatmap) · Smiles (three curves on
    the quotes + the score table), the time / tails chips, the score strip;
    26 vitest locks, smoke step + `scripts/lv_compare_check.mjs` LIVE.
+   FIRST-USE FIX 2026-09-08 (the tab re-calculated on every live spot
+   tick and the build was starved by aborts): hard / soft fetch keys in
+   `useLvCompare`, the comparison ANCHORED at the calibration spot (no spot
+   version in the key, `spotShift` attached on read, ANCHOR badge) — locked
+   on both sides and live-checked under six ticks (see the D3 phase text).
    NEXT = D4 (help corpora: the localvol guide's tab list, glossary
    `dupire-twin`, a tip, What's new; the smoke line is already in), then
    D5 (wrap + a live SPY look on the user's :8000).

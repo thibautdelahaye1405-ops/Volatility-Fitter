@@ -25,6 +25,7 @@ function smile(expiry: string, t: number, rt: number): LvCompareSmile {
     twin: pts([0.21, 0.2, 0.19, 0.2, 0.21]),
     twinExt: pts([0.22, 0.21, 0.2, 0.19, 0.2, 0.21, 0.22]),
     parametric: pts([0.21, 0.2, 0.19, 0.2, 0.21]),
+    affine: pts([0.212, 0.201, 0.19, 0.199, 0.212]),
     quotes: [
       { k: -0.1, bid: 0.199, ask: 0.203, mid: 0.201, index: 0, excluded: false, amended: false },
       { k: 0.1, bid: 0.198, ask: 0.202, mid: 0.2, index: 1, excluded: false, amended: false },
@@ -54,6 +55,7 @@ export function lvCompareFixture(overrides: Partial<LvCompareResponse> = {}): Lv
     hasAffine: true,
     affineStale: false,
     affineLatticeMatches: true,
+    spotShift: 0,
     smiles: [smile("2026-07-10", 0.1, 30), smile("2026-12-10", 0.5, 8)],
     skippedExpiries: [],
     twinScore: { rmsError: 0.0065, maxBp: 276, rmsBp: 65, convergedBp: 25.4 },

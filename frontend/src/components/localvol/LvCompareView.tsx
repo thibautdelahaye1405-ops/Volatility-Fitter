@@ -165,15 +165,26 @@ export default function LvCompareView({
     );
   }
 
-  // Smiles: the node's expiry with the three curves on the quotes, the table below.
+  // Smiles: the node's expiry with the three curves on the quotes, the table
+  // below. Every curve comes from the compare payload itself — the affine
+  // reconstruction at the ANCHOR spot beside the twin and its parametric
+  // source — so the panel never mixes the displayed (spot-transported) LV
+  // smile with an anchored twin. The base smile carries the quotes and the
+  // var-swap level of the displayed payload when the spot has not moved.
   const cs = compareSmileFor(compare, expiry);
   if (cs === null) return message("No expiry to compare.");
-  const base = affine?.hasFit !== false ? affine?.smiles.find((s) => s.expiry === cs.expiry) : undefined;
+  const hasAffineCurve = (cs.affine?.length ?? 0) > 1;
   const twinPoints = cs.twinExt && cs.twinExt.length > 1 ? cs.twinExt : cs.twin;
-  const smile: AffineSmile = base ?? {
+  const anchored = (compare.spotShift ?? 0) === 0;
+  const shown = anchored && affine?.hasFit !== false ? affine?.smiles.find((s) => s.expiry === cs.expiry) : undefined;
+  const smile: AffineSmile = {
     expiry: cs.expiry, t: cs.t, tau: cs.tau, forward: cs.forward,
-    model: twinPoints, quotes: cs.quotes, varSwap: NO_VARSWAP, maxIvErrorBp: cs.twinScore.maxBp,
+    model: hasAffineCurve ? cs.affine! : twinPoints,
+    quotes: cs.quotes,
+    varSwap: shown?.varSwap ?? NO_VARSWAP,
+    maxIvErrorBp: hasAffineCurve ? (shown?.maxIvErrorBp ?? 0) : cs.twinScore.maxBp,
   };
+  const base = hasAffineCurve;
   const overlays: SmileOverlay[] = [
     { label: "parametric source", points: cs.parametric, color: PARAMETRIC_COLOR, width: 1.4 },
   ];

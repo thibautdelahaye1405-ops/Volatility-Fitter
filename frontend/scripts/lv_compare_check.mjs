@@ -113,6 +113,40 @@ try {
     if (pageErrors.length) throw new Error(pageErrors.join("; "));
   });
 
+  await step("compare-under-spot-ticks", async () => {
+    // A live feed bumps the session's view version on every spot tick (the
+    // 1 s spot poll); the twin must keep landing — never starved by aborts —
+    // and the sheets must never sit dimmed (the 2026-09-08 first-use finding).
+    const before = await api("POST", `/fit/affine/${ticker}/compare`, {});
+    for (let i = 1; i <= 6; i++) {
+      await api("PUT", `/spot/${ticker}`, { spotReturn: 0.002 * i });
+      await sleep(400);
+    }
+    await sleep(5000); // > the spot poll + the silent-refresh throttle + a build
+    const dimmed = await page.evaluate(
+      () => document.querySelector("main [data-chart-card]")?.className.includes("opacity-60") ?? true,
+    );
+    if (dimmed) throw new Error("the chart card is still dimmed after the ticks");
+    const after = await api("POST", `/fit/affine/${ticker}/compare`, {});
+    const strip = await page.evaluate(() => (document.querySelector("main")?.innerText ?? "").match(/round trip (\d+) · (\d+) bp/));
+    if (!strip) throw new Error("the score strip vanished");
+    const shown = Number(strip[1]);
+    if (shown !== Number(after.roundTripBp.toFixed(0)))
+      throw new Error(`strip shows round trip ${shown}, the payload says ${after.roundTripBp.toFixed(1)}`);
+    // Anchored: the same figures and the same lattice as before the move, the
+    // shift reported, the ANCHOR badge up.
+    if (after.roundTripBp !== before.roundTripBp || !after.affineLatticeMatches)
+      throw new Error(`the comparison moved with the spot (round trip ${before.roundTripBp} → ${after.roundTripBp}, lattice ${after.affineLatticeMatches})`);
+    if (Math.abs(after.spotShift - 0.012) > 1e-9) throw new Error(`spotShift ${after.spotShift}, expected 0.012`);
+    const badge = await page.evaluate(() => (document.querySelector("main")?.innerText ?? "").includes("ANCHOR"));
+    if (!badge) throw new Error("the ANCHOR badge is missing after the spot move");
+    console.log(`     spot +1.2%: anchored (round trip ${after.roundTripBp.toFixed(1)} bp unchanged, lattice match ${after.affineLatticeMatches}, ANCHOR badge up)`);
+    await page.screenshot({ path: `${OUT}lv-compare-ticks.png` });
+    await api("PUT", `/spot/${ticker}`, { spotReturn: 0 });
+    await sleep(3500);
+    if (pageErrors.length) throw new Error(pageErrors.join("; "));
+  });
+
   await step("compare-difference", async () => {
     await clickMainButton(page, "Difference");
     await waitFor(page, () => (document.querySelector("main")?.innerText ?? "").includes("σ_loc twin − affine"), "the diverging legend");

@@ -91,6 +91,14 @@ export default function LvCompareChips({
               STALE
             </span>
           )}
+          {(data.spotShift ?? 0) !== 0 && (
+            <span
+              title={`Spot moved ${((data.spotShift ?? 0) * 100).toFixed(2)}% since the calibration — the comparison is built at the calibration spot (the twin is not transported)`}
+              className={badgeClass("amber")}
+            >
+              ANCHOR
+            </span>
+          )}
           <span title="Converged-operator RMS vs the fit target (bp): the Dupire twin · the affine sheet · the parametric source's closed form">
             conv twin {formatBp(twin.convergedBp)}
             {affine ? ` · affine ${formatBp(affine.convergedBp)}` : ""}

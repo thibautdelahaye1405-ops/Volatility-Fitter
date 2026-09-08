@@ -13,10 +13,15 @@ What this module does, in order:
 
 1. gathers the live rows exactly as the affine fit does (``_gather``: the
    edited quotes, the fit-target band, the τ clock) and keeps the expiries
-   that have a DISPLAYED parametric fit (``service.fit_or_get`` — the
-   overlay when active, else LQD, transported like the Smile viewer's; a
-   read never calibrates in the gated workflow, so a missing fit is reported
-   in ``skippedExpiries`` and fewer than two is a 404);
+   that have a calibrated parametric fit (``service.displayed_base`` — the
+   overlay when active, else LQD, at the ANCHOR spot the fits were
+   calibrated at; a read never calibrates in the gated workflow, so a
+   missing fit is reported in ``skippedExpiries`` and fewer than two is a
+   404). The whole comparison is ANCHORED: the affine sheet and curves come
+   from the calibration cache (not the spot-transported display payload),
+   so a spot tick never rebuilds the twin — the response carries the active
+   ``spotShift`` and the lens says the comparison sits at the calibration
+   spot (transporting the twin like the affine sheet is a recorded rider);
 2. builds the affine VERTEX lattice and variance box from those rows
    (``_resolve_grid`` / ``_lv_bounds`` — the same functions the fit uses, so
    the twin lands on the fit's own vertices and inside its own box);
@@ -39,7 +44,8 @@ What this module does, in order:
    parametric source at the quoted strikes.
 
 Read-only: the twin is never a fit, a prior, a seed or a θ_ref. Cached per
-the affine key + the chips + the spot version + the displayed LV pointer.
+the affine key + the chips + the displayed LV pointer (no spot version: the
+comparison is anchored, so a live feed's ticks hit the cache).
 """
 
 from __future__ import annotations
@@ -72,13 +78,14 @@ class ParametricFitMissing(LookupError):
 
 
 def _parametric_rows(state: AppState, ticker: str, rows, fit_mode: str):
-    """``(rows, records, skipped)``: the affine rows that have a displayed
-    parametric fit, their FitRecords, and the ISOs that have none."""
+    """``(rows, records, skipped)``: the affine rows that have a calibrated
+    parametric fit at the ANCHOR spot (``displayed_base`` — before any spot
+    transport), their FitRecords, and the ISOs that have none."""
     from volfit.api import service  # heavy module: lazy, as affine_fit does
 
     kept, records, skipped = [], [], []
     for row in rows:
-        rec = service.fit_or_get(state, ticker, row[0], fit_mode)
+        rec = service.displayed_base(state, ticker, row[0], fit_mode)
         if rec is None:
             skipped.append(row[0])
             continue
@@ -192,10 +199,17 @@ def _twin_record(
     exp_index = {float(e): i for i, e in enumerate(sol.expiries)}
     conv_index = {float(e): i for i, e in enumerate(conv.expiries)}
 
-    if affine is None:  # the displayed LV payload (transported, stale-flagged)
+    if affine is None:  # the displayed LV payload (settles the pointer; stale flag)
         affine = affine_fit.affine_payload(state, ticker, _affine_request(request))
-    affine_by_iso = {s.expiry: s for s in affine.smiles} if affine.hasFit else {}
-    lattice_ok = _lattice_matches(affine, t_nodes, x_nodes)
+    # The ANCHOR sheet: the calibration cache entry behind the displayed
+    # pointer, before the spot transport relabels its lattice — the twin is
+    # built from the anchor parametric records, so this is the like-for-like.
+    ptr = state.get_affine_ptr(ticker)
+    anchor = affine_fit._cache(state).get(ptr) if ptr is not None else None
+    if anchor is not None and not anchor.hasFit:
+        anchor = None
+    affine_by_iso = {s.expiry: s for s in anchor.smiles} if anchor is not None else {}
+    lattice_ok = anchor is not None and _lattice_matches(anchor, t_nodes, x_nodes)
 
     # 5. per-expiry smiles and scores
     weight_scheme = state.fit_settings().weightScheme
@@ -249,6 +263,7 @@ def _twin_record(
                     grid, np.sqrt(np.maximum(np.asarray(slice_.implied_w(grid), dtype=float), 0.0) / t)
                 ),
                 quotes=affine_fit._quote_bands(state, ticker, iso, prepared, request.fitMode),
+                affine=list(aff.model) if aff is not None else [],
                 twinScore=LvCompareScore(
                     rmsError=rms_of_terms(n_t, d_t), maxBp=_bp(e_twin)[1],
                     rmsBp=_bp(e_twin)[0], convergedBp=_bp(e_conv)[0],
@@ -268,9 +283,9 @@ def _twin_record(
     raw = twin.raw
     affine_sheet: list[list[float]] = []
     diff: list[list[float]] = []
-    if lattice_ok:
-        affine_sheet = affine.localVol
-        diff = (local_vol - np.asarray(affine.localVol, dtype=float)).tolist()
+    if lattice_ok and anchor is not None:
+        affine_sheet = anchor.localVol
+        diff = (local_vol - np.asarray(anchor.localVol, dtype=float)).tolist()
     c = twin.counters
     n_diff = int(twin.differentiated.sum())
     message = (
@@ -280,7 +295,7 @@ def _twin_record(
     )
     if skipped:
         message += f"; no parametric fit on {len(skipped)} expiries (skipped)"
-    if affine.hasFit and not lattice_ok:
+    if anchor is not None and not lattice_ok:
         message += "; the displayed LV fit is on another lattice (no difference sheet)"
     return LvCompareResponse(
         ticker=ticker,
@@ -299,7 +314,7 @@ def _twin_record(
         varHi=float(var_hi),
         localVolAffine=affine_sheet,
         diffLocalVol=diff,
-        hasAffine=bool(affine.hasFit),
+        hasAffine=anchor is not None,
         affineStale=bool(affine.stale),
         affineLatticeMatches=lattice_ok,
         smiles=smiles,
@@ -317,10 +332,10 @@ def _twin_record(
         ),
         affineScore=(
             LvCompareScore(
-                rmsError=float(affine.surfaceRmsError), maxBp=float(affine.maxIvErrorBp),
-                rmsBp=float(affine.rmsIvErrorBp), convergedBp=float(affine.rmsConvergedBp),
+                rmsError=float(anchor.surfaceRmsError), maxBp=float(anchor.maxIvErrorBp),
+                rmsBp=float(anchor.rmsIvErrorBp), convergedBp=float(anchor.rmsConvergedBp),
             )
-            if affine.hasFit else None
+            if anchor is not None else None
         ),
         roundTripBp=_bp(np.array(rt_bp))[0],
         roundTripMaxBp=_bp(np.array(rt_bp))[1],
@@ -330,14 +345,13 @@ def _twin_record(
 
 def lv_compare_key(state: AppState, ticker: str, request: LvCompareRequest) -> tuple:
     """The affine key (quote / var-swap / event / settings / forward / options /
-    data / prior versions + every LV option) + the chips, the per-ticker spot
-    version (the parametric source is the TRANSPORTED displayed fit) and the
-    displayed LV pointer (a fresh LV fit refreshes the affine columns)."""
+    data / prior versions + every LV option) + the chips and the displayed LV
+    pointer (a fresh LV fit refreshes the affine columns). NO spot version:
+    the comparison is anchored at the calibration spot, so a live feed's
+    ticks are cache hits — the first live use showed a twin rebuilt on every
+    tick (2026-09-08)."""
     base = affine_fit.affine_key(state, ticker, _affine_request(request))
-    return base + (
-        "lv_compare", request.tInterp, request.tails,
-        state.spot_version_for(ticker), state.get_affine_ptr(ticker),
-    )
+    return base + ("lv_compare", request.tInterp, request.tails, state.get_affine_ptr(ticker))
 
 
 def lv_compare_payload(state: AppState, ticker: str, request: LvCompareRequest) -> LvCompareResponse:
@@ -354,4 +368,14 @@ def lv_compare_payload(state: AppState, ticker: str, request: LvCompareRequest) 
     if hit is None:
         hit = _twin_record(state, ticker, request, affine)
         cache[key] = hit
-    return hit
+    # The active spot shift is a READ-time attribute (the anchored record is
+    # served whole from the cache): attach it, and say so in the message.
+    shift = float(state.spot_shift(ticker))
+    if shift == 0.0:
+        return hit
+    return hit.model_copy(
+        update={
+            "spotShift": shift,
+            "message": f"{hit.message}; spot moved {shift:+.2%} — compared at the calibration spot",
+        }
+    )
