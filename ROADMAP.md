@@ -623,8 +623,21 @@ help: guides/lenses_b.ts (localvol tab list, twice) · glossary `dupire-twin` ·
   bit-for-bit, the box), `lvCompare.test` (the twin mesh prefers the sample,
   refuses a mismatched one), `SurfaceMesh.test` (two densities over one
   extent crop together).
-- **D4 Help + smoke** — guide tab list, glossary, tip, What's new; the
-  smoke line; tsc · vitest · build · `npm run smoke:ui` LIVE.
+- **D4 Help + smoke** — SHIPPED 2026-09-08: the Local Vol guide
+  (`guides/lenses_b.ts`) lists Compare in the toolbar and the views, gains
+  a "The Compare tab — the Dupire twin" section (the two readings of the
+  Dupire equation, the time and tails chips, the three modes, the strip's
+  round trip / floor / sheet figures and the repairs, the two rules: the
+  smooth surface on a second-order operator, the anchored comparison), a
+  first-use step, a badge line and a pitfall on a fitted sheet whose conv
+  sits far above its rms; the glossary entry `dupire-twin` (linked from
+  `dupire-pde` and the guide's related list); the tip `lv-compare-twin`
+  (opens the glossary entry) and the camera tip corrected for the centred
+  zoom and the crop sliders; a What's new entry of 2026-09-08 covering the
+  tab, the smooth-drawn twin, the anchoring and the 3D surfaces' crop and
+  centring. The content locks (43) pass; the smoke step
+  `{ name: "Local Vol", subview: "Compare", slug: "lv-compare" }` was in
+  since D3.
 - **D5 Wrap** — a live SPY look (screenshots .smoke/lv-compare-*.png),
   the measured costs, the STATUS block + memory note; riders recorded:
   the three tail-target chips (Match LQD tails · Quoted range · Affine
@@ -1579,9 +1592,9 @@ below) — every recorded rider is closed except the ones listed here:
    SIXTH LOOK same day: the twin is DRAWN SMOOTH — the smooth surface
    sampled on the subdivided lattice (vertices bit-for-bit), a quad mesh
    beside the affine sheet's triangles; the shared crop key is the extents.
-   NEXT = D4 (help corpora: the localvol guide's tab list, glossary
-   `dupire-twin`, a tip, What's new; the smoke line is already in), then
-   D5 (wrap + a live SPY look on the user's :8000).
+   D4 SHIPPED 2026-09-08 (guide section, glossary `dupire-twin`, tip, What's
+   new). NEXT = D5 (wrap + a live SPY look on the user's :8000 — never
+   smoke on :8000; the riders recorded in the phase text).
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
 wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
 replace the five scheduler fields, migrated on load; the `/scheduler` payload

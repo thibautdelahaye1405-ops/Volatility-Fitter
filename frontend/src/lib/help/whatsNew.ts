@@ -7,6 +7,16 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-08",
+    title: "Local Vol: a Compare tab — the fitted sheet beside the parametric surface's Dupire twin; 3D surfaces crop and stay centred",
+    items: [
+      "The Local Vol lens gained a **Compare** view. It differentiates the calibrated parametric surface the classical way (Dupire's formula on the displayed model, its total variance carried between expiries by a smooth interpolation or the market's bucket staircase) and draws that **Dupire twin** beside the fitted local-vol sheet on the same lattice: **Sheets** side by side under one camera and one crop, their **Difference** on a diverging ramp, and the **Smiles** of both against the quotes with a per-expiry score table.",
+      "The twin is drawn smooth — the surface sampled between the vertices, the vertices themselves exact — while the fitted sheet keeps its triangles, because that is what each one is. Its smile and scores come from the smooth surface on a second-order operator; the strip reads the **round trip** (the twin against its own source) beside the operator's **floor** and the coarse sample's own figure, then the repairs the extraction needed.",
+      "The comparison is built at the calibration spot and never rebuilds on a live spot tick; a moved spot shows an **ANCHOR** badge. The twin is a reference only — never a fit, a prior or the calibration's seed.",
+      "Every 3D surface — the Parametric surface, the LV mesh, the IV surface and the Compare sheets — now has a second slider beside the plot: together with the strike slider it crops a strike × maturity rectangle that fills and re-centres the view. The wheel zooms about the sheet's centre and pans are bounded, so a zoomed sheet never leaves the window. The two Compare sheets crop and rescale as one.",
+    ],
+  },
+  {
+    date: "2026-09-08",
     title: "Graph lens: first-use fixes — Focus that keeps editing, drag to connect, bundles that fold back, + reverse",
     items: [
       "**Focus** now re-fits the graph to the whole lens and keeps editing: a selected arrow or pair floats its card over the canvas, below the toolbar; Esc closes the card first, a second Esc leaves Focus, and **F** toggles it from the keyboard. The canvas toolbar is one row at the top-right with Focus first, so a short pane never clips it; the gesture list moved behind a **gestures ⓘ** chip.",

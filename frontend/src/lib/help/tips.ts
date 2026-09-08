@@ -273,8 +273,8 @@ export const TIPS: Tip[] = [
   },
   {
     id: "lv-3d-camera",
-    title: "Zoom at the cursor, pan, pitch — and it sticks",
-    body: "On the 3D surfaces the wheel zooms around the pointer, Shift+drag or middle-drag pans, Ctrl+drag pitches, drag rotates, double-click resets. The camera is kept per view and rides workspace files.",
+    title: "Crop, zoom, pan, pitch — and it sticks",
+    body: "On every 3D surface the slider beside the plot and the slider below it crop a maturity × strike rectangle that re-centres itself; the wheel zooms about the sheet's centre, Shift+drag or middle-drag pans (the sheet never leaves the window), Ctrl+drag pitches, drag rotates, double-click resets. The camera is kept per view and rides workspace files.",
     scope: "localvol", level: "basic",
     action: { command: "lens.localvol", label: "Go to the Local Vol lens" },
   },
@@ -291,6 +291,13 @@ export const TIPS: Tip[] = [
     body: "The graph-source toggle in the Local Vol toolbar calibrates the surface to the graph-extrapolated smiles — a way to see a dark ticker's local-vol surface, with a badge saying where it came from.",
     scope: "localvol", level: "pro",
     action: { command: "help.open", arg: "guides:localvol", label: "Read the Local Vol guide" },
+  },
+  {
+    id: "lv-compare-twin",
+    title: "Read the fitted sheet against the parametric surface's Dupire twin",
+    body: "The Local Vol **Compare** tab differentiates the calibrated parametric surface the classical way and draws that twin beside the fitted sheet — same lattice, one camera, one crop — with their difference and both smiles on the quotes. The twin's **round trip** against its own source, read beside the operator's **floor**, says how exact it is; a fitted sheet whose *conv* sits far above its *rms* on a short front is compensating its own calibration operator.",
+    scope: "localvol", level: "pro",
+    action: { command: "help.open", arg: "glossary:dupire-twin", label: "Read about the Dupire twin" },
   },
   // ------------------------------------------------------------- Quality
   {
