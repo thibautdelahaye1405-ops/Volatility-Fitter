@@ -652,6 +652,51 @@ describe("Graph shell (GRAPH ERGONOMICS ARC)", () => {
     expect(screen.getByTestId("policy-pane")).toBeTruthy();
   });
 
+  it("Focus keeps editing: the relation card floats over the canvas (2026-09-08)", () => {
+    messages();
+    renderShell();
+    fireEvent.click(screen.getByTestId("chart-focus"));
+    fireEvent.click(screen.getByTestId("chart-relation"));
+    expect(screen.getByTestId("canvas-overlay")).toBeTruthy();
+    expect(screen.getByTestId("relation-card")).toBeTruthy();
+    fireEvent.change(screen.getByTestId("slider-beta"), { target: { value: "1.2" } });
+    expect(draftState.update).toHaveBeenCalledWith("SPY|2026-10-16>SPY|2026-07-17", {
+      betaAtmVol: 1.2, betaSkew: 1.2, betaCurv: 1.2,
+    });
+    // Esc closes the card first, then leaves Focus.
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("canvas-overlay")).toBeNull();
+    expect(screen.queryByTestId("policy-pane")).toBeNull();
+  });
+
+  it("+ reverse adds the explicit opposite arrow (flipped identities) and selects it", () => {
+    messages();
+    renderShell();
+    fireEvent.click(screen.getByTestId("chart-relation"));
+    fireEvent.click(screen.getByTestId("relation-add-reverse"));
+    expect(draftState.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceTicker: "SPY", sourceExpiry: "2026-07-17",
+        targetTicker: "SPY", targetExpiry: "2026-10-16",
+        betaAtmVol: 0.5, messagePrecision: 1700 * 4,
+      }),
+    );
+    expect(screen.getByTestId("chart").getAttribute("data-selected")).toBe(
+      "SPY|2026-07-17>SPY|2026-10-16",
+    );
+  });
+
+  it("connecting an existing arrow selects it instead of overwriting it", () => {
+    messages();
+    draftState = draftStub([{ ...CONFIG_ROW, sourceExpiry: "2026-07-17", targetExpiry: "2026-10-16" }]);
+    renderShell();
+    fireEvent.click(screen.getByTestId("chart-connect")); // SPY 07-17 → SPY 10-16
+    expect(draftState.add).not.toHaveBeenCalled();
+    expect(screen.getByTestId("chart").getAttribute("data-selected")).toBe(
+      "SPY|2026-07-17>SPY|2026-10-16",
+    );
+  });
+
   it("Level 0 sliders write the calendar / cross confidence as precisions", () => {
     messages();
     renderShell();

@@ -23,14 +23,15 @@ const ROW: MessageEdgeRow = {
 };
 const tOf = (_t: string, e: string) => (e === "2026-07-17" ? 0.25 : 0.5);
 
-function mount(row: MessageEdgeRow = ROW, layered = true) {
+function mount(row: MessageEdgeRow = ROW, layered = true, reverseExists = false) {
   const onChange = vi.fn();
   const onFlip = vi.fn();
   const onDelete = vi.fn();
+  const onAddReverse = vi.fn();
   render(
-    <RelationCard row={row} params={params} layered={layered} raw={false} tOf={tOf} onChange={onChange} onFlip={onFlip} onDelete={onDelete} onClose={vi.fn()} />,
+    <RelationCard row={row} params={params} layered={layered} raw={false} tOf={tOf} onChange={onChange} onFlip={onFlip} onDelete={onDelete} onAddReverse={onAddReverse} reverseExists={reverseExists} onClose={vi.fn()} />,
   );
-  return { onChange, onFlip, onDelete };
+  return { onChange, onFlip, onDelete, onAddReverse };
 }
 
 afterEach(cleanup);
@@ -77,5 +78,15 @@ describe("RelationCard", () => {
     expect(onFlip).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByTestId("relation-delete"));
     expect(onDelete).toHaveBeenCalledOnce();
+  });
+
+  it("+ reverse routes to the shell and reads ⇐ once the opposite arrow exists", () => {
+    const { onAddReverse } = mount();
+    expect(screen.getByTestId("relation-add-reverse").textContent).toBe("+ reverse");
+    fireEvent.click(screen.getByTestId("relation-add-reverse"));
+    expect(onAddReverse).toHaveBeenCalledOnce();
+    cleanup();
+    mount(ROW, true, true);
+    expect(screen.getByTestId("relation-add-reverse").textContent).toBe("⇐ reverse");
   });
 });

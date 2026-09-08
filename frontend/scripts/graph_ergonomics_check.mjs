@@ -152,7 +152,58 @@ try {
     await shot(page, "2-relation-card");
   });
 
-  // 4. connect gesture + Delete
+  // 4. connect gestures: Shift-drag, the Connect TOOL, a PLAIN drag; Delete
+  const nodeCentres = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="graph-canvas"] [data-node]')].map((g) => {
+        const c = g.querySelector("circle:last-of-type");
+        const r = c.getBoundingClientRect();
+        return { key: g.getAttribute("data-node"), x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      }),
+    );
+  const dragNode = async (a, b) => {
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move((a.x + b.x) / 2, (a.y + b.y) / 2, { steps: 6 });
+    await page.mouse.move(b.x, b.y, { steps: 6 });
+    await page.mouse.up();
+  };
+  const rowExists = async (a, b) => {
+    const [st, se] = a.key.split("|");
+    const [tt, te] = b.key.split("|");
+    return (await api("GET", "/graph/edges/messages")).edges.some(
+      (r) => r.sourceTicker === st && r.sourceExpiry === se && r.targetTicker === tt && r.targetExpiry === te,
+    );
+  };
+  await step("Connect TOOL drag adds a relation; a PLAIN drag adds another; Delete removes", async () => {
+    const nodes = await nodeCentres();
+    const spy = nodes.filter((n) => n.key.startsWith(`${ticker}|`));
+    const other = nodes.filter((n) => !n.key.startsWith(`${ticker}|`));
+    // tool: ticker's LAST expiry → other ticker's LAST expiry (no auto row there)
+    const a = spy[spy.length - 1];
+    const b = other[other.length - 1];
+    if (await rowExists(a, b)) throw new Error("fixture: the tool pair already exists");
+    await page.click('[data-testid="tool-connect"]');
+    await dragNode(a, b);
+    await waitFor(page, () => !!document.querySelector('[data-testid="relation-card"]'), "relation card after tool connect");
+    await sleep(900);
+    if (!(await rowExists(a, b))) throw new Error("the Connect tool did not stage a row");
+    await page.keyboard.press("Escape"); // exits the tool + clears the selection
+    await sleep(200);
+    // plain drag: other ticker's FIRST expiry → ticker's LAST expiry
+    const c = other[0];
+    const before = await rowExists(c, a);
+    await page.keyboard.press("Escape");
+    await dragNode(c, a);
+    await waitFor(page, () => !!document.querySelector('[data-testid="relation-card"]'), "relation card after plain drag");
+    await sleep(900);
+    if (!before && !(await rowExists(c, a))) throw new Error("a plain drag did not stage a row");
+    await shot(page, "3b-plain-drag");
+    await page.keyboard.press("Delete");
+    await sleep(900);
+    if (await rowExists(c, a)) throw new Error("Delete did not remove the plain-drag row");
+  });
+
   await step("Shift-drag node → node adds a relation; Delete removes it", async () => {
     const nodes = await page.evaluate(() =>
       [...document.querySelectorAll('[data-testid="graph-canvas"] [data-node]')].map((g) => {
@@ -205,11 +256,27 @@ try {
   });
 
   // 6. Focus, collapse, Relations tab, Apply
-  await step("Focus hides the panes; Esc restores; a ticker label collapses the pod", async () => {
+  await step("Focus hides the panes, re-fits the graph, keeps editing (floating card); Esc restores", async () => {
+    const before = await page.evaluate(() => document.querySelector('[data-testid="graph-canvas"] svg > g')?.getAttribute("transform") ?? "");
     await page.click('[data-testid="tool-focus"]');
-    await sleep(200);
+    await sleep(400);
     if (await page.$('[data-testid="policy-pane"]')) throw new Error("pane still visible in Focus");
+    const after = await page.evaluate(() => document.querySelector('[data-testid="graph-canvas"] svg > g')?.getAttribute("transform") ?? "");
+    if (after === before) throw new Error("the graph did not re-fit to the focused canvas");
+    // click an arrow: the card floats over the canvas
+    const hop = await page.evaluate(() => {
+      const g = document.querySelector("[data-calendar]");
+      const lines = g?.querySelectorAll("line") ?? [];
+      const hit = lines[lines.length - 1];
+      const r = hit.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    await page.mouse.click(hop.x, hop.y);
+    await waitFor(page, () => !!document.querySelector('[data-testid="canvas-overlay"] [data-testid="relation-card"]'), "floating relation card");
     await shot(page, "6-focus");
+    await page.keyboard.press("Escape"); // closes the card
+    await sleep(200);
+    if (await page.$('[data-testid="canvas-overlay"]')) throw new Error("Esc did not close the floating card");
     await page.keyboard.press("Escape");
     await sleep(200);
     if (!(await page.$('[data-testid="policy-pane"]'))) throw new Error("pane did not come back");

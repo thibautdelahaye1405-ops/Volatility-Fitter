@@ -1039,7 +1039,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-07 (resume here)
+## STATUS — updated 2026-09-08 (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1122,6 +1122,53 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-08a) — GRAPH ERGONOMICS FOLLOW-UP: FOCUS THAT RE-FITS AND STILL EDITS, PLAIN-DRAG CONNECT, "+ REVERSE"
+
+User (first use of the rebuilt lens): "(1) the expand button is not always
+visible (hidden by a message); (2) when the pane is expanded we can't edit an
+arrow; (3) the connect tool does not seem to work (I can't manage to drag a
+node onto another); (4) an arrow is unidirectional, correct? Then can you
+create another arrow in the opposite direction?" — plus, from the screenshot,
+Focus kept the pre-focus framing (a tiny graph in a huge canvas).
+
+- **Toolbar always on top** — the canvas toolbar cluster moved above the hover
+  readouts (z-20); the node / bundle / arrow readouts now FLIP to the left of
+  their anchor near the right edge (`anchorStyle`, 60 px toolbar clearance)
+  and hide during a connect gesture, so the Focus / Connect / collapse
+  buttons are never covered.
+- **Focus re-fits and keeps editing** — the framing re-fits on every
+  container resize (Focus, window); in Focus a selected arrow / pair floats
+  its card over the canvas (`CanvasCard.overlay` → `RelationSection`, the
+  same component the Inspector renders); Esc closes the card first, then
+  leaves Focus; "All relations" from the floating pair card leaves Focus and
+  opens the Relations tab.
+- **Connect by a plain drag** — a press on a node that moves past 6 px
+  becomes the connect gesture (nodes are not movable, so a drag can only
+  mean "connect"); the Connect tool and Shift still start it at once; a press
+  without movement stays a click (toggle / select). Connecting an arrow that
+  already exists SELECTS it (never overwrites β / σ); a freshly selected
+  cross relation auto-expands its bundle so the arrow is visible; the click
+  that follows a cross-node gesture no longer swallows the NEXT node click
+  (the swallow flag is cleared on the svg's ancestor click).
+- **"+ reverse"** on the relation card — an arrow is ONE factor, informer →
+  receiver; under reciprocal semantics the reverse is already implied (the
+  ⇐ readout). The button adds the EXPLICIT opposite arrow as its own factor
+  (flipped identities 1/β, p·β²) and selects it; once it exists the button
+  reads "⇐ reverse". Caveat in the tooltip + guide: two directed arcs facing
+  each other form a directed cycle the Layered solve rejects (preflight
+  blocks it). Shell actions moved to `state/useRelationActions.ts`
+  (connect / + reverse / flip / delete); pods + the rubber band to
+  `GraphSceneExtras.tsx`; the readouts host to `CanvasReadouts`.
+- Locks: `GraphNetworkChart.gestures.test.tsx` (plain drag + threshold,
+  re-fit on resize, bundle auto-expand, readout flip), shell tests (Focus
+  floating card + Esc order, + reverse, connect-existing selects),
+  RelationCard (+ reverse states); help guide / tips / what's new updated
+  ("drag node → node — plain, Connect tool or Shift"). Live check
+  `scripts/graph_ergonomics_check.mjs` gains the tool-drag, the plain drag
+  and the Focus floating-card steps.
+- Rider: a plain drag now means "connect" everywhere in the message family;
+  if node dragging (moving pods) is ever wanted, it needs a modifier.
 
 ### 🧭 SESSION WRAP (2026-09-07f) — GRAPH ERGONOMICS ARC E0–E6 SHIPPED: LAYERED BY DEFAULT, SLIDERS, ARROWS YOU EDIT ON THE CANVAS
 

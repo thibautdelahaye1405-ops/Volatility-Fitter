@@ -10,7 +10,11 @@
 //   amplitude   β ATM slider (mark at 1); handles are LINKED by default (one
 //               slider drives all three), unlock for β skew / β curvature
 //   semantics   Layered only (reciprocal ⇄ / directed →; auto = class default)
-//   footer      the implied reverse (1/β, σ/|β|) and Delete
+//   footer      the implied reverse (1/β, σ/|β|), "+ reverse" (an EXPLICIT
+//               opposite arrow — only meaningful for a directed relation;
+//               under reciprocal semantics the reverse is already implied,
+//               and two directed arcs facing each other form a directed
+//               cycle the layered solve rejects) and Delete
 // Every change goes straight to the draft (the shell's useRelationDraft);
 // nothing here persists on its own.
 import { useState } from "react";
@@ -39,6 +43,10 @@ interface RelationCardProps {
   onChange: (patch: Partial<MessageEdgeRow>) => void;
   onFlip: () => void;
   onDelete: () => void;
+  /** Create (or select) the explicit opposite arrow. */
+  onAddReverse?: () => void;
+  /** The opposite arrow already exists in the draft. */
+  reverseExists?: boolean;
   onClose: () => void;
 }
 
@@ -74,6 +82,8 @@ export default function RelationCard({
   onChange,
   onFlip,
   onDelete,
+  onAddReverse,
+  reverseExists = false,
   onClose,
 }: RelationCardProps) {
   const [linked, setLinked] = useState(
@@ -221,12 +231,28 @@ export default function RelationCard({
       </div>
 
       <div className="mt-2 flex items-center justify-between gap-2 border-t border-slate-800 pt-2">
-        <span className="font-mono text-[9px] text-slate-600" title="Implied reverse identities of this ONE-factor relation: amplitude 1/β, relationship uncertainty σ/|β| (spec §7.6/§8.3)">
+        <span className="font-mono text-[9px] text-slate-600" title="Implied reverse identities of this ONE-factor relation: amplitude 1/β, relationship uncertainty σ/|β| (spec §7.6/§8.3). One arrow is one factor; with reciprocal semantics information already flows both ways at these implied values.">
           ⇐ β {reverseBeta(row.betaAtmVol).toFixed(2)} · σ {fmtSigmaPts(reversePrecision(shownPrecision, row.betaAtmVol))} pt
         </span>
-        <button onClick={onDelete} title="Remove this relation (Delete)" className={smallBtn + " hover:border-rose-500/50 hover:text-rose-300"} data-testid="relation-delete">
-          Delete
-        </button>
+        <span className="flex items-center gap-1">
+          {onAddReverse !== undefined && (
+            <button
+              onClick={onAddReverse}
+              title={
+                reverseExists
+                  ? "The opposite arrow already exists — select it"
+                  : "Add an EXPLICIT opposite arrow (receiver → informer) as its own factor. Meaningful for a directed relation; under reciprocal semantics the reverse is already implied (⇐), and two directed arcs facing each other form a directed cycle the Layered solve rejects (preflight blocks it)."
+              }
+              className={smallBtn}
+              data-testid="relation-add-reverse"
+            >
+              {reverseExists ? "⇐ reverse" : "+ reverse"}
+            </button>
+          )}
+          <button onClick={onDelete} title="Remove this relation (Delete)" className={smallBtn + " hover:border-rose-500/50 hover:text-rose-300"} data-testid="relation-delete">
+            Delete
+          </button>
+        </span>
       </div>
     </div>
   );

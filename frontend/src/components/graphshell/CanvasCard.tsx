@@ -41,6 +41,8 @@ interface CanvasCardProps {
   onToggleFocus?: () => void;
   /** Message family: the legend explains the arrow encodings. */
   editable?: boolean;
+  /** Floated over the canvas (Focus mode: the relation card). */
+  overlay?: React.ReactNode;
 }
 
 export default function CanvasCard({
@@ -62,6 +64,7 @@ export default function CanvasCard({
   focused,
   onToggleFocus,
   editable = false,
+  overlay,
 }: CanvasCardProps) {
   const [dropHalo, setDropHalo] = useState(false);
   const onDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -97,7 +100,16 @@ export default function CanvasCard({
         <h2 className="text-sm font-semibold text-slate-100">Smile universe</h2>
       </div>
 
-      <div className="min-h-0 flex-1" data-chart-card="">
+      <div className="relative min-h-0 flex-1" data-chart-card="">
+        {overlay !== undefined && overlay !== null && (
+          <div
+            className="absolute right-16 top-3 z-20 max-h-[85%] w-80 overflow-y-auto rounded-xl border border-slate-700 bg-surface-900/95 p-3 shadow-xl shadow-black/40 backdrop-blur"
+            data-testid="canvas-overlay"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {overlay}
+          </div>
+        )}
         {loading ? (
           <div className="flex h-full items-center justify-center text-xs text-slate-500">
             Fitting baseline nodes… (first load can take a second)
@@ -134,7 +146,7 @@ export default function CanvasCard({
           {manual
             ? "Click to pulse/unpulse · click an arrow to edit the relation · double-click to open smile · drop a node from the Nodes pane to pulse it"
             : editable
-              ? "Click a node to inspect · click an arrow to edit it · Connect tool or Shift-drag node → node adds a relation · click a ticker label to collapse its pod"
+              ? "Click a node to inspect · click an arrow to edit it · drag node → node adds a relation · click a ticker label to collapse its pod · Focus gives the graph the whole lens"
               : "Click a node or edge to inspect · double-click to open smile · drag to pan, wheel to zoom · drop a node from the Nodes pane to light it"}
         </span>
         {/* The post-Run reveal is an INFLUENCE visualization (real BFS hops

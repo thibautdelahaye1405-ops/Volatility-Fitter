@@ -6,25 +6,26 @@
 // informer → receiver, thickness = confidence, colour = β (GraphEdgeLayer).
 // Gestures (handlers optional — absent = read-only): click an arrow / hop
 // selects the relation, click a bundle expands it + opens the pair card,
-// Connect tool or Shift-drag node → node adds a relation, a ticker label
-// collapses its pod, Focus hides the side panes. Node gestures are unchanged
-// (click toggles / pulses, double-click drills in, background drag pans,
-// wheel zooms). Solve cinematics: the reveal by REAL BFS hop + attribution
-// particles — honest staging, never decoration.
+// DRAG node → node adds a relation (a plain drag past a few px, the Connect
+// tool, or Shift — nodes are not movable, so a drag can only mean "connect"),
+// a ticker label collapses its pod, Focus hides the side panes. Node clicks
+// still toggle / pulse, double-click drills in, background drag pans, wheel
+// zooms; the framing re-fits when the container resizes (Focus). Solve
+// cinematics: the reveal by REAL BFS hop + attribution particles — honest
+// staging, never decoration.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GraphNodeBase, GraphSolveNode } from "../state/useGraph";
-import { nodeKey } from "../state/useGraph";
 import type { ParticleSpec } from "../state/useAttributionParticles";
 import { computeGraphLayout } from "../lib/graphLayout";
 import type { CalendarEdge, GraphLayout, LayoutEdgeIn } from "../lib/graphLayout";
 import { aggregateLit, aggregateResults, collapseUniverse, isCollapsedKey } from "../lib/graphCollapse";
-import { arrowHeadPoints } from "../lib/edgeStyle";
 import type { NodeRef } from "../lib/relationRows";
 import GraphCanvasToolbar from "./GraphCanvasToolbar";
 import GraphEdgeLayer, { calendarKeys, type RelationHover } from "./GraphEdgeLayer";
 import GraphNodeLayer from "./GraphNodeLayer";
+import { ConnectBand, GraphPodLayer } from "./GraphSceneExtras";
 import GraphWaveOverlay from "./GraphWaveOverlay";
-import { BundleTooltip, NodeTooltip, RelationTooltip } from "./GraphNetworkChart.tooltips";
+import { CanvasReadouts } from "./GraphNetworkChart.tooltips";
 import {
   WavePulseStyle,
   buildAdjacency,
@@ -73,6 +74,9 @@ interface ConnectState {
   y: number;
 }
 
+/** A plain node press becomes a connect gesture past this many screen px. */
+const DRAG_THRESHOLD_PX = 6;
+
 export default function GraphNetworkChart({
   nodes,
   edges,
@@ -104,6 +108,8 @@ export default function GraphNetworkChart({
   const fittedRef = useRef<GraphLayout | null>(null);
   /** A just-finished connect gesture must not toggle the node under it. */
   const suppressClickRef = useRef(false);
+  /** A plain node press waiting to become a connect gesture (screen coords). */
+  const pendingRef = useRef<{ key: string; sx: number; sy: number } | null>(null);
 
   // Collapsed-pod universe → layout; results / lit aggregated per pod.
   const cu = useMemo(() => collapseUniverse(nodes, edges, collapsed), [nodes, edges, collapsed]);
@@ -128,12 +134,25 @@ export default function GraphNetworkChart({
     return () => ro.disconnect();
   }, []);
 
-  // Initial fit: once per layout identity, as soon as the size is known.
+  // Fit on a new layout AND on a container resize (Focus / window changes):
+  // the framing follows the space it is given.
   useEffect(() => {
-    if (size === null || fittedRef.current === layout) return;
+    if (size === null) return;
     fittedRef.current = layout;
     setTransform(fitTransform(size, layout));
   }, [size, layout]);
+
+  // A freshly selected cross relation lives inside a bundle: expand it so
+  // the arrow is visible (a connect gesture lands here too).
+  useEffect(() => {
+    if (selectedRelationKey === null) return;
+    const [src = "", tgt = ""] = selectedRelationKey.split(">");
+    const a = src.split("|")[0] ?? "";
+    const b = tgt.split("|")[0] ?? "";
+    if (a === "" || b === "" || a === b) return;
+    const key = a < b ? `${a}→${b}` : `${b}→${a}`;
+    setExpanded((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  }, [selectedRelationKey]);
 
   // Wheel zoom toward the cursor (native non-passive listener).
   useEffect(() => {
@@ -178,8 +197,6 @@ export default function GraphNetworkChart({
   const focus = useMemo(() => focusOf(hoverKey, adj, nodeBundles), [hoverKey, adj, nodeBundles]);
   const [hovTicker = "", hovExpiry = ""] = hoverKey?.split("|") ?? [];
 
-  const hoverNode = hoverKey !== null ? cu.nodes.find((n) => nodeKey(n.ticker, n.expiry) === hoverKey) : undefined;
-  const hoverPos = hoverKey !== null ? layout.nodePos.get(hoverKey) : undefined;
 
   /* ------------------------- edge click routing ------------------------- */
   const onCalendarClick = useCallback(
@@ -223,24 +240,39 @@ export default function GraphNetworkChart({
       setConnecting({ ...connecting, x: p.x, y: p.y });
       return;
     }
+    const pending = pendingRef.current;
+    if (pending !== null) {
+      // A plain press on a node turns into a connect gesture once it moves.
+      if (Math.hypot(e.clientX - pending.sx, e.clientY - pending.sy) >= DRAG_THRESHOLD_PX) {
+        pendingRef.current = null;
+        const p = scenePoint(e);
+        setConnecting({ fromKey: pending.key, x: p.x, y: p.y });
+      }
+      return;
+    }
     const d = dragRef.current;
     if (d === null) return;
     setTransform((prev) => ({ k: prev.k, tx: d.tx + (e.clientX - d.sx), ty: d.ty + (e.clientY - d.sy) }));
   };
   const end = () => {
     dragRef.current = null;
+    pendingRef.current = null;
     setDragging(false);
     if (connecting !== null) setConnecting(null); // released off a node: cancel
   };
   const onNodeMouseDown = (key: string, e: React.MouseEvent) => {
     e.stopPropagation(); // never start a background pan from a node
-    if (onConnect === undefined || isCollapsedKey(key)) return;
-    if (!(connectTool || e.shiftKey)) return;
-    e.preventDefault();
-    const p = scenePoint(e);
-    setConnecting({ fromKey: key, x: p.x, y: p.y });
+    if (e.button !== 0 || onConnect === undefined || isCollapsedKey(key)) return;
+    e.preventDefault(); // no text selection while dragging
+    if (connectTool || e.shiftKey) {
+      const p = scenePoint(e);
+      setConnecting({ fromKey: key, x: p.x, y: p.y });
+      return;
+    }
+    pendingRef.current = { key, sx: e.clientX, sy: e.clientY };
   };
   const onNodeMouseUp = (key: string, e: React.MouseEvent) => {
+    pendingRef.current = null; // a press without movement stays a click
     if (connecting === null) return;
     e.stopPropagation();
     const from = connecting.fromKey;
@@ -279,6 +311,11 @@ export default function GraphNetworkChart({
         onMouseMove={move}
         onMouseUp={end}
         onMouseLeave={end}
+        // The click that follows a cross-node gesture lands on the common
+        // ancestor (here) — clear the swallow flag so the NEXT node click counts.
+        onClick={() => {
+          suppressClickRef.current = false;
+        }}
       >
         <defs>{wave !== undefined && <WavePulseStyle />}</defs>
         <g transform={`translate(${tx} ${ty}) scale(${k})`}>
@@ -302,25 +339,7 @@ export default function GraphNetworkChart({
             onCalendarClick={onCalendarClick}
           />
 
-          {/* Pods: faint enclosing circle + ticker label (click = collapse) */}
-          {layout.pods.map((pod) => (
-            <g key={pod.ticker} opacity={focus === null || focus.tickers.has(pod.ticker) ? 1 : 0.15}>
-              <circle cx={pod.cx} cy={pod.cy} r={pod.radius} fill="none" stroke="rgb(51 65 85)" />
-              <text
-                x={pod.cx}
-                y={pod.cy - pod.radius - 8}
-                textAnchor="middle"
-                className="cursor-pointer fill-slate-300 text-[11px] font-semibold tracking-wide hover:fill-slate-100"
-                data-pod={pod.ticker}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={() => togglePod(pod.ticker)}
-              >
-                {pod.ticker}
-                {collapsed.has(pod.ticker) ? " ▸" : ""}
-                <title>{collapsed.has(pod.ticker) ? "Expand this ticker's expiries" : "Collapse this ticker to one node"}</title>
-              </text>
-            </g>
-          ))}
+          <GraphPodLayer layout={layout} focus={focus} collapsed={collapsed} onTogglePod={togglePod} />
 
           <GraphNodeLayer
             nodes={cu.nodes}
@@ -340,18 +359,8 @@ export default function GraphNetworkChart({
             onNodeMouseUp={onNodeMouseUp}
           />
 
-          {/* Connect rubber band: source node → pointer, with a head */}
           {connecting !== null && connectFromPos !== undefined && (
-            <g pointerEvents="none" data-testid="connect-band">
-              <line
-                x1={connectFromPos.x} y1={connectFromPos.y} x2={connecting.x} y2={connecting.y}
-                stroke="var(--color-accent-400)" strokeWidth={2} strokeDasharray="5 4" opacity={0.9}
-              />
-              <polygon
-                points={arrowHeadPoints(connectFromPos.x, connectFromPos.y, connecting.x, connecting.y)}
-                fill="var(--color-accent-400)"
-              />
-            </g>
+            <ConnectBand from={connectFromPos} to={connecting} />
           )}
 
           {particles !== undefined && particles.length > 0 && (
@@ -373,27 +382,18 @@ export default function GraphNetworkChart({
         onToggleFocus={onToggleFocus}
       />
 
-      {hoverNode && hoverPos && (
-        <NodeTooltip
-          node={hoverNode}
-          result={dispResults?.[hoverKey ?? ""]}
-          pos={hoverPos}
-          t={transform}
-          maxAbsShift={maxAbsShift}
-          memberCount={cu.members.get(hoverKey ?? "")?.length ?? 0}
-        />
-      )}
-      {hoverBundle && hoverRelation === null && <BundleTooltip geo={hoverBundle} t={transform} />}
-      {hoverRelation && (
-        <RelationTooltip
-          label={hoverRelation.label}
-          beta={hoverRelation.beta}
-          precision={hoverRelation.precision}
-          x={hoverRelation.x}
-          y={hoverRelation.y}
-          t={transform}
-        />
-      )}
+      <CanvasReadouts
+        hoverKey={connecting === null ? hoverKey : null}
+        nodes={cu.nodes}
+        layout={layout}
+        results={dispResults}
+        members={cu.members}
+        hoverBundle={hoverBundle}
+        hoverRelation={hoverRelation}
+        t={transform}
+        bounds={size}
+        maxAbsShift={maxAbsShift}
+      />
     </div>
   );
 }

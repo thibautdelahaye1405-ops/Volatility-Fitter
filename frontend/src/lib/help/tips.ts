@@ -172,8 +172,8 @@ export const TIPS: Tip[] = [
   },
   {
     id: "graph-connect-tool",
-    title: "Draw a relation with the Connect tool or Shift-drag",
-    body: "The canvas toolbar's Connect tool turns the next node-to-node drag into a new relation, informer → receiver; holding Shift while dragging does the same without switching tools. The new arrow lands selected in the relation card.",
+    title: "Draw a relation by dragging node to node",
+    body: "Drag from the informer node to the receiver node and release: a plain drag past a few pixels draws a new relation (the toolbar's Connect tool and Shift-drag do the same, and an arrow that already exists is simply selected). The new arrow lands selected in the relation card.",
     scope: "graph", level: "basic",
     action: { command: "lens.graph", label: "Go to the Graph lens" },
   },

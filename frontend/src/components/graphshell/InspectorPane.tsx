@@ -18,6 +18,65 @@ import type { ExtrapolateBody, ExtrapolateNode } from "../../state/useGraphExtra
 import type { MessageEdgeRow } from "../../state/useMessageEdges";
 import type { GraphEdgeSelection } from "../GraphNetworkChart";
 
+/** The relation / pair part of the inspector — also floated over the canvas
+ *  in Focus mode (user report 2026-09-08: no editing with the pane hidden). */
+export interface RelationSectionProps {
+  selectedEdge: GraphEdgeSelection | null;
+  relation: MessageEdgeRow | null;
+  msgRows: MessageEdgeRow[];
+  allNodes: ExtrapolateNode[] | null;
+  params: SolverParams;
+  messages: boolean;
+  layered: boolean;
+  raw: boolean;
+  tOf: (ticker: string, expiry: string) => number | undefined;
+  onRelationChange: (patch: Partial<MessageEdgeRow>) => void;
+  onRelationFlip: () => void;
+  onRelationDelete: () => void;
+  onAddReverse: () => void;
+  onSelectRelation: (key: string) => void;
+  onCloseEdge: () => void;
+  onEditRelations: () => void;
+}
+
+export function RelationSection(p: RelationSectionProps) {
+  if (p.selectedEdge === null) return null;
+  if (p.selectedEdge.kind === "relation") {
+    if (p.relation === null) return null;
+    return (
+      <RelationCard
+        row={p.relation}
+        params={p.params}
+        layered={p.layered}
+        raw={p.raw}
+        tOf={p.tOf}
+        onChange={p.onRelationChange}
+        onFlip={p.onRelationFlip}
+        onDelete={p.onRelationDelete}
+        onAddReverse={p.onAddReverse}
+        reverseExists={p.msgRows.some(
+          (r) =>
+            r.sourceTicker === p.relation?.targetTicker && r.sourceExpiry === p.relation?.targetExpiry &&
+            r.targetTicker === p.relation?.sourceTicker && r.targetExpiry === p.relation?.sourceExpiry,
+        )}
+        onClose={p.onCloseEdge}
+      />
+    );
+  }
+  return (
+    <EdgeInspectorCard
+      edge={p.selectedEdge}
+      rows={p.msgRows}
+      nodes={p.allNodes}
+      params={p.params}
+      messages={p.messages}
+      onClose={p.onCloseEdge}
+      onEditRelations={p.onEditRelations}
+      onSelectRelation={p.onSelectRelation}
+    />
+  );
+}
+
 interface InspectorPaneProps {
   selected: { ticker: string; expiry: string } | null;
   base: GraphNodeBase | null;
@@ -26,22 +85,11 @@ interface InspectorPaneProps {
   showAttribution: boolean;
   manual: boolean;
   messages: boolean;
-  layered: boolean;
-  raw: boolean;
   msgRows: MessageEdgeRow[];
   allNodes: ExtrapolateNode[] | null;
   params: SolverParams;
-  /** A canvas edge click / Relations row, or null. */
-  selectedEdge: GraphEdgeSelection | null;
-  /** The selected relation's row (kind "relation"), if it still exists. */
-  relation: MessageEdgeRow | null;
-  tOf: (ticker: string, expiry: string) => number | undefined;
-  onRelationChange: (patch: Partial<MessageEdgeRow>) => void;
-  onRelationFlip: () => void;
-  onRelationDelete: () => void;
-  onSelectRelation: (key: string) => void;
-  onCloseEdge: () => void;
-  onEditRelations: () => void;
+  /** The relation / pair card (a canvas edge click or a Relations row). */
+  relationProps: RelationSectionProps;
   onClose: () => void;
   onOpenSmile: (ticker: string, expiry: string) => void;
 }
@@ -64,61 +112,28 @@ export default function InspectorPane({
   showAttribution,
   manual,
   messages,
-  layered,
-  raw,
   msgRows,
   allNodes,
   params,
-  selectedEdge,
-  relation,
-  tOf,
-  onRelationChange,
-  onRelationFlip,
-  onRelationDelete,
-  onSelectRelation,
-  onCloseEdge,
-  onEditRelations,
+  relationProps,
   onClose,
   onOpenSmile,
 }: InspectorPaneProps) {
   const lit = post?.lit ?? base?.lit;
+  const selectedEdge = relationProps.selectedEdge;
   return (
     <aside className="flex w-80 shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30" data-testid="inspector-pane">
       <h3 className="mb-1 text-sm font-semibold text-slate-100">Inspector</h3>
 
       {/* Relation (slider card) or pair (row list) — above the node facts. */}
-      {selectedEdge !== null && selectedEdge.kind === "relation" && relation !== null && (
-        <RelationCard
-          row={relation}
-          params={params}
-          layered={layered}
-          raw={raw}
-          tOf={tOf}
-          onChange={onRelationChange}
-          onFlip={onRelationFlip}
-          onDelete={onRelationDelete}
-          onClose={onCloseEdge}
-        />
-      )}
-      {selectedEdge !== null && selectedEdge.kind !== "relation" && (
-        <EdgeInspectorCard
-          edge={selectedEdge}
-          rows={msgRows}
-          nodes={allNodes}
-          params={params}
-          messages={messages}
-          onClose={onCloseEdge}
-          onEditRelations={onEditRelations}
-          onSelectRelation={onSelectRelation}
-        />
-      )}
+      <RelationSection {...relationProps} />
 
       {selected === null && selectedEdge !== null ? null : selected === null ? (
         <p className="mt-1 text-[11px] text-slate-500">
           {manual
             ? "What-if: canvas clicks add/remove pulses — select a row in Diagnostics to inspect a node."
             : messages
-              ? "Click a node to inspect it, an arrow to edit the relation, or drag node → node with the Connect tool to add one."
+              ? "Click a node to inspect it, an arrow to edit the relation, or drag node → node to add one."
               : "Click a node on the canvas — or a row in Diagnostics — to inspect it."}
         </p>
       ) : (

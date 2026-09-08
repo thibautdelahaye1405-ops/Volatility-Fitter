@@ -37,7 +37,7 @@ export default function GraphCanvasToolbar({
   onToggleFocus,
 }: GraphCanvasToolbarProps) {
   return (
-    <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
+    <div className="absolute right-3 top-3 z-20 flex flex-col items-end gap-2">
       <div className="flex flex-col overflow-hidden rounded-md border border-slate-700 bg-surface-800">
         <button onClick={onZoomIn} title="Zoom in" className={btn + " text-sm leading-none"}>+</button>
         <button onClick={onZoomOut} title="Zoom out" className={btn + " text-sm leading-none"}>−</button>

@@ -15,10 +15,10 @@ import type { GraphEdgeSelection } from "../components/GraphNetworkChart";
 import CanvasCard from "../components/graphshell/CanvasCard";
 import GraphDrawer, { type DrawerTab } from "../components/graphshell/GraphDrawer";
 import GraphTopBar, { type ObservationSource } from "../components/graphshell/GraphTopBar";
-import InspectorPane from "../components/graphshell/InspectorPane";
+import InspectorPane, { RelationSection } from "../components/graphshell/InspectorPane";
 import PolicyPane from "../components/graphshell/PolicyPane";
 import OfflineCard from "../components/shell/OfflineCard";
-import { newRelationRow, relationKey, rowsToLayoutEdges, type NodeRef } from "../lib/relationRows";
+import { rowsToLayoutEdges, type NodeRef } from "../lib/relationRows";
 import { useGraph, type GraphNodeBase } from "../state/useGraph";
 import { useGraphChartData } from "../state/useGraphChartData";
 import { useGraphCinematics } from "../state/useGraphCinematics";
@@ -31,6 +31,8 @@ import { useLooComparison } from "../state/useLooComparison";
 import { activateMessageConfig, configDirty, revertMessageConfig } from "../state/useMessageConfig";
 import { useNodeDrop } from "../state/useNodeDrop";
 import { usePreflight } from "../state/usePreflight";
+import { useRelationActions } from "../state/useRelationActions";
+import type { MessageEdgeRow } from "../state/useMessageEdges";
 import { useRelationDraft } from "../state/useRelationDraft";
 import { useSmileSession } from "../state/smileSession";
 import { useOptionalWorkbench } from "../state/workbench";
@@ -145,19 +147,24 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     const [ticker = "", expiry = ""] = key.split("|");
     if (ticker !== "" && expiry !== "") selectNode(ticker, expiry);
   };
-  /** Connect gesture: informer → receiver becomes a draft row, then selected. */
-  const onConnect = useCallback(
-    (sourceRef: NodeRef, target: NodeRef) => {
-      const row = newRelationRow(sourceRef, target, {
-        calPrecision: graph.params.calPrecision,
-        crossPrecision: graph.params.crossPrecision,
-      });
-      if (row === null) return;
-      draft.add(row);
-      selectRelation(relationKey(row));
-    },
-    [draft, graph.params.calPrecision, graph.params.crossPrecision, selectRelation],
+  // Connect / + reverse / flip / delete of the selected relation.
+  const scales = useMemo(
+    () => ({ calPrecision: graph.params.calPrecision, crossPrecision: graph.params.crossPrecision }),
+    [graph.params.calPrecision, graph.params.crossPrecision],
   );
+  const { onConnect, onAddReverse, onFlipSelected, onDeleteSelected } = useRelationActions({
+    draft, scales, selectedKey: selectedRelationKey, selectedRow, selectRelation, setSelectedEdge,
+  });
+  /** Props of the relation / pair card — the inspector AND the Focus overlay. */
+  const relationProps = {
+    selectedEdge, relation: selectedRow, msgRows, allNodes: extra.nodes, params: graph.params,
+    messages: messagesMode, layered, raw, tOf,
+    onRelationChange: (patch: Partial<MessageEdgeRow>) => {
+      if (selectedRelationKey !== null) draft.update(selectedRelationKey, patch);
+    },
+    onRelationFlip: onFlipSelected, onRelationDelete: onDeleteSelected, onAddReverse,
+    onSelectRelation: selectRelation, onCloseEdge: () => setSelectedEdge(null), onEditRelations: openRelations,
+  };
 
   // The effective run body (U3): the what-if ships typed pulses as
   // syntheticObservations on the production request (non-persisting).
@@ -221,11 +228,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   // Ctrl+Z / Ctrl+Y undo / redo the draft.
   useGraphHotkeys({
     enabled: messagesMode,
-    onDelete: useCallback(() => {
-      if (selectedRelationKey === null) return;
-      draft.remove(selectedRelationKey);
-      setSelectedEdge(null);
-    }, [draft, selectedRelationKey]),
+    onDelete: onDeleteSelected,
     onEscape: useCallback(() => {
       if (selectedEdge !== null) setSelectedEdge(null);
       else if (focused) setFocused(false);
@@ -314,6 +317,17 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           focused={focused}
           onToggleFocus={() => setFocused((v) => !v)}
           editable={messagesMode}
+          overlay={
+            focused && selectedEdge !== null ? (
+              <RelationSection
+                {...relationProps}
+                onEditRelations={() => {
+                  setFocused(false);
+                  openRelations();
+                }}
+              />
+            ) : undefined
+          }
         />
 
         {!focused && (
@@ -325,28 +339,10 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
             showAttribution={!manual && extra.nodes !== null}
             manual={manual}
             messages={messagesMode}
-            layered={layered}
-            raw={raw}
             msgRows={msgRows}
             allNodes={extra.nodes}
             params={graph.params}
-            selectedEdge={selectedEdge}
-            relation={selectedRow}
-            tOf={tOf}
-            onRelationChange={(patch) => selectedRelationKey !== null && draft.update(selectedRelationKey, patch)}
-            onRelationFlip={() => {
-              if (selectedRelationKey === null) return;
-              const nk = draft.flip(selectedRelationKey);
-              if (nk !== null) selectRelation(nk);
-            }}
-            onRelationDelete={() => {
-              if (selectedRelationKey === null) return;
-              draft.remove(selectedRelationKey);
-              setSelectedEdge(null);
-            }}
-            onSelectRelation={selectRelation}
-            onCloseEdge={() => setSelectedEdge(null)}
-            onEditRelations={openRelations}
+            relationProps={relationProps}
             onClose={closeInspector}
             onOpenSmile={openSmile}
           />
