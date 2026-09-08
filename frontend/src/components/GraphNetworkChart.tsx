@@ -13,15 +13,16 @@
 // zooms; the framing re-fits when the container resizes (Focus). Solve
 // cinematics: the reveal by REAL BFS hop + attribution particles — honest
 // staging, never decoration.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphNodeBase, GraphSolveNode } from "../state/useGraph";
 import type { ParticleSpec } from "../state/useAttributionParticles";
 import { computeGraphLayout } from "../lib/graphLayout";
-import type { CalendarEdge, GraphLayout, LayoutEdgeIn } from "../lib/graphLayout";
+import type { GraphLayout, LayoutEdgeIn } from "../lib/graphLayout";
 import { aggregateLit, aggregateResults, collapseUniverse, isCollapsedKey } from "../lib/graphCollapse";
 import type { NodeRef } from "../lib/relationRows";
 import GraphCanvasToolbar from "./GraphCanvasToolbar";
-import GraphEdgeLayer, { calendarKeys, type RelationHover } from "./GraphEdgeLayer";
+import GraphEdgeLayer, { type RelationHover } from "./GraphEdgeLayer";
+import { useEdgeClickRouting } from "./GraphNetworkChart.routing";
 import GraphNodeLayer from "./GraphNodeLayer";
 import { ConnectBand, GraphPodLayer } from "./GraphSceneExtras";
 import GraphWaveOverlay from "./GraphWaveOverlay";
@@ -57,6 +58,8 @@ interface GraphNetworkChartProps {
   onOpenSmile: (ticker: string, expiry: string) => void;
   /** Edge click: select a relation / pair for the inspector. */
   onEdgeClick?: (sel: GraphEdgeSelection) => void;
+  /** A bundle click COLLAPSED the pair (the shell drops that pair's card). */
+  onBundleCollapse?: (a: string, b: string) => void;
   /** The relation highlighted on the canvas (inspector selection). */
   selectedRelationKey?: string | null;
   /** Connect gesture landed: informer → receiver (E3). Absent = no tool. */
@@ -85,6 +88,7 @@ export default function GraphNetworkChart({
   onToggle,
   onOpenSmile,
   onEdgeClick,
+  onBundleCollapse,
   selectedRelationKey = null,
   onConnect,
   focused,
@@ -198,30 +202,9 @@ export default function GraphNetworkChart({
   const [hovTicker = "", hovExpiry = ""] = hoverKey?.split("|") ?? [];
 
 
-  /* ------------------------- edge click routing ------------------------- */
-  const onCalendarClick = useCallback(
-    (c: CalendarEdge) => {
-      if (onEdgeClick === undefined) return;
-      const keys = calendarKeys(c);
-      // One stored direction → the relation itself; both → the pair card.
-      if (c.toEarlier !== c.toLater)
-        onEdgeClick({ kind: "relation", key: c.toEarlier ? keys.toEarlier : keys.toLater });
-      else onEdgeClick({ kind: "calendar", ticker: c.ticker, aExpiry: c.fromExpiry, bExpiry: c.toExpiry });
-    },
-    [onEdgeClick],
-  );
-  const onBundleClick = useCallback(
-    (g: BundleGeo) => {
-      setExpanded((prev) => {
-        const next = new Set(prev);
-        if (next.has(g.key)) next.delete(g.key);
-        else next.add(g.key);
-        return next;
-      });
-      onEdgeClick?.({ kind: "cross", a: g.b.fromTicker, b: g.b.toTicker });
-    },
-    [onEdgeClick],
-  );
+  const { onCalendarClick, onBundleClick } = useEdgeClickRouting({
+    expanded, setExpanded, onEdgeClick, onBundleCollapse,
+  });
 
   /* --------------------------- pan + connect --------------------------- */
   const scenePoint = (e: React.MouseEvent) => {

@@ -40,6 +40,7 @@ const ROWS: MessageEdgeRow[] = [
 
 function mount(over: Partial<React.ComponentProps<typeof GraphNetworkChart>> = {}) {
   const onEdgeClick = vi.fn();
+  const onBundleCollapse = vi.fn();
   const onConnect = vi.fn();
   const onToggle = vi.fn();
   const onToggleFocus = vi.fn();
@@ -52,12 +53,13 @@ function mount(over: Partial<React.ComponentProps<typeof GraphNetworkChart>> = {
       onToggle={onToggle}
       onOpenSmile={vi.fn()}
       onEdgeClick={onEdgeClick}
+      onBundleCollapse={onBundleCollapse}
       onConnect={onConnect}
       onToggleFocus={onToggleFocus}
       {...over}
     />,
   );
-  return { ...utils, onEdgeClick, onConnect, onToggle, onToggleFocus };
+  return { ...utils, onEdgeClick, onBundleCollapse, onConnect, onToggle, onToggleFocus };
 }
 
 describe("GraphNetworkChart (E3)", () => {
@@ -73,7 +75,7 @@ describe("GraphNetworkChart (E3)", () => {
   });
 
   it("a calendar hop click selects its ONE relation; a bundle click expands the pair", () => {
-    const { container, onEdgeClick } = mount();
+    const { container, onEdgeClick, onBundleCollapse } = mount();
     const hop = container.querySelector(`[data-calendar="cal-SPY-${E1}-${E2}"]`) as SVGGElement;
     const hit = hop.querySelectorAll("line")[1] as SVGLineElement; // the transparent twin
     fireEvent.click(hit);
@@ -93,8 +95,12 @@ describe("GraphNetworkChart (E3)", () => {
     // A second bundle click collapses it AT ONCE, even with the pointer still on it.
     const twin = bundle.querySelectorAll("path")[1] as SVGPathElement;
     fireEvent.mouseEnter(twin);
+    const crossClicks = onEdgeClick.mock.calls.filter((c) => (c[0] as { kind: string }).kind === "cross").length;
     fireEvent.click(twin);
     expect(container.querySelectorAll("[data-relation]")).toHaveLength(0);
+    // …and the shell is told to drop the pair card (no second "cross" selection).
+    expect(onBundleCollapse).toHaveBeenCalledWith("AAPL", "SPY");
+    expect(onEdgeClick.mock.calls.filter((c) => (c[0] as { kind: string }).kind === "cross")).toHaveLength(crossClicks);
     // Hover alone never expands (the readout is the hover feedback).
     fireEvent.mouseLeave(twin);
     fireEvent.mouseEnter(twin);

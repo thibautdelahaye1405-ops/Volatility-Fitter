@@ -19,6 +19,26 @@ interface RelationActionsArgs {
   setSelectedEdge: (sel: GraphEdgeSelection | null) => void;
 }
 
+/** The selection after a bundle (ticker pair a, b) COLLAPSED: the pair's own
+ *  card and any relation between the two tickers are dropped; anything else
+ *  (a calendar relation, another pair) is kept. */
+export function dropPairSelection(
+  cur: GraphEdgeSelection | null,
+  a: string,
+  b: string,
+): GraphEdgeSelection | null {
+  if (cur === null) return null;
+  const pair = new Set([a, b]);
+  if (cur.kind === "cross") return pair.has(cur.a) && pair.has(cur.b) ? null : cur;
+  if (cur.kind === "relation") {
+    const [src = "", tgt = ""] = cur.key.split(">");
+    const s = src.split("|")[0] ?? "";
+    const t = tgt.split("|")[0] ?? "";
+    return s !== t && pair.has(s) && pair.has(t) ? null : cur;
+  }
+  return cur;
+}
+
 export interface RelationActions {
   onConnect: (source: NodeRef, target: NodeRef) => void;
   onAddReverse: () => void;

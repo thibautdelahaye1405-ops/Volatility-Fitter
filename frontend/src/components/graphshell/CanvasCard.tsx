@@ -32,6 +32,8 @@ interface CanvasCardProps {
   manual: boolean;
   /** Edge click (U4): select a relation for the inspector. */
   onEdgeClick?: (sel: GraphEdgeSelection) => void;
+  /** A bundle click collapsed the pair — the shell drops that pair's card. */
+  onBundleCollapse?: (a: string, b: string) => void;
   /** A node dropped onto the canvas (wave 3, C5). */
   onNodeDrop?: (node: DragNode) => void;
   /** E3: the relation highlighted on the canvas + the connect gesture. */
@@ -58,6 +60,7 @@ export default function CanvasCard({
   waveEpoch,
   manual,
   onEdgeClick,
+  onBundleCollapse,
   onNodeDrop,
   selectedRelationKey = null,
   onConnect,
@@ -130,6 +133,7 @@ export default function CanvasCard({
             onToggle={onToggle}
             onOpenSmile={onOpenSmile}
             onEdgeClick={onEdgeClick}
+            onBundleCollapse={onBundleCollapse}
             selectedRelationKey={selectedRelationKey}
             onConnect={onConnect}
             focused={focused}

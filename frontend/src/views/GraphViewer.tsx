@@ -31,7 +31,7 @@ import { useLooComparison } from "../state/useLooComparison";
 import { activateMessageConfig, configDirty, revertMessageConfig } from "../state/useMessageConfig";
 import { useNodeDrop } from "../state/useNodeDrop";
 import { usePreflight } from "../state/usePreflight";
-import { useRelationActions } from "../state/useRelationActions";
+import { dropPairSelection, useRelationActions } from "../state/useRelationActions";
 import type { MessageEdgeRow } from "../state/useMessageEdges";
 import { useRelationDraft } from "../state/useRelationDraft";
 import { useSmileSession } from "../state/smileSession";
@@ -312,6 +312,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           waveEpoch={cine.waveEpoch}
           manual={manual}
           onEdgeClick={setSelectedEdge}
+          onBundleCollapse={(a, b) => setSelectedEdge((cur) => dropPairSelection(cur, a, b))}
           onNodeDrop={onNodeDrop}
           selectedRelationKey={selectedRelationKey}
           onConnect={messagesMode ? onConnect : undefined}

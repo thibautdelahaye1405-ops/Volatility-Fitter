@@ -1187,6 +1187,12 @@ Focus kept the pre-focus framing (a tiny graph in a huge canvas).
   (P5 heritage) kept the individual arrows alive after the collapsing click
   until the pointer left the curve. Now one click expands, the next click
   collapses at once; hover shows the readout only (chart lock added).
+- **2026-09-08e — the collapsing click also drops the pair card**: a bundle
+  click reported the pair selection every time, so the inventory stayed
+  open. The chart now reports `onBundleCollapse(a, b)` on the collapsing
+  click and the shell drops that pair's card and any relation between the
+  two tickers (`dropPairSelection`; a calendar relation survives). Routing
+  moved to `GraphNetworkChart.routing.ts` (size policy).
 
 ### 🧭 SESSION WRAP (2026-09-07f) — GRAPH ERGONOMICS ARC E0–E6 SHIPPED: LAYERED BY DEFAULT, SLIDERS, ARROWS YOU EDIT ON THE CANVAS
 

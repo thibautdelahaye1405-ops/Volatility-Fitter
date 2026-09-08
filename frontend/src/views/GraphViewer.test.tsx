@@ -93,16 +93,20 @@ vi.mock("../state/useAttributionParticles", () => ({ useAttributionParticles: ()
 vi.mock("../components/GraphNetworkChart", () => ({
   default: ({
     onEdgeClick,
+    onBundleCollapse,
     onConnect,
     selectedRelationKey,
     onToggleFocus,
   }: {
     onEdgeClick?: (s: unknown) => void;
+    onBundleCollapse?: (a: string, b: string) => void;
     onConnect?: (a: { ticker: string; expiry: string }, b: { ticker: string; expiry: string }) => void;
     selectedRelationKey?: string | null;
     onToggleFocus?: () => void;
   }) => (
     <div data-testid="chart" data-selected={selectedRelationKey ?? ""}>
+      <button data-testid="chart-bundle" onClick={() => onEdgeClick?.({ kind: "cross", a: "AAPL", b: "SPY" })} />
+      <button data-testid="chart-bundle-collapse" onClick={() => onBundleCollapse?.("AAPL", "SPY")} />
       <button
         data-testid="chart-edge"
         onClick={() =>
@@ -698,6 +702,20 @@ describe("Graph shell (GRAPH ERGONOMICS ARC)", () => {
     expect(screen.getByTestId("chart").getAttribute("data-selected")).toBe(
       "SPY|2026-07-17>SPY|2026-10-16",
     );
+  });
+
+  it("collapsing a bundle drops its pair card and a relation inside it, keeps a calendar one", () => {
+    messages();
+    renderShell();
+    fireEvent.click(screen.getByTestId("chart-bundle"));
+    expect(screen.getByText(/Relation · AAPL ↔ SPY/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("chart-bundle-collapse"));
+    expect(screen.queryByText(/Relation · AAPL ↔ SPY/)).toBeNull();
+    // A calendar relation (same ticker) survives a cross-pair collapse.
+    fireEvent.click(screen.getByTestId("chart-relation"));
+    expect(screen.getByTestId("relation-card")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("chart-bundle-collapse"));
+    expect(screen.getByTestId("relation-card")).toBeTruthy();
   });
 
   it("connecting an existing arrow selects it instead of overwriting it", () => {
