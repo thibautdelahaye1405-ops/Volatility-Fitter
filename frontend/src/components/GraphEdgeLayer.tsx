@@ -12,6 +12,11 @@
 //             it at once (hover only shows the readout — user report
 //             2026-09-08: a hover-driven expansion kept the arrows alive
 //             after the collapsing click until the pointer left the curve);
+//             an expanded bundle bows further out (clear of its straight
+//             arrows) and every bundle carries a midpoint HANDLE painted
+//             above everything — the count when collapsed, "−" when
+//             expanded — so the bundle can always be clicked / unclicked
+//             even where the arrows' hit zones cover the curve;
 //   arrows    the individual cross relations of an expanded bundle, offset
 //             sideways when the mirror direction exists, selectable;
 //   calendar  one hop per adjacent expiry pair of a spine, heads on the
@@ -49,6 +54,8 @@ export interface RelationHover {
 export interface GraphEdgeLayerProps {
   layout: GraphLayout;
   bundleGeos: BundleGeo[];
+  /** The same bundles with the wider bow (used while expanded). */
+  bundleGeosWide: BundleGeo[];
   focus: FocusSet | null;
   hovTicker: string;
   hovExpiry: string;
@@ -89,6 +96,7 @@ const short = (ticker: string, expiry: string) => `${ticker} ${expiry.slice(5)}`
 export default function GraphEdgeLayer({
   layout,
   bundleGeos,
+  bundleGeosWide,
   focus,
   hovTicker,
   hovExpiry,
@@ -162,9 +170,10 @@ export default function GraphEdgeLayer({
   return (
     <>
       {/* Cross-ticker bundles: one Bézier per ticker pair */}
-      {bundleGeos.map((g) => {
+      {bundleGeos.map((g0, gi) => {
+        const isExpanded = expanded.has(g0.key);
+        const g = isExpanded ? (bundleGeosWide[gi] ?? g0) : g0;
         const hovered = hoverBundleKey === g.key;
-        const isExpanded = expanded.has(g.key);
         const dimmed = focus !== null && !focus.bundles.has(g.key);
         const color = betaColor(g.b.meanBeta);
         const w = bundleWidth(g.b.totalWeight);
@@ -291,6 +300,39 @@ export default function GraphEdgeLayer({
                 }}
               />
             )}
+          </g>
+        );
+      })}
+
+      {/* Bundle HANDLES — painted last, above every arrow hit zone: the one
+          spot that always expands / collapses the pair. */}
+      {bundleGeos.map((g0, gi) => {
+        const isExpanded = expanded.has(g0.key);
+        const g = isExpanded ? (bundleGeosWide[gi] ?? g0) : g0;
+        const dimmed = focus !== null && !focus.bundles.has(g.key);
+        const color = betaColor(g.b.meanBeta);
+        return (
+          <g
+            key={`h-${g.key}`}
+            opacity={dimmed ? 0.15 : 1}
+            data-bundle-handle={g.key}
+            className={interactive ? "cursor-pointer" : undefined}
+            onMouseEnter={() => onBundleEnter(g)}
+            onMouseLeave={onBundleLeave}
+            onClick={(e) => {
+              e.stopPropagation();
+              onBundleClick(g);
+            }}
+          >
+            <circle cx={g.mx} cy={g.my} r={9} fill="var(--color-surface-800)" stroke={color} strokeWidth={1.5} opacity={0.95} />
+            <text
+              x={g.mx} y={g.my} dy="0.34em" textAnchor="middle"
+              pointerEvents="none"
+              className="fill-slate-200 font-mono text-[8px] font-semibold"
+            >
+              {isExpanded ? "−" : g.b.count}
+            </text>
+            <title>{isExpanded ? "Collapse this pair back into one curve" : `Expand ${g.b.count} relation${g.b.count === 1 ? "" : "s"}`}</title>
           </g>
         );
       })}

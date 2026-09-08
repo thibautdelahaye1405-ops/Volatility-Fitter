@@ -319,6 +319,33 @@ try {
     await sleep(300);
   });
 
+  // 6b. the bundle HANDLE (2026-09-08): expands / collapses even when the
+  //     straight arrows' hit zones cover the curve.
+  await step("bundle handle expands and collapses the pair from above the arrows", async () => {
+    // Scoped to ONE pair: other bundles may already be expanded (a selected
+    // cross relation auto-expands its bundle in the earlier steps).
+    const key = await page.evaluate(() => document.querySelector("[data-bundle-handle]")?.getAttribute("data-bundle-handle") ?? "");
+    if (key === "") throw new Error("no bundle handle");
+    const sel = `[data-bundle-handle="${key}"]`;
+    const handleText = () => page.evaluate((s) => document.querySelector(s)?.querySelector("text")?.textContent ?? "", sel);
+    const [a, b] = key.split("→");
+    const wasExpanded = (await handleText()) === "−";
+    const clickHandle = async () => {
+      const c = await centre(page, sel);
+      await page.mouse.click(c.x, c.y);
+      await sleep(250);
+    };
+    if (wasExpanded) await clickHandle(); // start collapsed
+    await clickHandle();
+    if ((await handleText()) !== "−") throw new Error("the handle click did not expand the pair");
+    await waitFor(page, () => !!document.querySelector('[data-testid="pair-row"]'), "pair card");
+    await shot(page, "6b-bundle-handle");
+    await clickHandle(); // the handle moved with the wider bow — centre() re-reads it
+    if ((await handleText()) === "−") throw new Error("the handle click did not collapse the pair");
+    const cardStillOpen = await page.evaluate((t) => (document.body.textContent ?? "").includes(t), `Relation · ${a} ↔ ${b}`);
+    if (cardStillOpen) throw new Error("the pair card survived the collapse");
+  });
+
   await step("Relations tab lists the rows; Apply activates the draft", async () => {
     await page.click('[data-testid="open-relations"]');
     await waitFor(page, () => document.querySelectorAll("[data-relation-row]").length > 0, "relation rows");

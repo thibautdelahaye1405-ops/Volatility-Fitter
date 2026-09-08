@@ -107,6 +107,28 @@ describe("GraphNetworkChart (E3)", () => {
     expect(container.querySelectorAll("[data-relation]")).toHaveLength(0);
   });
 
+  it("a bundle's midpoint handle is painted above its arrows and always toggles the pair", () => {
+    const { container, onEdgeClick, onBundleCollapse } = mount();
+    const handle = container.querySelector('[data-bundle-handle="AAPL→SPY"]') as SVGGElement;
+    expect(handle.querySelector("text")?.textContent).toBe("1"); // the relation count
+    const collapsedPath = container.querySelector('[data-bundle="AAPL→SPY"] path')?.getAttribute("d");
+    fireEvent.click(handle);
+    expect(onEdgeClick).toHaveBeenLastCalledWith({ kind: "cross", a: "AAPL", b: "SPY" });
+    const arrows = container.querySelectorAll("[data-relation]");
+    expect(arrows).toHaveLength(1);
+    // Expanded: the curve bows further out, the handle reads "−" and sits AFTER
+    // every arrow in the scene (later siblings paint on top → always reachable).
+    const expandedPath = container.querySelector('[data-bundle="AAPL→SPY"] path')?.getAttribute("d");
+    expect(expandedPath).not.toBe(collapsedPath);
+    const h2 = container.querySelector('[data-bundle-handle="AAPL→SPY"]') as SVGGElement;
+    expect(h2.querySelector("text")?.textContent).toBe("−");
+    for (const a of arrows)
+      expect(a.compareDocumentPosition(h2) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(h2);
+    expect(onBundleCollapse).toHaveBeenCalledWith("AAPL", "SPY");
+    expect(container.querySelectorAll("[data-relation]")).toHaveLength(0);
+  });
+
   it("Shift-drag from a node to another reports informer → receiver and does not toggle", () => {
     const { container, onConnect, onToggle } = mount();
     const from = container.querySelector(`[data-node="SPY|${E1}"]`) as SVGGElement;

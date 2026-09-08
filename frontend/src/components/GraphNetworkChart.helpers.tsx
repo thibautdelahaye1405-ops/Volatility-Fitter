@@ -66,15 +66,22 @@ export function toScene(t: Transform, sx: number, sy: number): { x: number; y: n
   return { x: (sx - t.tx) / t.k, y: (sy - t.ty) / t.k };
 }
 
-/** Bundle geometry: control point offset 12% of the chord length along the
+/** Bow of a collapsed bundle: control point 12 % of the chord length off the
  *  perpendicular (fixed side, so the arc is stable across re-renders). */
-export function bundleGeometry(b: BundleEdge): BundleGeo {
+export const BUNDLE_BOW = 0.12;
+/** Bow of an EXPANDED bundle: the curve swings clear of the straight
+ *  node-to-node arrows it unpacked into, so it stays reachable
+ *  (user report 2026-09-08). */
+export const BUNDLE_BOW_EXPANDED = 0.3;
+
+/** Bundle geometry for a given bow (fraction of the chord length). */
+export function bundleGeometry(b: BundleEdge, bow: number = BUNDLE_BOW): BundleGeo {
   const dx = b.x2 - b.x1;
   const dy = b.y2 - b.y1;
-  // Perpendicular offset of 0.12·len along (-dy, dx)/len simplifies to
-  // (-0.12·dy, +0.12·dx) — no length needed.
-  const cx = (b.x1 + b.x2) / 2 - 0.12 * dy;
-  const cy = (b.y1 + b.y2) / 2 + 0.12 * dx;
+  // Perpendicular offset of bow·len along (-dy, dx)/len simplifies to
+  // (-bow·dy, +bow·dx) — no length needed.
+  const cx = (b.x1 + b.x2) / 2 - bow * dy;
+  const cy = (b.y1 + b.y2) / 2 + bow * dx;
   return {
     b,
     key: `${b.fromTicker}→${b.toTicker}`,

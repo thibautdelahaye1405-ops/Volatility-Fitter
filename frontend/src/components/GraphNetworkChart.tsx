@@ -28,6 +28,7 @@ import { ConnectBand, GraphPodLayer } from "./GraphSceneExtras";
 import GraphWaveOverlay from "./GraphWaveOverlay";
 import { CanvasReadouts } from "./GraphNetworkChart.tooltips";
 import {
+  BUNDLE_BOW_EXPANDED,
   WavePulseStyle,
   buildAdjacency,
   bundleGeometry,
@@ -196,7 +197,8 @@ export default function GraphNetworkChart({
     return { maxAbsShift: shift, maxSd: sd };
   }, [dispResults]);
 
-  const bundleGeos = useMemo(() => layout.bundles.map(bundleGeometry), [layout]);
+  const bundleGeos = useMemo(() => layout.bundles.map((b) => bundleGeometry(b)), [layout]);
+  const bundleGeosWide = useMemo(() => layout.bundles.map((b) => bundleGeometry(b, BUNDLE_BOW_EXPANDED)), [layout]);
   const { adj, nodeBundles } = useMemo(() => buildAdjacency(cu.edges, layout.calendar), [cu.edges, layout]);
   const focus = useMemo(() => focusOf(hoverKey, adj, nodeBundles), [hoverKey, adj, nodeBundles]);
   const [hovTicker = "", hovExpiry = ""] = hoverKey?.split("|") ?? [];
@@ -305,6 +307,7 @@ export default function GraphNetworkChart({
           <GraphEdgeLayer
             layout={layout}
             bundleGeos={bundleGeos}
+            bundleGeosWide={bundleGeosWide}
             focus={focus}
             hovTicker={hovTicker}
             hovExpiry={hovExpiry}

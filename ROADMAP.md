@@ -1193,6 +1193,13 @@ Focus kept the pre-focus framing (a tiny graph in a huge canvas).
   click and the shell drops that pair's card and any relation between the
   two tickers (`dropPairSelection`; a calendar relation survives). Routing
   moved to `GraphNetworkChart.routing.ts` (size policy).
+- **2026-09-08f — the curve can always be clicked**: an expanded bundle's
+  straight arrows (wide hit zones, painted later) could bury the curve. Now
+  every bundle carries a midpoint HANDLE painted above everything (the
+  relation count when collapsed, "−" when expanded) and an expanded bundle
+  bows further out (`BUNDLE_BOW_EXPANDED` 0.3 vs 0.12) clear of its arrows.
+  Locks: chart (handle after every arrow in the scene, toggles both ways)
+  + live step 6b (scoped to one pair).
 
 ### 🧭 SESSION WRAP (2026-09-07f) — GRAPH ERGONOMICS ARC E0–E6 SHIPPED: LAYERED BY DEFAULT, SLIDERS, ARROWS YOU EDIT ON THE CANVAS
 
