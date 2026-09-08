@@ -6,6 +6,17 @@ import type { WhatsNewEntry } from "./types";
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-09-08",
+    title: "Graph lens: first-use fixes — Focus that keeps editing, drag to connect, bundles that fold back, + reverse",
+    items: [
+      "**Focus** now re-fits the graph to the whole lens and keeps editing: a selected arrow or pair floats its card over the canvas, below the toolbar; Esc closes the card first, a second Esc leaves Focus, and **F** toggles it from the keyboard. The canvas toolbar is one row at the top-right with Focus first, so a short pane never clips it; the gesture list moved behind a **gestures ⓘ** chip.",
+      "A plain **drag from node to node** draws a relation — no tool or modifier needed (the Connect tool and Shift still work). Dragging onto an arrow that already exists selects it instead of overwriting it, and a new cross relation expands its bundle so you can see it.",
+      "Curved ticker-pair arrows fold back: one click expands the bundle into its node-to-node arrows and opens the pair inventory, the next click collapses both at once. Each curve carries a midpoint **handle** (the relation count, or − while expanded) that stays on top of everything, and an expanded curve bows out clear of its arrows, so the pair can always be clicked or unclicked.",
+      "The relation card gained **+ reverse**: an arrow is one factor, informer → receiver, whose reverse is already implied under reciprocal semantics (the ⇐ readout); the button adds the explicit opposite arrow when you want one (two facing directed arcs form a cycle the Layered solve rejects, and preflight says so).",
+      "Hover readouts flip to the left of their anchor near the right edge, so they never cover the toolbar.",
+    ],
+  },
+  {
     date: "2026-09-07",
     title: "The Graph lens, rebuilt for the desk: sliders, arrows you can edit, Layered by default",
     items: [
