@@ -99,6 +99,22 @@ describe("useLvCompare", () => {
     expect(h.result.current.data?.roundTripBp).toBe(99);
   });
 
+  it("a payload differing only in the read-time spot shift keeps every heavy array's identity", async () => {
+    const h = mount();
+    await land(0);
+    const first = h.result.current.data!;
+    h.rerender({ reloadKey: 1, tInterp: "smooth" });
+    await act(async () => { vi.advanceTimersByTime(SOFT_REFRESH_MIN_MS); });
+    await land(1, lvCompareFixture({ spotShift: 0.012, message: "smooth twin; spot moved +1.20%" }));
+    const next = h.result.current.data!;
+    expect(next).not.toBe(first);
+    expect(next.spotShift).toBe(0.012);
+    expect(next.message).toContain("spot moved");
+    expect(next.localVolTwin).toBe(first.localVolTwin);
+    expect(next.smiles).toBe(first.smiles);
+    expect(next.counters).toBe(first.counters);
+  });
+
   it("a chip change aborts the build in flight and refetches at once, dimming the sheets on screen", async () => {
     const h = mount();
     await land(0);

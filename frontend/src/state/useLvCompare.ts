@@ -88,6 +88,10 @@ export interface LvCompareResponse {
   xNodes: number[];
   /** sqrt of the twin's nodal variance inside the box, one row per t-node. */
   localVolTwin: number[][];
+  /** Per-cell diagonal of the lattice's Delaunay triangulation (the twin's
+   *  own = the affine sheet's on the same vertices); the 3D meshes draw the
+   *  pricing triangulation. Absent on older payloads. */
+  cellDiagMain?: boolean[][];
   /** Unrepaired Gatheral local VARIANCE: null where the denominator failed or
    *  the vertex was not differentiated, negative where w_τ < 0. */
   rawLocalVariance: (number | null)[][];
@@ -114,6 +118,13 @@ export interface LvCompareResponse {
   roundTripBp: number;
   roundTripMaxBp: number;
   message: string;
+}
+
+/** The payload without its read-time fields (spot shift, message) — the
+ *  identity of the anchored record. */
+function stableJson(res: LvCompareResponse): string {
+  const { spotShift: _shift, message: _message, ...record } = res;
+  return JSON.stringify(record);
 }
 
 /** Human-readable message from a thrown value (FastAPI `detail` when present). */
@@ -207,10 +218,20 @@ export function useLvCompare(
       })
       .then((res) => {
         if (controller.signal.aborted) return;
-        const json = JSON.stringify(res);
+        // Identity modulo the READ-time fields (the spot shift and its message
+        // suffix change on every tick while the anchored record does not): an
+        // unchanged record keeps its object; only those two fields are patched
+        // onto it, so every heavy array keeps its identity and nothing repaints.
+        const json = stableJson(res);
         if (json !== jsonRef.current) {
           jsonRef.current = json;
           setData(res);
+        } else {
+          setData((cur) =>
+            cur !== null && (cur.spotShift !== res.spotShift || cur.message !== res.message)
+              ? { ...cur, spotShift: res.spotShift, message: res.message }
+              : cur,
+          );
         }
         hasDataRef.current = true;
         setError(null);

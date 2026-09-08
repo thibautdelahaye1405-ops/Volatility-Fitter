@@ -298,6 +298,10 @@ class LvCompareResponse(BaseModel):
     tNodes: list[float]
     xNodes: list[float]
     localVolTwin: list[list[float]]
+    #: Per-cell diagonal of the lattice's Delaunay triangulation (the twin's
+    #: own surface = the affine sheet's on the same vertices), so the 3D
+    #: meshes draw the pricing triangulation without the displayed LV payload.
+    cellDiagMain: list[list[bool]] = []
     rawLocalVariance: list[list[float | None]]
     differentiated: list[bool]
     counters: DupireCountersOut

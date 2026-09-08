@@ -304,6 +304,7 @@ def _twin_record(
         tNodes=[float(v) for v in t_nodes],
         xNodes=[float(v) for v in x_nodes],
         localVolTwin=local_vol.tolist(),
+        cellDiagMain=[[bool(v) for v in row] for row in surface.cell_diag_main()],
         rawLocalVariance=[[None if not np.isfinite(v) else float(v) for v in row] for row in raw],
         differentiated=[bool(v) for v in twin.differentiated],
         counters=DupireCountersOut(

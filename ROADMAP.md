@@ -502,6 +502,21 @@ help: guides/lenses_b.ts (localvol tab list, twice) · glossary `dupire-twin` ·
   card is never dimmed, the figures and the lattice match are unchanged, the
   badge is up). Rider: transport the twin like the affine sheet so the
   comparison follows the spot instead of flagging it.
+  **SECOND LOOK (user, same day: "the TIME and TAILS boxes are unreadable
+  (light orange on pink) and that top line seems to refresh continuously").**
+  The lit chips had a one-off orange tint outside the app's chip palette →
+  they now use the Parametric CompareChips grammar verbatim (slate for the
+  time group, teal for the pinned tail target); the chip spinner ran on
+  every SILENT refresh (a live tick every 2 s) → it spins on a HARD build
+  only; the read-time `spotShift` / message differed on every tick and
+  defeated the identity check → `useLvCompare` compares the record WITHOUT
+  its read-time fields and patches only those onto the existing object, so
+  every heavy array keeps its identity, and `LvCompareView` memoizes the two
+  meshes on those arrays (`lib/lvCompare.meshOf`); the payload now carries
+  `cellDiagMain` (the twin's own Delaunay = the affine's on the same
+  vertices) so the sheets no longer read the spot-refetched LV payload for
+  their triangulation. Locks: the chips' palette + spinner test, the hook's
+  identity-modulo-spot-shift test, the API `cellDiagMain` equality.
 - **D4 Help + smoke** — guide tab list, glossary, tip, What's new; the
   smoke line; tsc · vitest · build · `npm run smoke:ui` LIVE.
 - **D5 Wrap** — a live SPY look (screenshots .smoke/lv-compare-*.png),

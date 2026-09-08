@@ -32,6 +32,22 @@ describe("LvCompareChips", () => {
     expect(onTInterpChange).toHaveBeenCalledWith("buckets");
   });
 
+  it("lit chips use the Compare grammar (slate for time, teal for tails) and spin only on a hard build", () => {
+    const { container } = render(
+      <LvCompareChips tInterp="smooth" onTInterpChange={() => {}} mode="sheets" onModeChange={() => {}} data={lvCompareFixture()} loading={false} />,
+    );
+    const smooth = screen.getByRole("button", { name: /^Smooth/ });
+    expect(smooth.className).toContain("text-slate-100");
+    expect(smooth.className).not.toMatch(/orange/);
+    expect(screen.getByRole("button", { name: /Model wings/ }).className).toContain("text-teal-100");
+    expect(container.querySelector(".animate-spin")).toBeNull();
+    cleanup();
+    const spinning = render(
+      <LvCompareChips tInterp="smooth" onTInterpChange={() => {}} mode="sheets" onModeChange={() => {}} data={lvCompareFixture()} loading />,
+    );
+    expect(spinning.container.querySelector(".animate-spin")).not.toBeNull();
+  });
+
   it("pins the v1 tail target lit and disabled, the riders muted and disabled", () => {
     renderChips();
     const model = screen.getByRole("button", { name: /Model wings/ }) as HTMLButtonElement;

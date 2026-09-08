@@ -417,7 +417,7 @@ export default function LocalVolViewer() {
                 mode={lvCompareMode}
                 onModeChange={(m) => patchView({ lvCompareMode: m })}
                 data={compare.data}
-                loading={compare.loading || compare.refreshing || compare.updating}
+                loading={compare.loading || compare.refreshing}
               />
             </div>
           )}

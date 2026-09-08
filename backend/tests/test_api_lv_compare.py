@@ -73,6 +73,9 @@ def test_shapes_on_the_affine_lattice(compare, client):
         assert [v is not None for v in row] == inside.tolist()
     for name in ("butterfly", "calendar", "floored", "capped"):
         assert len(compare["counters"][name]) == n_t
+    # The twin's own triangulation is the affine sheet's on the same vertices.
+    assert compare["cellDiagMain"] == affine["cellDiagMain"]
+    assert np.array(compare["cellDiagMain"]).shape == (n_t - 1, n_x - 1)
     assert compare["hasAffine"] is True and compare["affineLatticeMatches"] is True
     assert np.array(compare["localVolAffine"]).shape == (n_t, n_x)
     diff = np.array(compare["diffLocalVol"])

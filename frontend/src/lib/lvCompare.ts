@@ -62,19 +62,27 @@ export const TWIN_COLOR = "#fb923c";
 export const AFFINE_COLOR = "rgb(56 189 248)";
 export const TWIN_DASH = "6 3";
 
-/** The σ²_loc mesh of one sheet on the compare lattice (rows = t vertices,
+/** The σ²_loc mesh of a sheet on the compare lattice (rows = t vertices,
  *  columns = x vertices — the LV-surface view's convention), or null when
- *  the sheet is absent / degenerate. */
-export function sheetMesh(c: LvCompareResponse | null, which: "twin" | "affine"): SurfaceMeshData | null {
-  if (c === null || c.tNodes.length < 2 || c.xNodes.length < 2) return null;
-  const rows = which === "twin" ? c.localVolTwin : c.localVolAffine;
-  if (!rows || rows.length !== c.tNodes.length) return null;
+ *  the sheet is absent / degenerate. Takes the arrays themselves so a view
+ *  can memoize on their identity (an unchanged record keeps its arrays). */
+export function meshOf(
+  tNodes: number[] | undefined, xNodes: number[] | undefined, rows: number[][] | undefined,
+): SurfaceMeshData | null {
+  if (!tNodes || !xNodes || tNodes.length < 2 || xNodes.length < 2) return null;
+  if (!rows || rows.length !== tNodes.length) return null;
   return {
-    expiries: c.tNodes.map((t) => t.toFixed(2)),
-    t: c.tNodes,
-    k: c.xNodes,
+    expiries: tNodes.map((t) => t.toFixed(2)),
+    t: tNodes,
+    k: xNodes,
     vol: rows.map((row) => row.map((v) => v * v)),
   };
+}
+
+/** `meshOf` for one named sheet of a payload. */
+export function sheetMesh(c: LvCompareResponse | null, which: "twin" | "affine"): SurfaceMeshData | null {
+  if (c === null) return null;
+  return meshOf(c.tNodes, c.xNodes, which === "twin" ? c.localVolTwin : c.localVolAffine);
 }
 
 /** The signed difference sheet twin − affine (vol), only on the matching

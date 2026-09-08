@@ -23,11 +23,17 @@ export interface LvCompareChipsProps {
   onModeChange: (m: LvCompareMode) => void;
   /** The last payload (score strip); null before the first lands. */
   data: LvCompareResponse | null;
-  /** A build in flight (spinner on the lit interpolation chip). */
+  /** A HARD build in flight (spinner on the lit interpolation chip). A silent
+   *  refresh never spins — on a live feed that spinner ran on every tick. */
   loading: boolean;
 }
 
+// The Parametric CompareChips palette, verbatim: a lit model-style chip is
+// slate on the surface ground, a lit tail chip teal — both proven readable
+// on the dark surface (the first cut's orange tint was not).
 const CHIP_BASE = "flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-medium transition-colors";
+const CHIP_ON = "border-slate-600 bg-surface-800 text-slate-100";
+const CHIP_TAIL_ON = "border-teal-500/50 bg-teal-500/10 text-teal-100";
 const CHIP_OFF = "border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-200";
 const CHIP_MUTED = "border-slate-800/70 text-slate-600 opacity-60 cursor-default";
 const GROUP_LABEL = "text-[9px] font-semibold uppercase tracking-wider text-slate-600";
@@ -53,7 +59,7 @@ export default function LvCompareChips({
             aria-pressed={on}
             onClick={() => onTInterpChange(o.id)}
             title={o.title}
-            className={[CHIP_BASE, on ? "border-orange-500/50 bg-orange-500/10 text-orange-100" : CHIP_OFF].join(" ")}
+            className={[CHIP_BASE, on ? CHIP_ON : CHIP_OFF].join(" ")}
           >
             {o.label}
             {on && loading && <span className={SPINNER} />}
@@ -70,10 +76,7 @@ export default function LvCompareChips({
           aria-pressed={o.available}
           disabled
           title={o.title}
-          className={[
-            CHIP_BASE,
-            o.available ? "cursor-default border-orange-500/50 bg-orange-500/10 text-orange-100" : CHIP_MUTED,
-          ].join(" ")}
+          className={[CHIP_BASE, o.available ? `cursor-default ${CHIP_TAIL_ON}` : CHIP_MUTED].join(" ")}
         >
           {o.label}
           {o.available

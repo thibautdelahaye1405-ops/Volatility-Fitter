@@ -16,6 +16,7 @@
 // reads as a "Calibrate first" card; a stale or differently gridded LV fit
 // leaves the difference empty with the payload's own message. Pure
 // presentation — state lives in LocalVolViewer.
+import { useMemo } from "react";
 import LocalVolHeatmap from "../LocalVolHeatmap";
 import LocalVolSmile from "../LocalVolSmile";
 import type { SmileOverlay } from "../LocalVolSmile";
@@ -25,7 +26,7 @@ import type { AutoScaleToggles } from "../../lib/autoScaleY";
 import type { AxisMode } from "../../lib/axisModes";
 import {
   AFFINE_COLOR, PARAMETRIC_COLOR, TWIN_COLOR, TWIN_DASH,
-  compareSmileFor, diffSheet, formatSignedPts, sheetMesh,
+  compareSmileFor, diffSheet, formatSignedPts, meshOf,
 } from "../../lib/lvCompare";
 import type { LvCompareMode } from "../../lib/lvCompare";
 import { buttonClass, cardClass, chartMessageClass } from "../../lib/ui";
@@ -72,6 +73,15 @@ export default function LvCompareView({
   ticker, compare, loading, error, affine, mode, expiry, onSelectExpiry,
   axisMode, autoScaleY, onToggleAutoScale, formatExpiry, onCalibrate,
 }: LvCompareViewProps) {
+  // The meshes are memoized on the payload's ARRAYS: a silent refresh that
+  // lands an unchanged record keeps them (useLvCompare keeps their identity),
+  // so the sheets never rebuild their scene on a live tick.
+  const tNodes = compare?.tNodes, xNodes = compare?.xNodes;
+  const twinRows = compare?.localVolTwin, affineRows = compare?.localVolAffine;
+  const twin = useMemo(() => meshOf(tNodes, xNodes, twinRows), [tNodes, xNodes, twinRows]);
+  const aff = useMemo(() => meshOf(tNodes, xNodes, affineRows), [tNodes, xNodes, affineRows]);
+  const cellDiagMain = compare?.cellDiagMain ?? affine?.cellDiagMain;
+
   if (error !== null && compare === null) {
     return (
       <div className="flex h-full items-center justify-center p-4">
@@ -89,8 +99,6 @@ export default function LvCompareView({
   if (loading || compare === null) return message("Building the Dupire twin…");
 
   if (mode === "sheets") {
-    const twin = sheetMesh(compare, "twin");
-    const aff = sheetMesh(compare, "affine");
     const caption = `${compare.tNodes.length}×${compare.xNodes.length} vertices`;
     return (
       <div className="flex h-full min-h-0 gap-3">
@@ -103,7 +111,7 @@ export default function LvCompareView({
                 legendLabel="σ²_loc twin"
                 formatValue={(v) => Number(v.toPrecision(3)).toString()}
                 triangulate
-                cellDiagMain={affine?.cellDiagMain}
+                cellDiagMain={cellDiagMain}
                 cameraKey="localvol:compare"
                 ticker={ticker}
                 chartId="localvol:compare:twin"
@@ -123,7 +131,7 @@ export default function LvCompareView({
                 legendLabel="σ²_loc affine"
                 formatValue={(v) => Number(v.toPrecision(3)).toString()}
                 triangulate
-                cellDiagMain={affine?.cellDiagMain}
+                cellDiagMain={cellDiagMain}
                 cameraKey="localvol:compare"
                 ticker={ticker}
                 chartId="localvol:compare:affine"
