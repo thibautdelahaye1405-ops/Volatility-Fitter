@@ -35,6 +35,8 @@ export interface SceneMesh {
   rows: SceneVertex[][];
   /** Original k column index of each rendered column. */
   cols: number[];
+  /** Original t row index of each rendered row (the maturity window crops rows). */
+  rowIdx: number[];
   /** Display-x (axis-mode units) of every rendered vertex. */
   displayX: number[][];
   vMin: number;
@@ -47,10 +49,13 @@ export interface SceneMesh {
 
 /**
  * Normalize the grid into scene coordinates: x = the display coordinate (the
- * chosen axis mode) within the brushed window in [-1, 1], y = T or √T in
- * [-1, 1], z = value in [0, Z_HEIGHT]. The window selects COLUMNS in the
- * grid's own k; each expiry's display-x is its own monotone transform of k
+ * chosen axis mode) within the brushed strike window in [-1, 1], y = T or √T
+ * within the brushed MATURITY window in [-1, 1], z = value in [0, Z_HEIGHT].
+ * The windows select COLUMNS in the grid's own k and ROWS in its t; the
+ * cropped rectangle fills the scene, so it sits centred whatever the crop
+ * (2026-09-08). Each expiry's display-x is its own monotone transform of k
  * (forward / ATM vol differ per expiry), so e.g. strike shears the sheet.
+ * `tLo` / `tHi` absent ⇒ every row.
  */
 export function buildSceneMesh(
   data: SurfaceMeshData,
@@ -59,6 +64,8 @@ export function buildSceneMesh(
   timeMode: TimeAxisMode,
   axisMode: AxisMode,
   rowXTransform?: (x: number, row: number) => number,
+  tLo?: number,
+  tHi?: number,
 ): SceneMesh | null {
   const { k, t, vol, forward, atmVol } = data;
   if (k.length < 2 || t.length < 2 || vol.length !== t.length) return null;
@@ -69,10 +76,15 @@ export function buildSceneMesh(
   const cols: number[] = [];
   for (let c = 0; c < inWin.length; c += stride) cols.push(inWin[c]);
   if (cols[cols.length - 1] !== inWin[inWin.length - 1]) cols.push(inWin[inWin.length - 1]);
+  const rowIdx: number[] = [];
+  for (let i = 0; i < t.length; i++)
+    if ((tLo === undefined || t[i] >= tLo) && (tHi === undefined || t[i] <= tHi)) rowIdx.push(i);
+  if (rowIdx.length < 2) return null;
   const kRange: readonly [number, number] = [k[0], k[k.length - 1]];
 
   const useTransform = axisMode !== "logmoneyness" && forward !== undefined;
-  const displayX: number[][] = t.map((ti, i) => {
+  const displayX: number[][] = rowIdx.map((i) => {
+    const ti = t[i];
     if (rowXTransform) return cols.map((j) => rowXTransform(k[j], i));
     if (!useTransform) return cols.map((j) => k[j]);
     const volAt = makeVolAt(k.map((kk, idx) => ({ k: kk, vol: vol[i][idx] })));
@@ -85,22 +97,25 @@ export function buildSceneMesh(
     for (const x of row) if (Number.isFinite(x)) { dMin = Math.min(dMin, x); dMax = Math.max(dMax, x); }
   const dSpan = dMax - dMin || 1;
   const sval = (tt: number) => timeAxisValue(tt, timeMode);
-  const sMin = sval(t[0]);
-  const sMax = sval(t[t.length - 1]);
+  const sMin = sval(t[rowIdx[0]]);
+  const sMax = sval(t[rowIdx[rowIdx.length - 1]]);
   let vMin = Infinity;
   let vMax = -Infinity;
-  for (let i = 0; i < t.length; i++)
+  for (const i of rowIdx)
     for (const j of cols) { vMin = Math.min(vMin, vol[i][j]); vMax = Math.max(vMax, vol[i][j]); }
   const vSpan = vMax - vMin || 1;
-  const rows = t.map((ti, i) =>
+  const rows = rowIdx.map((i, r) =>
     cols.map((j, c) => ({
-      x: (2 * (displayX[i][c] - dMin)) / dSpan - 1,
-      y: sMax > sMin ? (2 * (sval(ti) - sMin)) / (sMax - sMin) - 1 : 0,
+      x: (2 * (displayX[r][c] - dMin)) / dSpan - 1,
+      y: sMax > sMin ? (2 * (sval(t[i]) - sMin)) / (sMax - sMin) - 1 : 0,
       z: ((vol[i][j] - vMin) / vSpan) * Z_HEIGHT,
       vol: vol[i][j],
     })),
   );
-  return { rows, cols, displayX, vMin, vMax, xMin: dMin, xMax: dMax, tMin: t[0], tMax: t[t.length - 1] };
+  return {
+    rows, cols, rowIdx, displayX, vMin, vMax, xMin: dMin, xMax: dMax,
+    tMin: t[rowIdx[0]], tMax: t[rowIdx[rowIdx.length - 1]],
+  };
 }
 
 export interface Facet { d: string; depth: number; color: string }
@@ -137,8 +152,12 @@ export function buildFacets(
       ];
       if (triangulate) {
         const j0 = mesh.cols[j];
+        const i0 = mesh.rowIdx[i];
+        // The model's diagonal applies to a cell whose four vertices are grid
+        // neighbours in BOTH directions; a brushed-out neighbour falls back.
+        const adjacent = mesh.cols[j + 1] === j0 + 1 && mesh.rowIdx[i + 1] === i0 + 1;
         const mainDiag =
-          cellDiagMain === undefined || mesh.cols[j + 1] !== j0 + 1 ? true : (cellDiagMain[i]?.[j0] ?? true);
+          cellDiagMain === undefined || !adjacent ? true : (cellDiagMain[i0]?.[j0] ?? true);
         if (mainDiag) { push([p00, p01, p11], [v00, v01, v11]); push([p00, p11, p10], [v00, v11, v10]); }
         else { push([p00, p01, p10], [v00, v01, v10]); push([p01, p11, p10], [v01, v11, v10]); }
       } else {
@@ -148,4 +167,24 @@ export function buildFacets(
   }
   out.sort((a, b) => b.depth - a.depth);
   return out;
+}
+
+/**
+ * A brush window that keeps at least two of the grid's `values` inside: a
+ * sheet needs two rows / two columns, so a window dragged past that is
+ * widened to the two nearest values instead of blanking the chart (a
+ * four-expiry ladder's maturity brush hit this on its first live use).
+ * `values` ascending; a window already holding two is returned unchanged.
+ */
+export function snapWindow(values: readonly number[], lo: number, hi: number): [number, number] {
+  if (values.length < 2) return [lo, hi];
+  const inside = values.filter((v) => v >= lo && v <= hi);
+  if (inside.length >= 2) return [lo, hi];
+  // Anchor on the value nearest the window's centre, then take its closest neighbour.
+  const mid = (lo + hi) / 2;
+  let a = 0;
+  for (let i = 1; i < values.length; i++) if (Math.abs(values[i] - mid) < Math.abs(values[a] - mid)) a = i;
+  const b = a === 0 ? 1 : a === values.length - 1 ? a - 1
+    : Math.abs(values[a + 1] - mid) < Math.abs(values[a - 1] - mid) ? a + 1 : a - 1;
+  return [Math.min(values[a], values[b], lo), Math.max(values[a], values[b], hi)];
 }

@@ -2,9 +2,13 @@
 //
 // Renders a (k, √T | T, value) mesh through an orthographic camera
 // (lib/surfaceCamera): drag = yaw · Shift+drag / middle-drag / two-finger =
-// pan · Ctrl+drag = pitch (10–80°) · wheel = zoom AT THE CURSOR · dbl-click =
-// reset (a ⌂ chip shows while moved). The camera persists per `cameraKey`
-// (state/surfaceCameras — survives tab switches, rides workspace files).
+// pan · Ctrl+drag = pitch (10–80°) · wheel = zoom ABOUT THE SHEET'S CENTRE ·
+// dbl-click = reset (a ⌂ chip shows while moved). The camera persists per
+// `cameraKey` (state/surfaceCameras — survives tab switches, rides workspace
+// files). Two brushes crop the (k, T) rectangle (2026-09-08): the strike
+// window under the plot and the maturity window beside it; the crop fills
+// and centres the scene, a crop drops the pan, and every pan is clamped so
+// the sheet's centre never leaves the window.
 // Cells are painter-sorted back to front and shaded with the shared vol
 // colormap (optionally split into their two triangular facets, see
 // `triangulate`). Shared by the Parametric vol surface (fetched) and the
@@ -27,11 +31,11 @@ import { axisTickLabel, formatHoverValue } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
 import { useElementSize } from "../lib/useElementSize";
 import { VOL_GRADIENT_CSS } from "../lib/volColormap";
-import { buildFacets, buildSceneMesh } from "../lib/surfaceMesh";
+import { buildFacets, buildSceneMesh, snapWindow } from "../lib/surfaceMesh";
 import type { SurfaceMeshData } from "../lib/surfaceMesh";
 import {
-  DEFAULT_CAMERA, fitViewport, isCameraMoved, nearestVertex, panBy, pitchBy, project,
-  snapHysteresis, toPixel, unprojectFloor, yawBy, zoomAt,
+  DEFAULT_CAMERA, clampPan, fitViewport, isCameraMoved, nearestVertex, panBy, pitchBy, project,
+  snapHysteresis, toPixel, unprojectFloor, yawBy, zoomAbout, zoomAt,
 } from "../lib/surfaceCamera";
 import type { GridHit } from "../lib/surfaceCamera";
 import { useSurfaceCamera } from "../state/surfaceCameras";
@@ -89,7 +93,12 @@ export default function SurfaceMesh({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [cam, setCam] = useSurfaceCamera(cameraKey);
   const [timeMode, setTimeMode] = useState<TimeAxisMode>("sqrt");
-  const [kWindow, setKWindow] = useState<[number, number] | null>(null);
+  // The crop rectangle in (k, T): a strike window (the brush under the plot)
+  // and a maturity window (the brush beside it). Both are kept with the data
+  // extents they were made for and fall back to the full range when the
+  // grid changes (another ticker, a refit with other expiries).
+  const [kWindow, setKWindowState] = useState<{ range: [number, number]; key: string } | null>(null);
+  const [tWindow, setTWindowState] = useState<{ range: [number, number]; key: string } | null>(null);
   const [hit, setHit] = useState<GridHit | null>(null);
   const { hover, publish } = useSurfaceHover(chartId);
   // Active pointers (two-finger pan / pinch) + the drag gesture in flight.
@@ -99,11 +108,22 @@ export default function SurfaceMesh({
   camRef.current = cam;
 
   const fullK: [number, number] = data.k.length ? [data.k[0], data.k[data.k.length - 1]] : [-1, 1];
-  const [kLo, kHi] = kWindow ?? fullK;
+  const fullT: [number, number] = data.t.length ? [data.t[0], data.t[data.t.length - 1]] : [0, 1];
+  const kKey = `${fullK[0]},${fullK[1]},${data.k.length}`;
+  const tKey = `${fullT[0]},${fullT[1]},${data.t.length}`;
+  const [kLo, kHi] = kWindow !== null && kWindow.key === kKey ? kWindow.range : fullK;
+  const [tLo, tHi] = tWindow !== null && tWindow.key === tKey ? tWindow.range : fullT;
+  // A crop re-centres the sheet: the pan is dropped so the cropped rectangle
+  // sits in the middle of the window (yaw / pitch / zoom are kept).
+  const recentre = () => { if (cam.panX !== 0 || cam.panY !== 0) setCam({ ...cam, panX: 0, panY: 0 }); };
+  // A window always keeps two grid values inside (snapWindow): a brush
+  // dragged past the last row or column widens instead of blanking the sheet.
+  const setKWindow = (range: [number, number]) => { setKWindowState({ range: snapWindow(data.k, ...range), key: kKey }); recentre(); };
+  const setTWindow = (range: [number, number]) => { setTWindowState({ range: snapWindow(data.t, ...range), key: tKey }); recentre(); };
 
   const mesh = useMemo(
-    () => buildSceneMesh(data, kLo, kHi, timeMode, axisMode, rowXTransform),
-    [data, kLo, kHi, timeMode, axisMode, rowXTransform],
+    () => buildSceneMesh(data, kLo, kHi, timeMode, axisMode, rowXTransform, tLo, tHi),
+    [data, kLo, kHi, tLo, tHi, timeMode, axisMode, rowXTransform],
   );
 
   // Projection: bounds of the frame + every vertex, fitted with zoom / pan.
@@ -120,21 +140,31 @@ export default function SurfaceMesh({
     const pts = proj.map((row) => row.map((p) => ({ ...toPixel(vp, p), depth: p.depth })));
     const facets = buildFacets(mesh, pts, triangulate, cellDiagMain);
     const anchors = corners.map((c) => toPixel(vp, c));
-    return { vp, pts, facets, frame: anchors.map((a) => `${a.x.toFixed(1)},${a.y.toFixed(1)}`).join(" "), anchors };
+    // The projected box's half-extents in pixels (the containment rule's input).
+    const halfW = (vp.scale * (xMax - xMin)) / 2, halfH = (vp.scale * (yMax - yMin)) / 2;
+    return { vp, pts, facets, frame: anchors.map((a) => `${a.x.toFixed(1)},${a.y.toFixed(1)}`).join(" "), anchors, halfW, halfH };
   }, [mesh, cam, size, triangulate, cellDiagMain]);
 
-  // Wheel: zoom about the cursor (native, non-passive so preventDefault works).
+  // Wheel: zoom about the SHEET's centre (native, non-passive so preventDefault
+  // works) — the cropped rectangle stays centred however far one zooms in
+  // (2026-09-08: zooming at the cursor let the sheet drift out of the window).
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg || scene === null) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const r = svg.getBoundingClientRect();
-      setCam(zoomAt(camRef.current, scene.vp, e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.1 : 1 / 1.1));
+      setCam(zoomAbout(camRef.current, e.deltaY < 0 ? 1.1 : 1 / 1.1));
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
   }, [scene, setCam]);
+  /** Pans are clamped: the sheet's box always covers a quarter of the window
+   *  (its half-extents rescaled to the NEXT zoom, so a pinch is clamped right). */
+  const setCamContained = (next: typeof cam) => {
+    if (scene === null) { setCam(next); return; }
+    const k = cam.zoom > 0 ? next.zoom / cam.zoom : 1;
+    setCam(clampPan(next, size.width, size.height, scene.halfW * k, scene.halfH * k));
+  };
 
   // ---- crosshair: own pointer → floor → nearest vertex (hysteresis) --------
   const floorRows = useMemo(() => mesh?.rows.map((r) => r.map((v) => ({ x: v.x, y: v.y }))) ?? [], [mesh]);
@@ -146,7 +176,7 @@ export default function SurfaceMesh({
     if (next !== null && (hit === null || next.i !== hit.i || next.j !== hit.j)) {
       setHit(next);
       const j0 = mesh.cols[next.j];
-      publish({ ticker, k: linkK ? linkK(data.k[j0]) : data.k[j0], t: data.t[next.i] });
+      publish({ ticker, k: linkK ? linkK(data.k[j0]) : data.k[j0], t: data.t[mesh.rowIdx[next.i]] });
     }
   };
   const clearHover = () => { setHit(null); publish(null); };
@@ -154,7 +184,7 @@ export default function SurfaceMesh({
   const linkedHit = useMemo<GridHit | null>(() => {
     if (hit !== null || hover === null || hover.source === chartId || hover.ticker !== ticker || mesh === null) return null;
     const ks = mesh.cols.map((j) => (linkK ? linkK(data.k[j]) : data.k[j]));
-    const g = nearestGridPoint(ks, data.t, hover.k, hover.t);
+    const g = nearestGridPoint(ks, mesh.rowIdx.map((i) => data.t[i]), hover.k, hover.t);
     return g === null ? null : { ...g, d2: 0 };
   }, [hit, hover, chartId, ticker, mesh, data, linkK]);
   const shown = hit ?? linkedHit;
@@ -183,7 +213,7 @@ export default function SurfaceMesh({
       const d0 = Math.hypot(a0.x - b0.x, a0.y - b0.y) || 1, d1 = Math.hypot(a1.x - b1.x, a1.y - b1.y) || 1;
       let next = panBy(cam, mid1.x - mid0.x, mid1.y - mid0.y);
       if (scene !== null) next = zoomAt(next, scene.vp, mid1.x, mid1.y, d1 / d0);
-      setCam(next);
+      setCamContained(next);
       pointers.current.set(e.pointerId, p);
       return;
     }
@@ -193,7 +223,7 @@ export default function SurfaceMesh({
     if (!d.moved && Math.hypot(dx, dy) < 2) return;
     d.moved = true;
     if (d.mode === "yaw") setCam(yawBy(cam, dx * 0.01));
-    else if (d.mode === "pan") setCam(panBy(cam, dx, dy));
+    else if (d.mode === "pan") setCamContained(panBy(cam, dx, dy));
     else setCam(pitchBy(cam, dy * 0.006));
     drag.current = { ...d, x: p.x, y: p.y };
     if (hit !== null) clearHover();
@@ -221,8 +251,10 @@ export default function SurfaceMesh({
         floorRow: mesh.rows[shown.i].map((v) => toPixel(scene.vp, project(cam, { x: v.x, y: v.y, z: 0 }))),
         floorCol: mesh.rows.map((r) => r[shown.j]).map((v) => toPixel(scene.vp, project(cam, { x: v.x, y: v.y, z: 0 }))),
         badge: surfaceReadout(
-          `T ${formatYears(data.t[shown.i])}`,
-          formatExpiry ? formatExpiry(data.expiries[shown.i] ?? "", data.t[shown.i]) : (data.expiries[shown.i] ?? null),
+          `T ${formatYears(data.t[mesh.rowIdx[shown.i]])}`,
+          formatExpiry
+            ? formatExpiry(data.expiries[mesh.rowIdx[shown.i]] ?? "", data.t[mesh.rowIdx[shown.i]])
+            : (data.expiries[mesh.rowIdx[shown.i]] ?? null),
           (formatX ?? ((v: number) => formatHoverValue(axisMode, v)))(mesh.displayX[shown.i][shown.j]),
           fmtV(mesh.rows[shown.i][shown.j].vol),
         ),
@@ -276,15 +308,26 @@ export default function SurfaceMesh({
             className={compact ? "hidden" : "hidden text-[10px] text-slate-600 xl:inline"}
             title="Two-finger drag pans, pinch zooms"
           >
-            drag: rotate · shift+drag: pan · ctrl+drag: pitch · scroll: zoom · dbl-click: reset
+            drag: rotate · shift+drag: pan · ctrl+drag: pitch · scroll: zoom (centred) · sliders: crop k × T · dbl-click: reset
           </span>
         </div>
       </div>
 
-      {/* Plot area */}
-      <div ref={ref} className="relative min-h-0 flex-1">
+      {/* Plot area, with the maturity (T) window brush along its left edge —
+          together with the strike brush below, the crop rectangle in (k, T). */}
+      <div className="flex min-h-0 flex-1 gap-1">
+      {data.t.length > 1 && (
+        <div className="shrink-0 py-1">
+          <RangeBrush
+            min={fullT[0]} max={fullT[1]} value={[tLo, tHi]} onChange={setTWindow}
+            orientation="vertical" format={(v) => `${v.toFixed(2)}y`}
+            ariaLabels={["Lower maturity bound", "Upper maturity bound"]}
+          />
+        </div>
+      )}
+      <div ref={ref} className="relative min-h-0 min-w-0 flex-1">
         {mesh === null ? (
-          message("Surface needs at least two expiries.")
+          message("Surface needs at least two expiries and two strikes in the crop.")
         ) : scene === null ? null : (
           <svg
             ref={svgRef}
@@ -316,6 +359,7 @@ export default function SurfaceMesh({
           </svg>
         )}
         {cross !== null && <CrosshairBadge label={cross.badge} />}
+      </div>
       </div>
 
       {/* Coarse strike (k) window — shrink the displayed strike axis. */}

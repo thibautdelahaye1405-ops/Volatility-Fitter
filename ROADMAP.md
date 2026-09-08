@@ -557,6 +557,40 @@ help: guides/lenses_b.ts (localvol tab list, twice) · glossary `dupire-twin` ·
   GATE` = 8 steps) lets a one-month front through with nine implicit steps;
   a benchmark-pack matter (raise the gate, or march the fit with Rannacher
   by default), recorded as a rider, not changed here.
+  **FOURTH LOOK — THE 3D SURFACES' CROP AND CENTRING (user, same day: "for
+  all LV surfaces including the compare tab: a vertical slider to crop the
+  (k, T) rectangle; centre the cropped surface so it does not escape the
+  window when zooming; the same for the IV surfaces of both lenses").**
+  All six surfaces share `SurfaceMesh`, so one change covers them: (i)
+  `RangeBrush` gained `orientation="vertical"` (low value at the BOTTOM, the
+  handles carry accessible names + `aria-orientation`, CSS percentages
+  rounded — a 19.999…% handle was the first test's catch) and the mesh
+  draws a maturity brush beside the plot next to the strike brush below;
+  (ii) `buildSceneMesh` takes `tLo` / `tHi`, crops ROWS, normalizes y (and
+  z) over the crop so the cropped rectangle fills the scene and sits
+  centred — `SceneMesh.rowIdx` maps mesh rows to data rows for the
+  crosshair, the badge, the linked hover and the model's per-cell diagonal
+  (which now requires grid adjacency in BOTH directions); both windows are
+  keyed on the data extents and fall back to the full range when the grid
+  changes; (iii) the wheel zooms ABOUT THE SHEET'S CENTRE (`surfaceCamera.
+  zoomAbout` — zooming at the cursor let the sheet drift out), every pan
+  and pinch is clamped so the sheet's projected box always covers a
+  quarter of the window in each direction (`clampPan` with the box's
+  half-extents at the next zoom: at low zoom the sheet cannot be dragged
+  out, at high zoom every corner stays reachable — the first cut clamped
+  the CENTRE to the window edge, which the live check showed was both too
+  loose and too tight), and a crop drops the pan so the new rectangle is
+  centred; a brush window always keeps two grid values inside
+  (`snapWindow` — the first live drag on a four-expiry ladder blanked the
+  sheet). Locks: `surfaceMesh.test.ts` (new: row crop + re-fill, both
+  axes, the diagonal through the row map, the stride fallback, snapWindow),
+  `surfaceCamera.test` (+ zoomAbout / clampPan cover rule),
+  `RangeBrush.test.tsx` (new: both orientations, a vertical drag reads
+  upward, the window pans) — 91 files / 652 tests;
+  `scripts/surface_crop_check.mjs` (port 4195) drags the maturity handle,
+  zooms ten notches off-centre and pans wildly on the Parametric surface
+  and asserts the frame's centroid stays in the middle, then checks the two
+  Compare sheets carry the brush — screenshots .smoke/surface-crop-*.png.
 - **D4 Help + smoke** — guide tab list, glossary, tip, What's new; the
   smoke line; tsc · vitest · build · `npm run smoke:ui` LIVE.
 - **D5 Wrap** — a live SPY look (screenshots .smoke/lv-compare-*.png),
@@ -1502,6 +1536,11 @@ below) — every recorded rider is closed except the ones listed here:
    scores the quotes like its source; the coarse sheet's own round trip
    (14 bp) is reported as what the lattice loses. Rider recorded: the LV
    fit's own front operator (fix-#3 gate) is a benchmark-pack matter.
+   FOURTH LOOK same day: every 3D surface (both lenses + the Compare sheets)
+   gained a maturity brush beside the strike brush — a (k, T) crop that fills
+   and centres the scene —, a wheel zoom about the sheet's centre and clamped
+   pans (the sheet never leaves the window); locked + live-checked
+   (`scripts/surface_crop_check.mjs`).
    NEXT = D4 (help corpora: the localvol guide's tab list, glossary
    `dupire-twin`, a tip, What's new; the smoke line is already in), then
    D5 (wrap + a live SPY look on the user's :8000).

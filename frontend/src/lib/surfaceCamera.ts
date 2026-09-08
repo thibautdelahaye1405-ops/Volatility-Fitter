@@ -182,3 +182,31 @@ export function snapHysteresis(
   const dCand = Math.sqrt(cand.d2);
   return dCand < dPrev * (1 - margin) ? cand : { ...prev, d2: dPrev * dPrev };
 }
+
+// ---- containment (2026-09-08: "the surface must not escape the window") ----
+
+/** Zoom by `factor` about the SURFACE's fitted centre: the pan is kept, so a
+ *  centred surface stays centred however far one zooms in (the wheel path;
+ *  `zoomAt` keeps the floor point under a pinch's midpoint instead). */
+export function zoomAbout(cam: Camera, factor: number): Camera {
+  return { ...cam, zoom: clamp(cam.zoom * factor, ZOOM_RANGE.min, ZOOM_RANGE.max) };
+}
+
+/** Keep the sheet in sight: its projected box (half-extents `halfW` × `halfH`
+ *  in pixels at the camera's zoom, centred at the window centre + pan) must
+ *  always cover at least `cover` of the window in each direction. At low
+ *  zoom the sheet cannot be dragged out; at high zoom every corner stays
+ *  reachable because the box is far larger than the window. */
+export function clampPan(
+  cam: Camera, w: number, h: number, halfW: number, halfH: number, cover = 0.25,
+): Camera {
+  const hw = Math.max(0, halfW), hh = Math.max(0, halfH);
+  // The box's right edge stays past cover·w and its left edge before (1−cover)·w.
+  const loX = cover * w - w / 2 - hw, hiX = (1 - cover) * w - w / 2 + hw;
+  const loY = cover * h - h / 2 - hh, hiY = (1 - cover) * h - h / 2 + hh;
+  return {
+    ...cam,
+    panX: clamp(cam.panX, Math.min(loX, hiX), Math.max(loX, hiX)),
+    panY: clamp(cam.panY, Math.min(loY, hiY), Math.max(loY, hiY)),
+  };
+}

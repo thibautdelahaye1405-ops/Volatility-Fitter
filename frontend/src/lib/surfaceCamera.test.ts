@@ -2,8 +2,8 @@
 // the floor plane, zoom-about-the-pointer invariance, clamping, snapping.
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_CAMERA, PITCH_RANGE, ZOOM_RANGE, clampCamera, fitViewport, isCameraMoved,
-  nearestVertex, panBy, pitchBy, project, snapHysteresis, toPixel, unprojectFloor, zoomAt,
+  DEFAULT_CAMERA, PITCH_RANGE, ZOOM_RANGE, clampCamera, clampPan, fitViewport, isCameraMoved,
+  nearestVertex, panBy, pitchBy, project, snapHysteresis, toPixel, unprojectFloor, zoomAbout, zoomAt,
 } from "./surfaceCamera";
 import type { Camera } from "./surfaceCamera";
 
@@ -88,5 +88,40 @@ describe("snapping", () => {
     expect(snapHysteresis(prev, far, rows, -0.1, -1)).toMatchObject({ i: 0, j: 1 });
     expect(snapHysteresis(null, far, rows, -0.1, -1)).toMatchObject({ i: 0, j: 1 });
     expect(snapHysteresis(prev, null, rows, 0, 0)).toBeNull();
+  });
+});
+
+describe("containment (2026-09-08)", () => {
+  it("zoomAbout scales the zoom, keeps the pan and clamps to the range", () => {
+    const cam: Camera = { yaw: 0.3, pitch: 0.7, zoom: 2, panX: 40, panY: -25 };
+    const z = zoomAbout(cam, 1.5);
+    expect(z.zoom).toBeCloseTo(3, 12);
+    expect(z.panX).toBe(40);
+    expect(z.panY).toBe(-25);
+    expect(zoomAbout(cam, 100).zoom).toBe(ZOOM_RANGE.max);
+    expect(zoomAbout(cam, 0.001).zoom).toBe(ZOOM_RANGE.min);
+    // Zooming about the centre keeps the fitted centre pixel where it was.
+    const vp0 = fitViewport(BOUNDS, cam, 800, 500);
+    const vp1 = fitViewport(BOUNDS, z, 800, 500);
+    const c = { sx: (BOUNDS.xMin + BOUNDS.xMax) / 2, sy: (BOUNDS.yMin + BOUNDS.yMax) / 2 };
+    expect(toPixel(vp1, c).x).toBeCloseTo(toPixel(vp0, c).x, 9);
+    expect(toPixel(vp1, c).y).toBeCloseTo(toPixel(vp0, c).y, 9);
+  });
+
+  it("clampPan keeps a quarter of the window covered by the sheet's box", () => {
+    // A box of half-extents 300 × 200 px in an 800 × 500 window: the right
+    // edge may retreat to x = 200 (a quarter of the width), the left edge
+    // advance to x = 600.
+    const wild: Camera = { ...DEFAULT_CAMERA, panX: 5000, panY: -4000 };
+    const c = clampPan(wild, 800, 500, 300, 200);
+    expect(c.panX).toBe(600 - 400 + 300); // left edge at (1 − ¼)·w
+    expect(c.panY).toBe(125 - 250 - 200); // bottom edge at ¼·h
+    const inside: Camera = { ...DEFAULT_CAMERA, panX: 120, panY: -60 };
+    expect(clampPan(inside, 800, 500, 300, 200)).toEqual(inside);
+    // Zoomed far in (a huge box) every corner stays reachable; zoomed out
+    // (a tiny box) the sheet cannot leave the middle half.
+    expect(clampPan(wild, 800, 500, 4000, 3000).panX).toBe(600 - 400 + 4000);
+    expect(clampPan(wild, 800, 500, 10, 10).panX).toBe(210);
+    expect(clampPan(wild, 800, 500, 10, 10).panY).toBe(-135);
   });
 });
