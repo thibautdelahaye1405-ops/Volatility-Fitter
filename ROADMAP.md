@@ -1169,6 +1169,15 @@ Focus kept the pre-focus framing (a tiny graph in a huge canvas).
   and the Focus floating-card steps.
 - Rider: a plain drag now means "connect" everywhere in the message family;
   if node dragging (moving pods) is ever wanted, it needs a modifier.
+- **2026-09-08b — the button was CLIPPED, not covered**: the toolbar was a
+  vertical column inside the chart area (overflow hidden), so in a SHORT
+  pane its last button (Focus) fell below the edge, behind the hint strip.
+  Now ONE horizontal row at the top-right with Focus FIRST, the hint strip
+  is a one-line legend with the gesture list behind a "gestures ⓘ" chip,
+  and **F** toggles Focus from the keyboard (hotkeys always armed on the
+  lens; the draft chords are no-ops outside the message family). The live
+  check gains a short-pane step (1400 × 720) asserting every toolbar button
+  sits inside the chart area.
 
 ### 🧭 SESSION WRAP (2026-09-07f) — GRAPH ERGONOMICS ARC E0–E6 SHIPPED: LAYERED BY DEFAULT, SLIDERS, ARROWS YOU EDIT ON THE CANVAS
 

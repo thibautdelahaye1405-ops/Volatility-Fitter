@@ -652,6 +652,20 @@ describe("Graph shell (GRAPH ERGONOMICS ARC)", () => {
     expect(screen.getByTestId("policy-pane")).toBeTruthy();
   });
 
+  it("F toggles Focus from the keyboard (2026-09-08, short-pane report)", () => {
+    messages();
+    renderShell();
+    fireEvent.keyDown(window, { key: "f" });
+    expect(screen.queryByTestId("policy-pane")).toBeNull();
+    fireEvent.keyDown(window, { key: "F" });
+    expect(screen.getByTestId("policy-pane")).toBeTruthy();
+    // Typing an "f" in a text control never fires the chord.
+    fireEvent.click(screen.getByTestId("open-relations"));
+    const search = screen.getByTestId("relations-search");
+    fireEvent.keyDown(search, { key: "f" });
+    expect(screen.getByTestId("policy-pane")).toBeTruthy();
+  });
+
   it("Focus keeps editing: the relation card floats over the canvas (2026-09-08)", () => {
     messages();
     renderShell();

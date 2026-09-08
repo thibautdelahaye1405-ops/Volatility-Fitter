@@ -88,7 +88,7 @@ export const GRAPH: GuidePage = {
     "",
     "## Chords",
     "",
-    "Click a node or an arrow inspects it · double-click a node opens its smile · Delete removes the selected relation · Esc clears the selection (or leaves Focus) · drag node → node adds a relation (a plain drag, the Connect tool, or Shift) · Ctrl+Z / Ctrl+Y undo / redo the draft · drag node → node (plain, Connect tool or Shift) adds a relation · drag the background / wheel pan and zoom · drop a Nodes-pane row to light it (calibrations) or pulse it (what-if); dropped on the tab strip it opens pinned.",
+    "Click a node or an arrow inspects it · double-click a node opens its smile · Delete removes the selected relation · Esc clears the selection (or leaves Focus) · drag node → node adds a relation (a plain drag, the Connect tool, or Shift) · F toggles Focus (the canvas toolbar's first button — also the way to reach it when a short pane hides the toolbar) · Ctrl+Z / Ctrl+Y undo / redo the draft · drag node → node (plain, Connect tool or Shift) adds a relation · drag the background / wheel pan and zoom · drop a Nodes-pane row to light it (calibrations) or pulse it (what-if); dropped on the tab strip it opens pinned.",
     "",
     "## Pitfalls",
     "",

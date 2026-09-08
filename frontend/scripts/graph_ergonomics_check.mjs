@@ -126,6 +126,27 @@ try {
     await shot(page, "1-lens");
   });
 
+  // 2b. a SHORT pane (2026-09-08 report): every toolbar button must stay
+  //     inside the chart area — the Focus button in particular.
+  await step("short pane: the toolbar (Focus first) stays inside the chart area", async () => {
+    await page.setViewport({ width: 1400, height: 720 });
+    await sleep(500);
+    const box = await page.evaluate(() => {
+      // DOMRects do not serialize across the bridge — copy the numbers.
+      const plain = (r) => (r ? { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height } : null);
+      const chart = plain(document.querySelector('[data-testid="graph-canvas"]')?.getBoundingClientRect());
+      const focus = plain(document.querySelector('[data-testid="tool-focus"]')?.getBoundingClientRect());
+      const fit = plain([...document.querySelectorAll('[data-testid="canvas-toolbar"] button')].pop()?.getBoundingClientRect());
+      return { chart, focus, fit };
+    });
+    const inside = (r) => r && box.chart && r.top >= box.chart.top && r.bottom <= box.chart.bottom && r.right <= box.chart.right && r.left >= box.chart.left;
+    if (!inside(box.focus) || !inside(box.fit)) throw new Error(`toolbar clipped: chart ${JSON.stringify(box.chart)} focus ${JSON.stringify(box.focus)}`);
+    if (box.chart.height < 120) throw new Error(`chart area too short to be meaningful (${box.chart.height}px)`);
+    await shot(page, "1b-short-pane");
+    await page.setViewport({ width: 1600, height: 1000 });
+    await sleep(500);
+  });
+
   // 3. relation card via a calendar hop; β drag stages the draft
   let firstKey = null;
   await step("calendar hop → relation card; β slider stages the draft; pill counts 1 edit", async () => {

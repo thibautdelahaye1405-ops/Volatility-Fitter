@@ -1,8 +1,9 @@
 // Keyboard chords of the Graph lens (GRAPH ERGONOMICS ARC, E6): Delete /
 // Backspace removes the selected relation, Escape clears the selection (or
 // leaves Focus), Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) undo / redo the relation
-// draft. Inert while a text control has the focus, so typing a search or a
-// number never fires a chord.
+// draft, F toggles Focus (the canvas gets the whole lens — reachable even
+// when a short pane hides the toolbar). Inert while a text control has the
+// focus, so typing a search or a number never fires a chord.
 import { useEffect } from "react";
 
 interface GraphHotkeys {
@@ -11,6 +12,7 @@ interface GraphHotkeys {
   onEscape: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  onToggleFocus?: () => void;
 }
 
 /** True when the event target is a text-entry control. */
@@ -22,7 +24,7 @@ export function isTextTarget(target: EventTarget | null): boolean {
   );
 }
 
-export function useGraphHotkeys({ enabled, onDelete, onEscape, onUndo, onRedo }: GraphHotkeys): void {
+export function useGraphHotkeys({ enabled, onDelete, onEscape, onUndo, onRedo, onToggleFocus }: GraphHotkeys): void {
   useEffect(() => {
     if (!enabled) return;
     const onKey = (e: KeyboardEvent) => {
@@ -30,6 +32,9 @@ export function useGraphHotkeys({ enabled, onDelete, onEscape, onUndo, onRedo }:
       const ctrl = e.ctrlKey || e.metaKey;
       if (e.key === "Escape") {
         onEscape();
+      } else if ((e.key === "f" || e.key === "F") && !ctrl && !e.altKey && onToggleFocus !== undefined) {
+        e.preventDefault();
+        onToggleFocus();
       } else if ((e.key === "Delete" || e.key === "Backspace") && !ctrl) {
         e.preventDefault();
         onDelete();
@@ -43,5 +48,5 @@ export function useGraphHotkeys({ enabled, onDelete, onEscape, onUndo, onRedo }:
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [enabled, onDelete, onEscape, onUndo, onRedo]);
+  }, [enabled, onDelete, onEscape, onUndo, onRedo, onToggleFocus]);
 }

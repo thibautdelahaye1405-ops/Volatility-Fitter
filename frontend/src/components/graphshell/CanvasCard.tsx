@@ -140,14 +140,21 @@ export default function CanvasCard({
         )}
       </div>
 
-      {/* Interaction hint + visual legend (next to the canvas it explains) */}
-      <div className="mt-1 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-600">
-        <span>
-          {manual
-            ? "Click to pulse/unpulse · click an arrow to edit the relation · double-click to open smile · drop a node from the Nodes pane to pulse it"
-            : editable
-              ? "Click a node to inspect · click an arrow to edit it · drag node → node adds a relation · click a ticker label to collapse its pod · Focus gives the graph the whole lens"
-              : "Click a node or edge to inspect · double-click to open smile · drag to pan, wheel to zoom · drop a node from the Nodes pane to light it"}
+      {/* ONE-LINE legend strip; the gesture list lives in a hover chip so a
+          short pane keeps its height for the graph (user report 2026-09-08). */}
+      <div className="mt-1 flex h-5 shrink-0 items-center gap-x-4 overflow-hidden whitespace-nowrap text-[10px] text-slate-600">
+        <span
+          className="cursor-help rounded border border-slate-800 px-1.5 py-px text-slate-500 hover:text-slate-300"
+          data-testid="gesture-hint"
+          title={
+            manual
+              ? "Click a node to pulse / unpulse it · click an arrow to edit the relation · double-click a node to open its smile · drag node → node to add a relation · drop a node from the Nodes pane to pulse it · F = Focus"
+              : editable
+                ? "Click a node to inspect it · click an arrow to edit it · drag node → node to add a relation (plain drag, Connect tool or Shift) · click a ticker label to collapse its pod · double-click a node to open its smile · drag the background to pan, wheel to zoom · Delete removes the selected relation · Ctrl+Z / Ctrl+Y undo / redo · F = Focus (Esc leaves it)"
+                : "Click a node or edge to inspect it · double-click a node to open its smile · drag the background to pan, wheel to zoom · drop a node from the Nodes pane to light it · F = Focus"
+          }
+        >
+          gestures ⓘ
         </span>
         {/* The post-Run reveal is an INFLUENCE visualization (real BFS hops
             from the observations) — never solver chronology. */}

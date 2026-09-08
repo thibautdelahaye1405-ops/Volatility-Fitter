@@ -227,7 +227,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   // Keyboard: Delete removes the selected relation, Esc clears / unfocuses,
   // Ctrl+Z / Ctrl+Y undo / redo the draft.
   useGraphHotkeys({
-    enabled: messagesMode,
+    enabled: true, // the draft actions are no-ops outside the message family
     onDelete: onDeleteSelected,
     onEscape: useCallback(() => {
       if (selectedEdge !== null) setSelectedEdge(null);
@@ -235,6 +235,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     }, [selectedEdge, focused]),
     onUndo: draft.undo,
     onRedo: draft.redo,
+    onToggleFocus: useCallback(() => setFocused((v) => !v), []),
   });
 
   const isSel = (n: { ticker: string; expiry: string }) =>
