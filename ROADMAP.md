@@ -415,13 +415,30 @@ help: guides/lenses_b.ts (localvol tab list, twice) · glossary `dupire-twin` ·
   (iv) a crossing ⇒ counted, never repaired silently; (v) an
   exponential-class wing's local variance grows linearly in |k| and the
   box clip counts it (the tail-class gap the sheet shows).
-- **D2 Twin record + API** — `lv_compare.py`, schemas, router, cache; the
-  round-trip lock: the twin of a smooth arbitrage-free parametric ladder,
-  repriced on the affine lattice, reproduces the parametric IV inside the
-  quoted range to a measured bp figure on `tests/fixtures/lv_weekly_massive
-  .json` (locked with slack); `tails` other than `model` → 422; 404 without
-  a parametric fit; `GET /localvol` + the Stage-2b seed byte-identical
-  (existing locks).
+- **D2 Twin record + API** — SHIPPED 2026-09-08: `api/lv_compare.py`
+  (rows via `_gather`, the parametric source = `service.fit_or_get` — the
+  displayed, transported record, never a calibration on a gated read —,
+  lattice + box via `_resolve_grid` / `_lv_bounds`, the twin held as an
+  `AffineVarianceSurface` on the fit's own Delaunay triangulation, four
+  value marches through the fit's own operator [call · put · converged ·
+  buffered right-wing display lattice, the fit's dx / dt / scheme / x-max
+  floor / virtual-front node], three scores per expiry on the fit-target
+  basis + the round trip), `schemas_affine.LvCompareRequest` (Literal chips
+  = the 422 gate) / `LvCompareResponse`, `POST /fit/affine/{ticker}/compare`
+  (404 without two parametric expiries), the cache keyed on the affine key +
+  chips + spot version + the displayed LV pointer (read FIRST — keying before
+  the bootstrap filed the first build under "no fit", test-locked).
+  MEASURED on the synthetic ALPHA ladder (11 × 14 vertices): round trip
+  24.4 bp rms / 96 max — 49 bp on the one-month front, 5 bp at one year (the
+  coarse lattice sampling a smooth surface) —, the twin's converged score
+  25.4 bp vs the affine sheet's own 51.7, in-operator 65 bp (the operator
+  error is real on both); locks at 2× (`test_api_lv_compare.py`, 5 tests:
+  lattice + box + guard + difference sheet, per-expiry content, the measured
+  figure, the buckets chip, 404/422/cache). Cost: 0.27 s uncached (the four
+  marches = 0.19 s through the per-step Delaunay `variance` evaluation; the
+  extraction 20 ms; inversion 78 ms), cached thereafter — rider: precompute
+  the hat basis for the twin's marches as the calibration does. The real
+  weekly fixture has no test loader; its figure is D5's live look.
 - **D3 Frontend tab** — hook, chips, sheets (side-by-side + diff), IV
   panel, table, cues; vitest: chip vocab + dimming, diff grid, table
   ordering, empty / cue states; `LvRender` "diff".
@@ -1348,7 +1365,14 @@ below) — every recorded rider is closed except the ones listed here:
    test_dupire_surface.py` (11 goldens: byte-identity, flat, SVI closed form
    both interpolants to 2e-4, PCHIP monotone, crossing counted, the
    exponential wing grows linearly and the cap counts, the guard, gates).
-   NEXT = D2 (the twin record + `POST /fit/affine/{ticker}/compare`).
+   D2 SHIPPED 2026-09-08: `api/lv_compare.py` + `POST /fit/affine/{ticker}/
+   compare` (`LvCompareRequest` chips · `LvCompareResponse`: both sheets on
+   the affine lattice, the difference, the unrepaired values, per-row
+   counters, per-expiry twin / parametric / affine scores + the round trip),
+   marched through the affine fit's own operator; measured round trip
+   24.4 bp rms on the synthetic ladder (locked at 2×); 0.27 s uncached.
+   NEXT = D3 (the frontend tab: `useLvCompare`, chips, sheets + diff, the IV
+   panel, the score table).
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
 wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
 replace the five scheduler fields, migrated on load; the `/scheduler` payload

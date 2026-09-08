@@ -24,12 +24,15 @@ from volfit.api.affine_fit import (
     optimal_grid_size,
 )
 from volfit.api.affine_views import affine_density, affine_table, affine_term
+from volfit.api.lv_compare import ParametricFitMissing, lv_compare_payload
 from volfit.api.schemas import DensityResponse, TableResponse, TermStructureResponse
 from volfit.api.schemas_affine import (
     AffineFitRequest,
     AffineFitResponse,
     AffineTraceResponse,
     GridInfo,
+    LvCompareRequest,
+    LvCompareResponse,
     OptimalGridSize,
 )
 from volfit.api.state import UnknownNodeError
@@ -116,4 +119,21 @@ def fit_affine_table(
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
     except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+@router.post("/fit/affine/{ticker}/compare", response_model=LvCompareResponse)
+def fit_affine_compare(
+    ticker: str, request: Request, body: LvCompareRequest | None = None
+) -> LvCompareResponse:
+    """The Local Vol lens's Compare tab (LV Dupire-twin arc): the parametric
+    surface's Dupire twin on the affine lattice beside the displayed LV sheet,
+    repriced through the fit's own operator. 404 without a parametric fit on
+    at least two expiries; the chip Literals (``tInterp`` / ``tails``) 422 on
+    an unknown value through the body validation."""
+    try:
+        return lv_compare_payload(request.app.state.volfit, ticker, body or LvCompareRequest())
+    except (UnknownNodeError, ParametricFitMissing) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    except ValueError as exc:  # too few expiries / degenerate clocks
         raise HTTPException(status_code=422, detail=str(exc)) from None

@@ -13,6 +13,8 @@ smile points/quote bands reuse volfit.api.schemas.SmilePoint / QuoteBand.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from volfit.api.schemas import (
@@ -196,3 +198,118 @@ class AffineTraceResponse(BaseModel):
     xNodes: list[float]  # vertex strikes x = K/F (columns)
     expiries: list[float]  # tau per expiryRms column (real fitted expiries only)
     frames: list[AffineTraceFrameOut]  # ascending nEvals; LAST = converged surface
+
+
+# ---------------------------------------------------------------------------
+# The Dupire twin (LV Dupire-twin compare arc, D2) — POST /fit/affine/{ticker}/compare
+# ---------------------------------------------------------------------------
+
+
+class LvCompareRequest(AffineFitRequest):
+    """The Local Vol lens's Compare tab request: the affine request (fit mode +
+    the nodal-variance box the twin is clipped into) plus the two chip groups.
+    ``tInterp`` picks the t-interpolation of the parametric total-variance
+    surface before it is differentiated (``smooth`` = monotone PCHIP in τ,
+    ``buckets`` = the market's constant-forward-variance staircase);
+    ``tails`` names what the surface is beyond the quoted range — v1 ships the
+    displayed model's own wings only (the Literal is the 422 gate; the
+    Match-LQD / Quoted-range / Affine-wings riders extend it)."""
+
+    tInterp: Literal["smooth", "buckets"] = "smooth"
+    tails: Literal["model"] = "model"
+
+
+class DupireCountersOut(BaseModel):
+    """Per-t-vertex repair counts of the twin extraction (one entry per row of
+    ``tNodes``; models.localvol.dupire_surface.DupireCounters): butterfly =
+    Dupire denominator g <= 0 (strike arbitrage in the implied surface, filled
+    from the nearest strike), calendar = w_t <= 0, floored / capped = clipped
+    into the variance box. ``clean`` = nothing was repaired anywhere."""
+
+    butterfly: list[int]
+    calendar: list[int]
+    floored: list[int]
+    capped: list[int]
+    clean: bool
+
+
+class LvCompareScore(BaseModel):
+    """One surface's fit-target score on one expiry (or pooled over all).
+
+    ``rmsError`` is the calibration-consistent weighted RMS vol error (decimal
+    vol — the ``AffineSmile.rmsError`` basis: fit-target band, weighting scheme,
+    var-swap quote); ``rmsBp`` / ``maxBp`` the plain per-quote |model − target|
+    IV residuals in bp on the surface's own operator (the parametric closed form
+    has no operator; the affine payload does not carry its in-operator rms per
+    expiry, so ``rmsBp`` is None there); ``convergedBp`` the same residual RMS
+    on the converged operator (dt/4, dx/2) — None for the parametric."""
+
+    rmsError: float
+    maxBp: float
+    rmsBp: float | None = None
+    convergedBp: float | None = None
+
+
+class LvCompareSmile(BaseModel):
+    """One expiry of the Compare tab: the twin's reconstruction (Dupire march →
+    OTM Black inversion, the ``AffineSmile.model`` / ``modelExt`` grids), the
+    parametric source on the SAME core grid, the quotes, the three scores and
+    the round trip — the twin repriced back against its own parametric source
+    at the quoted strikes (converged operator; ``roundTripInOpBp`` on the
+    calibration operator), which reads the lattice sampling + discretization
+    and nothing else."""
+
+    expiry: str
+    t: float  # calendar year fraction
+    tau: float  # the variance clock the smile is quoted in
+    forward: float
+    twin: list[SmilePoint]
+    twinExt: list[SmilePoint] = []
+    parametric: list[SmilePoint]
+    quotes: list[QuoteBand]
+    twinScore: LvCompareScore
+    parametricScore: LvCompareScore
+    affineScore: LvCompareScore | None = None
+    roundTripBp: float
+    roundTripMaxBp: float
+    roundTripInOpBp: float
+
+
+class LvCompareResponse(BaseModel):
+    """The Dupire twin beside the affine sheet (volfit.api.lv_compare).
+
+    Sheets are on the affine vertex lattice (``tNodes`` × ``xNodes``, the SAME
+    grid the LV fit builds from the same rows): ``localVolTwin`` = sqrt of the
+    twin's nodal variance inside the box; ``rawLocalVariance`` the unrepaired
+    Gatheral values (null where the denominator failed or the vertex was not
+    differentiated, negative where w_t < 0); ``differentiated`` flags the x
+    vertices actually differentiated (the rest are flat copies). The affine
+    sheet and the signed difference ``diffLocalVol`` (twin − affine, vol) are
+    present only when the displayed LV fit exists on the same lattice
+    (``affineLatticeMatches``); a stale or differently gridded fit leaves them
+    empty rather than comparing unlike lattices."""
+
+    ticker: str
+    tInterp: str
+    tails: str
+    tNodes: list[float]
+    xNodes: list[float]
+    localVolTwin: list[list[float]]
+    rawLocalVariance: list[list[float | None]]
+    differentiated: list[bool]
+    counters: DupireCountersOut
+    varLo: float
+    varHi: float
+    localVolAffine: list[list[float]] = []
+    diffLocalVol: list[list[float]] = []
+    hasAffine: bool
+    affineStale: bool
+    affineLatticeMatches: bool
+    smiles: list[LvCompareSmile]
+    skippedExpiries: list[str] = []  # rows with quotes but no displayed parametric fit
+    twinScore: LvCompareScore
+    parametricScore: LvCompareScore
+    affineScore: LvCompareScore | None = None
+    roundTripBp: float
+    roundTripMaxBp: float
+    message: str
