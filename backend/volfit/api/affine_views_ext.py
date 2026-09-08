@@ -121,16 +121,23 @@ def display_lattice(
     None when ``x_grid`` already reaches that far (no extra march needed)."""
     from volfit.api.service import K_DISPLAY_HI  # heavy module: lazy
 
+    from volfit.models.localvol.pde_grids import is_uniform
+
     x = np.asarray(x_grid, dtype=float)
-    dx = float(x[1] - x[0])
     k_cap = max(float(K_DISPLAY_HI), float(k_hi_obs))
     dk = np.log(1.0 / _LAYER_TOL) * max(float(w_tail), 0.0) / (2.0 * max(k_cap, 0.1))
     dk = float(np.clip(dk, _EXT_DK_MIN, _EXT_DK_MAX))
     x_max = min(float(np.exp(k_cap + dk)), _EXT_X_MULT_MAX * float(x[-1]))
     if x_max <= float(x[-1]) + 1e-12:
         return None
-    n = int(np.ceil(round(x_max / dx, 6)))
-    return dx * np.arange(n + 1)
+    if is_uniform(x):  # the legacy lattice: dx · arange, every node reused
+        dx = float(x[1] - x[0])
+        n = int(np.ceil(round(x_max / dx, 6)))
+        return dx * np.arange(n + 1)
+    # A graded lattice continues past its edge at its last (wing) step.
+    h = float(x[-1] - x[-2])
+    n = int(np.ceil((x_max - float(x[-1])) / h - 1e-9))
+    return np.concatenate([x, float(x[-1]) + h * np.arange(1, n + 1)])
 
 
 def clean_right_edge(

@@ -27,6 +27,7 @@ import numpy as np
 from scipy.linalg import solve_banded
 
 from volfit.models.localvol.affine import AffinePDESolution, AffineVarianceSurface
+from volfit.models.localvol.pde_grids import refine_cells
 from volfit.models.localvol.time_schemes import build_plan
 
 #: Refinement factors defining the "converged" operator: every calibration
@@ -50,13 +51,14 @@ def refined_grids(
     Refining the CALIBRATION grids (rather than rebuilding from a smaller
     ``dt_max``) guarantees the reprice is at least ``dt_factor`` finer on
     every interval — including the fix-#3-refined front interval — and keeps
-    every quoted expiry exactly on a time node. The strike grid is uniform by
-    construction (``_pde_grids``), so ``linspace`` preserves the lattice and
-    x = 1 stays a node.
+    every quoted expiry exactly on a time node. The strike lattice is refined
+    cell by cell (``pde_grids.refine_cells``: the historical ``linspace`` on a
+    uniform lattice, bit-for-bit; each cell of a graded lattice subdivided), so
+    every node — x = 1 included — stays a node.
     """
     x = np.asarray(x_grid, dtype=float)
     t = np.asarray(t_grid, dtype=float)
-    x_fine = np.linspace(x[0], x[-1], dx_factor * (x.size - 1) + 1)
+    x_fine = refine_cells(x, dx_factor)
     pts = [float(t[0])]
     for a, b in zip(t[:-1], t[1:]):
         pts.extend(np.linspace(a, b, dt_factor + 1)[1:].tolist())

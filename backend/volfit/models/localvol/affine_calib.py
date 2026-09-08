@@ -38,6 +38,7 @@ from scipy.optimize import least_squares
 from volfit.calib.band import MID_ANCHOR_WEIGHT, band_violation, band_violation_sign
 from volfit.models.localvol.affine_gn import LinearizedJacobian, gauss_newton
 from volfit.models.localvol.affine_stall import stall_block_size, stall_metric
+from volfit.models.localvol.pde_grids import is_uniform, local_step
 from volfit.models.localvol.affine_trace import AffineTrace, TraceRecorder
 from volfit.models.localvol.affine import (
     AffinePDESolution,
@@ -300,8 +301,9 @@ def density_smoothness_rows(
     if weight <= 0.0 or not options:
         return []
     x = np.asarray(x_grid, dtype=float)
+    uniform = is_uniform(x)
     dx = float(x[1] - x[0])
-    spec: list[tuple[float, np.ndarray, float]] = []
+    spec: list[tuple[float, np.ndarray, float | np.ndarray]] = []
     for t in sorted({float(o.t) for o in options}):
         xs = np.array([o.x for o in options if float(o.t) == t])
         s = float(density_std.get(t, 0.0))
@@ -314,8 +316,12 @@ def density_smoothness_rows(
         j1 = int(np.searchsorted(x, hi)) - 3
         if j1 <= j0:
             continue
-        scale = float(np.sqrt(weight * stride) * s**1.5 / dx**2.5)
-        spec.append((t, np.arange(j0, j1, stride), scale))
+        j = np.arange(j0, j1, stride)
+        if uniform:  # the historical scalar scale (bit-identical)
+            scale: float | np.ndarray = float(np.sqrt(weight * stride) * s**1.5 / dx**2.5)
+        else:  # graded lattice: each row's scale from the step its stencil sees
+            scale = np.sqrt(weight * stride) * s**1.5 / local_step(x, j) ** 2.5
+        spec.append((t, j, scale))
     return spec
 
 
@@ -339,7 +345,8 @@ def _density_block(
         res.append(scale * (-c[j] + 3.0 * c[j + 1] - 3.0 * c[j + 2] + c[j + 3]))
         if with_jac:
             s_ = solution.sens[i]
-            jac.append(scale * (-s_[j] + 3.0 * s_[j + 1] - 3.0 * s_[j + 2] + s_[j + 3]))
+            sc = scale if np.isscalar(scale) else np.asarray(scale)[:, None]
+            jac.append(sc * (-s_[j] + 3.0 * s_[j + 1] - 3.0 * s_[j + 2] + s_[j + 3]))
     return np.concatenate(res), (np.vstack(jac) if with_jac else None)
 
 

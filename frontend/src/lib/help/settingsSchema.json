@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-07",
+  "generatedAt": "2026-09-08",
   "models": {
     "fit": {
       "title": "FitSettings",
@@ -678,9 +678,19 @@
           "type": "enum",
           "enum": [
             "implicit",
-            "rannacher"
+            "rannacher",
+            "bdf2"
           ],
           "default": "implicit"
+        },
+        {
+          "name": "lvLattice",
+          "type": "enum",
+          "enum": [
+            "uniform",
+            "graded"
+          ],
+          "default": "uniform"
         },
         {
           "name": "lvEarlyStop",

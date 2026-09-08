@@ -58,6 +58,8 @@ from volfit.models.localvol import (
     varswap_weights,
 )
 from volfit.models.localvol.reprice import refined_grids, reprice_affine_dupire
+from volfit.models.localvol.pde_grids import second_difference
+from volfit.api.affine_lattice import pde_lattice
 
 #: Var-swap replication strike floor (matches calibrate_affine's default).
 _VARSWAP_K_LO = 0.01
@@ -961,9 +963,8 @@ def _lattice_density(solution, i_exp: int) -> tuple[np.ndarray, np.ndarray, np.n
     """
     x = np.asarray(solution.x_grid, dtype=float)
     c = np.asarray(solution.prices[i_exp], dtype=float)
-    dx = float(x[1] - x[0])  # uniform grid (see _pde_grids)
     d2 = np.zeros_like(c)
-    d2[1:-1] = (c[2:] - 2.0 * c[1:-1] + c[:-2]) / (dx * dx)
+    d2[1:-1] = second_difference(x, c)  # uniform: the legacy stencil, bit-for-bit
     f_y = np.maximum(d2, 0.0)
 
     pos = x > 1e-6  # log-return needs x > 0 (x = 0 is the C(.,0) = 1 boundary)
@@ -1125,8 +1126,7 @@ def _diagnostics(
     count alone said "N cal. viol." with nowhere to look. Both None when the
     count is zero; the -1e-9 lattice tolerance is unchanged."""
     prices = solution.prices  # (n_exp, n_x)
-    dx = float(x_grid[1] - x_grid[0])
-    d2 = (prices[:, 2:] - 2.0 * prices[:, 1:-1] + prices[:, :-2]) / (dx * dx)
+    d2 = second_difference(np.asarray(x_grid, dtype=float), prices)  # any lattice
     min_density = [float(row.min()) for row in d2]
     calendar = 0
     worst_pair: int | None = None
@@ -1304,22 +1304,23 @@ def _fit(
     #  - else convex wing  -> fixed a = leftWingSlopeMult (steeper rising wing);
     #  - else              -> a = 0 (flat clamp, the historical behavior).
     fit_left_a = len(varswaps) > 0
-    # Stage 7 — time discretisation: Rannacher (2nd order) lets the PDE march on a
-    # several-fold COARSER time grid at equal accuracy, the per-eval speed-up. It does
-    # not apply with a free left slope (var-swap fits keep implicit Euler), so those
-    # keep the fine dt. The PDE time grid is built with the matching step ceiling.
-    time_scheme = "implicit" if fit_left_a else opts.timeScheme
-    dt_max = _DT_MAX_RANNACHER if time_scheme == "rannacher" else _DT_MAX
-    # Fix #2: refine the (shared, uniform) PDE strike step for short-dated surfaces,
-    # whose density concentrates near x = 1; byte-identical for normal surfaces.
+    # Time discretisation (LV operator arc, 2026-09-08): "bdf2" (second order,
+    # L-stable, the graded time grid) is the default; "rannacher" (CN) does not
+    # carry the free-left-slope column, so var-swap fits under it keep implicit
+    # Euler; BDF2 carries it (banded path) and applies to var-swap fits too.
+    time_scheme = "implicit" if (fit_left_a and opts.timeScheme == "rannacher") else opts.timeScheme
     # The march grid must HIT the hidden front's t1/2 so its quotes can price
     # (each sub-interval then clears the per-interval dt gate on its own).
     march_expiries = expiries
     if virtual_rows:
         march_expiries = np.sort(np.append(expiries, [r[1] for r in virtual_rows]))
-    # Right-edge floor: the Options setting lvXMaxMin (2.5 = byte-identical).
-    x_grid, t_grid = _pde_grids(
-        march_expiries, k_hi, dt_max, _pde_dx(rows), x_max_min=opts.lvXMaxMin
+    # The PDE grids for this scheme + lattice mode (affine_lattice.pde_lattice):
+    # implicit keeps the uniform per-interval rule and, under lvLattice =
+    # "uniform", the shortest rung's dx (byte-identical legacy); bdf2 / rannacher
+    # march the graded time grid (every vertex row a mark); "graded" builds the
+    # per-expiry strike lattice. Right-edge floor: lvXMaxMin (2.5 = legacy).
+    x_grid, t_grid = pde_lattice(
+        rows, march_expiries, t_nodes, k_hi, time_scheme, opts.lvLattice, opts.lvXMaxMin
     )
     # Stage 6′: the Numba vectorized-Thomas march (~6× the banded path) drives the
     # hot path when enabled + importable; it self-restricts to the implicit /
@@ -1669,6 +1670,7 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         opts.varSwapMethod, opts.timeScheme, opts.lvEarlyStop, opts.lvFastKernel,
         opts.lvSolver,
         opts.lvXMaxMin,  # LV-only lattice right-edge floor (no options_version bump)
+        opts.lvLattice,  # LV-only strike-lattice mode (LV operator arc)
         request.model_dump_json(),
     )
 

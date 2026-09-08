@@ -60,6 +60,7 @@ from __future__ import annotations
 import numpy as np
 
 from volfit.api import affine_fit, affine_views_ext
+from volfit.api.affine_lattice import pde_lattice
 from volfit.api.displayed import displayed_slice, displayed_var_swap_w
 from volfit.api.schemas import SmilePoint
 from volfit.api.schemas_affine import (
@@ -146,18 +147,16 @@ def _parametric_rows(state: AppState, ticker: str, rows, fit_mode: str):
     return kept, records, skipped
 
 
-def _march_scheme(state: AppState, ticker: str, rows, opts) -> tuple[str, float]:
-    """``(time_scheme, dt_max)`` exactly as the affine fit picks them: a var-swap
-    quote (market or prior) makes the left slope free and pins implicit Euler,
-    otherwise the Options scheme with its own dt ceiling."""
+def _march_scheme(state: AppState, ticker: str, rows, opts) -> str:
+    """The time scheme exactly as the affine fit picks it: a var-swap quote
+    (market or prior) makes the left slope free, which Rannacher cannot carry
+    (implicit Euler then); BDF2 and implicit apply as set."""
     from volfit.api.affine_varswap import market_varswap_quotes
 
     _, _, prior_vs = affine_fit._prior_lv_targets(state, ticker, rows)
     scheme_weights = state.fit_settings().weightScheme
     varswaps = market_varswap_quotes(state, ticker, rows, scheme_weights) + prior_vs
-    scheme = "implicit" if varswaps else opts.timeScheme
-    dt_max = affine_fit._DT_MAX_RANNACHER if scheme == "rannacher" else affine_fit._DT_MAX
-    return scheme, dt_max
+    return "implicit" if (varswaps and opts.timeScheme == "rannacher") else opts.timeScheme
 
 
 def _points(grid: np.ndarray, vol: np.ndarray) -> list[SmilePoint]:
@@ -241,13 +240,13 @@ def _twin_record(
     #    scheme — where the flat control's front-expiry error is ~2 bp. The
     #    SMOOTH twin is marched (evaluated where the march asks); the nodal
     #    sheet's own march on the same operator says what the lattice loses.
-    _, dt_max = _march_scheme(state, ticker, rows, opts)
+    scheme = _march_scheme(state, ticker, rows, opts)
     march_exps = ts
     virtual_rows = affine_fit._virtual_front_rows(rows)
     if virtual_rows:
         march_exps = np.sort(np.append(ts, [r[1] for r in virtual_rows]))
-    x_grid, t_grid = affine_fit._pde_grids(
-        march_exps, k_hi, dt_max, affine_fit._pde_dx(rows), x_max_min=opts.lvXMaxMin
+    x_grid, t_grid = pde_lattice(
+        rows, march_exps, t_nodes, k_hi, scheme, opts.lvLattice, opts.lvXMaxMin
     )
     x_fine, t_fine = refined_grids(x_grid, t_grid, TWIN_DX_FACTOR, TWIN_DT_FACTOR)
     smooth = DupireTwinSurface(

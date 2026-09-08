@@ -647,7 +647,22 @@ class OptionsSettings(BaseModel):
     #: step ~cancels the fewer-time-steps win) AND CN is not monotone (an arb
     #: violation appeared on a coarse-x grid), so it is OFF by default; available as
     #: an opt-in. The real cold-fit lever is fewer evals, not fewer time steps.
-    timeScheme: Literal["implicit", "rannacher"] = "implicit"
+    #: 2026-09-08 (LV operator arc): "bdf2" = the second-order, L-stable BDF2
+    #: step on the GRADED time grid (geometric from the payoff kink, every vertex
+    #: row a grid point, ≥ 8 steps per slab, ceiling 0.05 y) — ≤ 5 bp of operator
+    #: error per expiry on every fixture where implicit's per-interval rule left
+    #: 15–170 bp for the calibration to absorb, at 2–3× fewer steps; the compiled
+    #: march covers it (and Rannacher) since the same arc. Rannacher also marches
+    #: the graded grid now; var-swap fits under Rannacher keep implicit.
+    timeScheme: Literal["implicit", "rannacher", "bdf2"] = "implicit"
+    #: LV PDE strike lattice (LV operator arc, 2026-09-08). "uniform" = one step
+    #: for the whole lattice, the SHORTEST rung's 0.15 σ√τ (a 2-day daily makes a
+    #: SPY surface march ~1700 nodes at 1/800 to x = 2.5). "graded" = each expiry
+    #: gets its own step over its own support (traded range ± 6 σ√τ), the wings
+    #: 0.02, the step changing by ≤ 15 % per cell; x = 1 stays a node by
+    #: construction. Same near-money resolution, a fraction of the nodes.
+    #: LV-only: folded into affine_key, no options-version bump.
+    lvLattice: Literal["uniform", "graded"] = "uniform"
     #: Early-stop the COLD LV fit when the quote-fit improvement stalls (Stage 8). The
     #: fit otherwise runs to the 200-eval cap though its tail evals barely move the
     #: surface; stopping at the stall point scales the WHOLE fit (march + assembly +
