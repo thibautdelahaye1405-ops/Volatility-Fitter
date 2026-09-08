@@ -4,8 +4,9 @@
 // below the pane's edge behind the hint strip). Order = what a small pane
 // needs first: Focus (give the graph the whole lens), the Connect tool (drag
 // node → node draws a relation; a plain drag or Shift does it without the
-// tool), collapse / expand every ticker pod, then zoom in / out / fit.
-// Pure presentation.
+// tool), collapse / expand every ticker pod, then zoom in / out / fit. The
+// row is exactly ONE line (h-7): the Focus overlay (CanvasCard) starts below
+// it, so the two never overlap (user report 2026-09-08). Pure presentation.
 import { ChevronsDownUp, ChevronsUpDown, Link2, Maximize2, Minimize2 } from "lucide-react";
 
 interface GraphCanvasToolbarProps {
@@ -42,8 +43,13 @@ export default function GraphCanvasToolbar({
 }: GraphCanvasToolbarProps) {
   const hasTools = onToggleFocus !== undefined || onToggleConnect !== undefined || onCollapseAll !== undefined;
   return (
-    <div className="absolute right-3 top-3 z-20 flex flex-col items-end gap-1.5" data-testid="canvas-toolbar">
-      <div className="flex items-center gap-1.5">
+    <div className="absolute right-3 top-3 z-20 flex h-7 items-center gap-1.5" data-testid="canvas-toolbar">
+      {connectTool && (
+        <span className="rounded-md border border-accent-500/50 bg-accent-500/15 px-2 py-0.5 text-[10px] font-medium text-accent-300">
+          drag informer → receiver
+        </span>
+      )}
+      <>
         {hasTools && (
           <div className={group}>
             {onToggleFocus !== undefined && (
@@ -89,12 +95,7 @@ export default function GraphCanvasToolbar({
           <button onClick={onZoomIn} title="Zoom in" className={btn + " border-l border-slate-700 text-sm leading-none"}>+</button>
           <button onClick={onFit} title="Fit graph to view" className={btn + " border-l border-slate-700 text-xs leading-none"}>⤢</button>
         </div>
-      </div>
-      {connectTool && (
-        <span className="rounded-md border border-accent-500/50 bg-accent-500/15 px-2 py-0.5 text-[10px] font-medium text-accent-300">
-          drag informer → receiver
-        </span>
-      )}
+      </>
     </div>
   );
 }

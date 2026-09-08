@@ -103,7 +103,8 @@ export default function CanvasCard({
       <div className="relative min-h-0 flex-1" data-chart-card="">
         {overlay !== undefined && overlay !== null && (
           <div
-            className="absolute right-16 top-3 z-20 max-h-[85%] w-80 overflow-y-auto rounded-xl border border-slate-700 bg-surface-900/95 p-3 shadow-xl shadow-black/40 backdrop-blur"
+            // Below the one-line toolbar row (top-3 + h-7 + gap), never beside it.
+            className="absolute right-3 top-14 z-20 max-h-[80%] w-80 overflow-y-auto rounded-xl border border-slate-700 bg-surface-900/95 p-3 shadow-xl shadow-black/40 backdrop-blur"
             data-testid="canvas-overlay"
             onMouseDown={(e) => e.stopPropagation()}
           >

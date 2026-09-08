@@ -294,6 +294,16 @@ try {
     });
     await page.mouse.click(hop.x, hop.y);
     await waitFor(page, () => !!document.querySelector('[data-testid="canvas-overlay"] [data-testid="relation-card"]'), "floating relation card");
+    // The toolbar row and the floating card must never overlap (2026-09-08).
+    const rects = await page.evaluate(() => {
+      const plain = (r) => (r ? { top: r.top, bottom: r.bottom, left: r.left, right: r.right } : null);
+      return {
+        bar: plain(document.querySelector('[data-testid="canvas-toolbar"]')?.getBoundingClientRect()),
+        card: plain(document.querySelector('[data-testid="canvas-overlay"]')?.getBoundingClientRect()),
+      };
+    });
+    const overlap = rects.bar && rects.card && rects.bar.left < rects.card.right && rects.card.left < rects.bar.right && rects.bar.top < rects.card.bottom && rects.card.top < rects.bar.bottom;
+    if (overlap) throw new Error(`toolbar overlaps the floating card: ${JSON.stringify(rects)}`);
     await shot(page, "6-focus");
     await page.keyboard.press("Escape"); // closes the card
     await sleep(200);

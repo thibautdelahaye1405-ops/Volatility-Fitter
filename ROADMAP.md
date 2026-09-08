@@ -1178,6 +1178,11 @@ Focus kept the pre-focus framing (a tiny graph in a huge canvas).
   lens; the draft chords are no-ops outside the message family). The live
   check gains a short-pane step (1400 × 720) asserting every toolbar button
   sits inside the chart area.
+- **2026-09-08c — toolbar vs the floating card**: the horizontal row ran
+  across the top edge of the Focus overlay (both top-right). The row is
+  exactly ONE line (the Connect hint joins it on the left) and the overlay
+  starts BELOW it (`top-14`, right-aligned with the row); the live Focus
+  step asserts the two rectangles never intersect.
 
 ### 🧭 SESSION WRAP (2026-09-07f) — GRAPH ERGONOMICS ARC E0–E6 SHIPPED: LAYERED BY DEFAULT, SLIDERS, ARROWS YOU EDIT ON THE CANVAS
 
