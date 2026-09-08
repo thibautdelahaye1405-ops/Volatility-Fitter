@@ -46,6 +46,13 @@ from volfit.api.schemas import (
 )
 from volfit.api.state import AppState
 from volfit.models.localvol import LocalVolGrid, LocalVolModel, extract_grid
+from volfit.models.localvol.dupire_surface import w_surface_buckets
+
+#: The bucketed total-variance surface (linear in t between slices, flat
+#: forward variance beyond the last) now lives in models.localvol.dupire_surface
+#: beside the smooth builder of the Dupire-twin compare arc; kept under its
+#: historical name here for the affine calibration's Stage-2b seed import.
+_w_surface = w_surface_buckets
 
 #: Extraction grid: strikes across the union of quoted ranges, padded.
 #: 81 nodes keep the short-expiry ATM skew resolved (41 visibly flattens the
@@ -65,34 +72,6 @@ def _surface_records(state: AppState, ticker: str, fit_mode: str):
     isos = [e.isoformat() for e in sorted(state.forwards(ticker))]
     pairs = [(iso, service.fit_or_get(state, ticker, iso, fit_mode)) for iso in isos]
     return [(iso, rec) for iso, rec in pairs if rec is not None]  # skip uncalibrated
-
-
-def _w_surface(ts: np.ndarray, slices: list):
-    """Total-variance surface w(k, t): linear in t between slices, 0 at t=0.
-
-    Within [0, t_last] this is the standard variance-time interpolation
-    (calendar-safe when the slice fits are); beyond t_last the last bucket's
-    forward variance is extended flat.
-    """
-
-    def w(k: np.ndarray, t: float) -> np.ndarray:
-        k = np.asarray(k, dtype=float)
-        t = float(t)
-        w_rows = [s.implied_w(k) for s in slices]  # lazily small: few expiries
-        if t <= 0.0:
-            return np.zeros_like(k)
-        i = int(np.searchsorted(ts, t))
-        if i == 0:
-            return w_rows[0] * (t / ts[0])
-        if i >= ts.size:  # flat forward variance beyond the last expiry
-            if ts.size == 1:
-                return w_rows[-1] * (t / ts[-1])
-            slope = (w_rows[-1] - w_rows[-2]) / (ts[-1] - ts[-2])
-            return w_rows[-1] + np.maximum(slope, 0.0) * (t - ts[-1])
-        lam = (t - ts[i - 1]) / (ts[i] - ts[i - 1])
-        return (1.0 - lam) * w_rows[i - 1] + lam * w_rows[i]
-
-    return w
 
 
 def localvol_record(state: AppState, ticker: str, fit_mode: str):

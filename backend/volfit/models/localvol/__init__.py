@@ -39,6 +39,14 @@ from volfit.models.localvol.dupire import (
     dupire_local_variance,
     extract_grid,
 )
+from volfit.models.localvol.dupire_surface import (
+    DupireCounters,
+    TwinExtraction,
+    build_w_surface,
+    extract_twin,
+    w_surface_buckets,
+    w_surface_pchip,
+)
 from volfit.models.localvol.grid import LocalVolGrid
 from volfit.models.localvol.model import (
     LocalVolDiagnostics,
@@ -60,8 +68,14 @@ __all__ = [
     "AffineTraceFrame",
     "BasketQuote",
     "AffineVarianceSurface",
+    "DupireCounters",
     "DupireSteps",
     "ExtractionResult",
+    "TwinExtraction",
+    "build_w_surface",
+    "extract_twin",
+    "w_surface_buckets",
+    "w_surface_pchip",
     "GNResult",
     "LinearizedJacobian",
     "gauss_newton",

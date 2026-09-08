@@ -1338,8 +1338,17 @@ below) — every recorded rider is closed except the ones listed here:
    surface's Dupire twin (smooth in τ, tail-target chips) beside the affine
    sheet, in LV space and repriced on the affine lattice. D0 RATIFIED
    2026-09-08 (smooth default + buckets chip · v1 tails = model wings only ·
-   both spaces · read-only twin) — NEXT = D1 (surface builders + goldens),
-   then D2–D5 as listed; nothing built yet.
+   both spaces · read-only twin). D1 SHIPPED 2026-09-08:
+   `models/localvol/dupire_surface.py` (the bucket builder MOVED out of
+   `api/localvol` byte-identically — `_w_surface` stays as an alias for the
+   Stage-2b seed —, `w_surface_pchip` monotone C¹ in τ with a per-k memo,
+   `extract_twin` on the affine vertices with the per-interpolant t stencil
+   [backward inside the bucket / central, one-sided on the last row], the
+   k guard, the box clip, `DupireCounters` per row) + `tests/
+   test_dupire_surface.py` (11 goldens: byte-identity, flat, SVI closed form
+   both interpolants to 2e-4, PCHIP monotone, crossing counted, the
+   exponential wing grows linearly and the cap counts, the guard, gates).
+   NEXT = D2 (the twin record + `POST /fit/affine/{ticker}/compare`).
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
 wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
 replace the five scheduler fields, migrated on load; the `/scheduler` payload
