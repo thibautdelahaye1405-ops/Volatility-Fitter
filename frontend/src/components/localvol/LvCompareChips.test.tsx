@@ -71,8 +71,8 @@ describe("LvCompareChips", () => {
 
   it("the score strip reads the pooled figures and the repair summary", () => {
     renderChips();
-    expect(screen.getByText(/conv twin 25 · affine 52 · param 5 bp/)).toBeTruthy();
-    expect(screen.getByText(/round trip 24 · 96 bp/)).toBeTruthy();
+    expect(screen.getByText(/twin 5 · affine conv 52 · param 5 bp/)).toBeTruthy();
+    expect(screen.getByText(/round trip 0\.9 · 3\.7 bp · floor 0\.8 · sheet 14/)).toBeTruthy();
     expect(screen.getByText("no repairs")).toBeTruthy();
     expect(screen.queryByText("STALE")).toBeNull();
   });

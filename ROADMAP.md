@@ -517,6 +517,46 @@ help: guides/lenses_b.ts (localvol tab list, twice) · glossary `dupire-twin` ·
   vertices) so the sheets no longer read the spot-refetched LV payload for
   their triangulation. Locks: the chips' palette + spinner test, the hook's
   identity-modulo-spot-shift test, the API `cellDiagMain` equality.
+  **THIRD LOOK — THE TWIN'S FIDELITY (user, same day: "the twin diverges
+  substantially from the parametric fit, which lines up with the quotes and
+  the pure LV fit").** Two experiments settled it (scratch scripts, the
+  figures in `test_api_lv_compare.py`): (i) the nodal sheet marched on the
+  calibration operator read 24 bp rms against its own source (49 on the
+  one-month front); the SMOOTH surface evaluated at the march nodes took the
+  long end to 0.7 bp but the front stayed at 43 bp converged / 136 in-op —
+  and a FLAT control surface read 51 / 154 there: the residual was the
+  OPERATOR (first-order implicit Euler, nine steps over the front month,
+  one above the fix-#3 gate), not the twin; (ii) on finer operators the twin
+  tracks the flat control at every refinement (implicit needs dt/64 dx/8 and
+  2 s a march for 3.4 bp; the second-order Rannacher scheme reads 2.0 bp
+  against a 2.3 floor at dt/8 dx/4 for 0.16 s). Shipped: `models/localvol/
+  dupire_twin.py` — `DupireTwinSurface` (the same Gatheral local variance
+  evaluated where the march asks, memoized per time level, the same guard /
+  box / counters) and `FlatSurface` (the operator's control), `TWIN_SCHEME =
+  rannacher`, `TWIN_DT_FACTOR = 8`, `TWIN_DX_FACTOR = 4`; `api/lv_compare`
+  marches the SMOOTH twin on that display operator for the smile and the
+  scores (call · put · right-wing marches; the var-swap by static replication
+  on the marched prices), reports the flat control as `operatorBp` (no round
+  trip reads below it) and the nodal sheet's own round trip on the same
+  operator as `sheetRoundTripBp` (what the coarse lattice loses; the sheet
+  stays the object of the Sheets / Difference views), drops the twin's
+  "converged" column (one operator), and the bucket builder gained a per-k
+  memo (a display march re-fitted every closed form hundreds of times: 50 s
+  → 1 s). MEASURED on the synthetic ladder: round trip 0.93 bp rms pooled
+  (front 1.98 vs a 1.80 floor, one year 0.16), the twin's quote score 5.2 bp
+  = the parametric's 5.0, the nodal sheet 14.3 (smooth) / 25.2 (buckets);
+  the build 1.16 s uncached (five marches on 1041 × 817). Locks: the API
+  round trip ≤ 2 × floor + 0.5 per expiry and pooled, ceiling 2 bp, the sheet
+  > 5 × twin, twin ≈ parametric within 1 bp; `test_dupire_surface` golden 12
+  (the on-demand surface equals the vertex extraction to 1e-13, memo, guard,
+  flat control). Frontend: the twin's table group is rms · max, the round
+  trip group rms · max · floor · sheet, the strip and the smile readout say
+  floor and sheet. FINDING RECORDED FOR THE LV FIT ITSELF: on this ladder the
+  affine sheet's in-operator 1 bp vs converged 115 bp on the front is real
+  compensation of a 154 bp operator error — the fix-#3 gate (`_PDE_NT_FIRST_
+  GATE` = 8 steps) lets a one-month front through with nine implicit steps;
+  a benchmark-pack matter (raise the gate, or march the fit with Rannacher
+  by default), recorded as a rider, not changed here.
 - **D4 Help + smoke** — guide tab list, glossary, tip, What's new; the
   smoke line; tsc · vitest · build · `npm run smoke:ui` LIVE.
 - **D5 Wrap** — a live SPY look (screenshots .smoke/lv-compare-*.png),
@@ -1455,6 +1495,13 @@ below) — every recorded rider is closed except the ones listed here:
    `useLvCompare`, the comparison ANCHORED at the calibration spot (no spot
    version in the key, `spotShift` attached on read, ANCHOR badge) — locked
    on both sides and live-checked under six ticks (see the D3 phase text).
+   THIRD LOOK same day (the twin "diverged" from the parametric): the
+   operator, not the twin — the smile and scores now come from the SMOOTH
+   twin on a second-order display operator (Rannacher dt/8 dx/4, chosen by a
+   flat control: 2.0 bp vs a 2.3 floor); round trip 0.93 bp pooled, the twin
+   scores the quotes like its source; the coarse sheet's own round trip
+   (14 bp) is reported as what the lattice loses. Rider recorded: the LV
+   fit's own front operator (fix-#3 gate) is a benchmark-pack matter.
    NEXT = D4 (help corpora: the localvol guide's tab list, glossary
    `dupire-twin`, a tip, What's new; the smoke line is already in), then
    D5 (wrap + a live SPY look on the user's :8000).

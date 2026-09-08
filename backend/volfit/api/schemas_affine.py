@@ -239,10 +239,11 @@ class LvCompareScore(BaseModel):
     ``rmsError`` is the calibration-consistent weighted RMS vol error (decimal
     vol — the ``AffineSmile.rmsError`` basis: fit-target band, weighting scheme,
     var-swap quote); ``rmsBp`` / ``maxBp`` the plain per-quote |model − target|
-    IV residuals in bp on the surface's own operator (the parametric closed form
-    has no operator; the affine payload does not carry its in-operator rms per
-    expiry, so ``rmsBp`` is None there); ``convergedBp`` the same residual RMS
-    on the converged operator (dt/4, dx/2) — None for the parametric."""
+    IV residuals in bp on the surface's own operator (the parametric closed
+    form has none; the twin's is its display operator; the affine payload
+    does not carry its in-operator rms per expiry, so ``rmsBp`` is None
+    there); ``convergedBp`` the affine sheet's residual RMS on the converged
+    operator (dt/4, dx/2) — None for the parametric and the twin."""
 
     rmsError: float
     maxBp: float
@@ -273,9 +274,16 @@ class LvCompareSmile(BaseModel):
     twinScore: LvCompareScore
     parametricScore: LvCompareScore
     affineScore: LvCompareScore | None = None
+    #: The SMOOTH twin repriced back against its parametric source at the
+    #: quoted strikes on the twin's display operator (rms · max, bp).
     roundTripBp: float
     roundTripMaxBp: float
-    roundTripInOpBp: float
+    #: The NODAL sheet (the affine lattice's sample of the twin) on the same
+    #: operator — what the coarse lattice loses against the smooth twin.
+    sheetRoundTripBp: float = 0.0
+    #: The operator's own floor: a flat surface's error on the same operator
+    #: at this expiry — no round trip reads below it.
+    operatorBp: float = 0.0
 
 
 class LvCompareResponse(BaseModel):
@@ -323,4 +331,9 @@ class LvCompareResponse(BaseModel):
     affineScore: LvCompareScore | None = None
     roundTripBp: float
     roundTripMaxBp: float
+    sheetRoundTripBp: float = 0.0
+    operatorBp: float = 0.0
+    #: Repairs the SMOOTH twin needed over the whole march (butterfly,
+    #: calendar, floored, capped) — the sheet's per-row counters are above.
+    twinRepairs: tuple[int, int, int, int] = (0, 0, 0, 0)
     message: str

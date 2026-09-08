@@ -82,7 +82,7 @@ try {
   const c = await api("POST", `/fit/affine/${ticker}/compare`, {});
   console.log(
     `compare ${ticker}: ${c.tNodes.length}x${c.xNodes.length} vertices · round trip ${c.roundTripBp.toFixed(1)} / ${c.roundTripMaxBp.toFixed(1)} bp` +
-    ` · twin conv ${c.twinScore.convergedBp.toFixed(1)} · affine conv ${c.affineScore?.convergedBp?.toFixed(1)} · param ${c.parametricScore.rmsBp.toFixed(1)} bp` +
+    ` · floor ${c.operatorBp.toFixed(2)} · sheet ${c.sheetRoundTripBp.toFixed(1)} · twin ${c.twinScore.rmsBp.toFixed(1)} · affine conv ${c.affineScore?.convergedBp?.toFixed(1)} · param ${c.parametricScore.rmsBp.toFixed(1)} bp` +
     ` · lattice ${c.affineLatticeMatches} · ${c.message}`,
   );
 
@@ -101,8 +101,8 @@ try {
 
   await step("compare-sheets", async () => {
     await clickMainButton(page, "Compare");
-    await waitFor(page, () => /round trip \d+ · \d+ bp/.test(document.querySelector("main")?.innerText ?? ""), "the score strip");
-    const strip = await page.evaluate(() => (document.querySelector("main")?.innerText ?? "").match(/conv twin.*bp/)?.[0] ?? "");
+    await waitFor(page, () => /round trip [\d.]+ · [\d.]+ bp/.test(document.querySelector("main")?.innerText ?? ""), "the score strip");
+    const strip = await page.evaluate(() => (document.querySelector("main")?.innerText ?? "").match(/twin \d.*?bp/)?.[0] ?? "");
     console.log(`     strip: ${strip}`);
     // Two 3D meshes (both svg.cursor-grab), the twin caption and the affine caption.
     await waitFor(page, () => document.querySelectorAll("main svg.cursor-grab").length >= 2, "the two sheets");
@@ -128,10 +128,10 @@ try {
     );
     if (dimmed) throw new Error("the chart card is still dimmed after the ticks");
     const after = await api("POST", `/fit/affine/${ticker}/compare`, {});
-    const strip = await page.evaluate(() => (document.querySelector("main")?.innerText ?? "").match(/round trip (\d+) · (\d+) bp/));
+    const strip = await page.evaluate(() => (document.querySelector("main")?.innerText ?? "").match(/round trip ([\d.]+) · ([\d.]+) bp/));
     if (!strip) throw new Error("the score strip vanished");
     const shown = Number(strip[1]);
-    if (shown !== Number(after.roundTripBp.toFixed(0)))
+    if (shown !== Number(after.roundTripBp.toFixed(1)))
       throw new Error(`strip shows round trip ${shown}, the payload says ${after.roundTripBp.toFixed(1)}`);
     // Anchored: the same figures and the same lattice as before the move, the
     // shift reported, the ANCHOR badge up.

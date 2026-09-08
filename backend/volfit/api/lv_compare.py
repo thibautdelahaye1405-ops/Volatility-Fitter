@@ -31,13 +31,20 @@ What this module does, in order:
    repair counters) and holds the result as an ``AffineVarianceSurface`` —
    the fitted sheet's own finite-element object (its Delaunay triangulation,
    a flat left wing), so the nodal DIFFERENCE is the whole difference;
-4. reprices the twin through the affine fit's OWN operator — the calibration
-   lattice (``_pde_grids`` with the fit's dx / dt / right-edge floor / time
-   scheme), the value-only call + put marches (the OTM inversion of
-   wrap 2026-08-31b), the converged operator (dt/4, dx/2) and the buffered
-   right-wing display lattice (wrap 2026-09-02i) — never the k-space CN
-   pricer of models.localvol.pde, whose different mesh and scheme would
-   read as a surface difference;
+4. reprices the SMOOTH twin (``DupireTwinSurface``: the same local variance
+   evaluated where the march asks) through the twin's DISPLAY operator — the
+   fit's own lattice (``_pde_grids`` with its dx / dt rule / right-edge
+   floor) refined by ``TWIN_DX_FACTOR`` / ``TWIN_DT_FACTOR`` and marched with
+   the second-order ``TWIN_SCHEME`` — the value-only call + put marches (the
+   OTM inversion of wrap 2026-08-31b) and the buffered right-wing display
+   lattice (wrap 2026-09-02i). Two controls ride the same operator: a FLAT
+   surface (its error is the operator's floor — reported as ``operatorBp``)
+   and the nodal sheet itself (``sheetRoundTripBp``: what the coarse lattice
+   loses against the smooth twin). Never the k-space CN pricer of
+   models.localvol.pde. Chosen 2026-09-08 after the first look: the nodal
+   sheet marched on the calibration operator read 136 bp on the one-month
+   front against a 154 bp FLAT control — the first-order operator, not the
+   twin;
 5. scores every expiry three ways on the fit target (the ``AffineSmile``
    basis) — twin, parametric source, affine sheet (from the displayed LV
    payload) — and closes the round trip: the twin repriced back against its
@@ -67,7 +74,16 @@ from volfit.api.schemas_affine import (
 from volfit.api.state import AppState
 from volfit.calib.rms import node_error_terms, quote_errors, rms as rms_of_terms
 from volfit.calib.weights import resolve_weights
-from volfit.models.localvol import AffineVarianceSurface, build_w_surface, extract_twin
+from volfit.models.localvol import (
+    TWIN_DT_FACTOR,
+    TWIN_DX_FACTOR,
+    TWIN_SCHEME,
+    AffineVarianceSurface,
+    DupireTwinSurface,
+    FlatSurface,
+    build_w_surface,
+    extract_twin,
+)
 from volfit.models.localvol.reprice import refined_grids, reprice_affine_dupire
 
 _CACHE_ATTR = "_lv_compare_cache"  # AppState side-dict (affine_fit._side_dict)
@@ -176,8 +192,13 @@ def _twin_record(
     )
     surface = AffineVarianceSurface(t_nodes=t_nodes, x_nodes=x_nodes, theta=twin.theta)
 
-    # 4. the affine fit's own operator
-    scheme, dt_max = _march_scheme(state, ticker, rows, opts)
+    # 4. the twin's DISPLAY operator: the fit's own lattice (its dx / dt rule,
+    #    the virtual-front node, the right-edge floor) refined by the
+    #    dupire_twin factors and marched with the second-order Rannacher
+    #    scheme — where the flat control's front-expiry error is ~2 bp. The
+    #    SMOOTH twin is marched (evaluated where the march asks); the nodal
+    #    sheet's own march on the same operator says what the lattice loses.
+    _, dt_max = _march_scheme(state, ticker, rows, opts)
     march_exps = ts
     virtual_rows = affine_fit._virtual_front_rows(rows)
     if virtual_rows:
@@ -185,19 +206,30 @@ def _twin_record(
     x_grid, t_grid = affine_fit._pde_grids(
         march_exps, k_hi, dt_max, affine_fit._pde_dx(rows), x_max_min=opts.lvXMaxMin
     )
-    sol = reprice_affine_dupire(surface, x_grid, t_grid, expiries=ts, time_scheme=scheme)
-    put_sol = reprice_affine_dupire(
-        surface, x_grid, t_grid, expiries=ts, payoff="put", time_scheme=scheme
+    x_fine, t_fine = refined_grids(x_grid, t_grid, TWIN_DX_FACTOR, TWIN_DT_FACTOR)
+    smooth = DupireTwinSurface(
+        w_surface, ts, t_interp=request.tInterp, var_lo=var_lo, var_hi=var_hi,
+        k_lo=K_DISPLAY_LO, k_hi=K_DISPLAY_HI,
     )
-    conv = reprice_affine_dupire(surface, *refined_grids(x_grid, t_grid), expiries=ts)
+
+    def march(surf, x, payoff: str = "call"):
+        return reprice_affine_dupire(
+            surf, x, t_fine, expiries=ts, payoff=payoff, time_scheme=TWIN_SCHEME
+        )
+
+    sol = march(smooth, x_fine)
+    put_sol = march(smooth, x_fine, "put")
     x_disp = affine_views_ext.display_lattice(
-        x_grid, k_hi + affine_fit._K_PAD, affine_fit._tail_total_variance(surface, x_nodes, ts)
+        x_fine, k_hi + affine_fit._K_PAD, affine_fit._tail_total_variance(surface, x_nodes, ts)
     )
-    ext = None
-    if x_disp is not None:
-        ext = reprice_affine_dupire(surface, x_disp, t_grid, expiries=ts, time_scheme=scheme)
+    ext = march(smooth, x_disp) if x_disp is not None else None
+    # The operator's floor: a FLAT surface at the ladder's median implied
+    # variance, whose exact reprice is known — its error is the operator's own.
+    flat_var = float(np.median(np.concatenate([np.maximum(w, 1e-12) / t for _, t, _, w, _, _ in rows])))
+    flat_vol = float(np.sqrt(flat_var))
+    flat_sol = march(FlatSurface(flat_var), x_fine)
+    sheet_sol = march(surface, x_fine)  # the nodal sheet on the same operator
     exp_index = {float(e): i for i, e in enumerate(sol.expiries)}
-    conv_index = {float(e): i for i, e in enumerate(conv.expiries)}
 
     if affine is None:  # the displayed LV payload (settles the pointer; stale flag)
         affine = affine_fit.affine_payload(state, ticker, _affine_request(request))
@@ -214,32 +246,34 @@ def _twin_record(
     # 5. per-expiry smiles and scores
     weight_scheme = state.fit_settings().weightScheme
     smiles: list[LvCompareSmile] = []
-    twin_bp, conv_bp, param_bp, rt_bp = [], [], [], []
+    twin_bp, param_bp, rt_bp, sheet_bp, op_bp = [], [], [], [], []
     twin_num = twin_den = param_num = param_den = 0.0
     for (iso, t, k, w, prepared, band), rec, slice_ in zip(rows, records, slices):
-        i_exp, i_conv = exp_index[t], conv_index[t]
+        i_exp = exp_index[t]
         klo, khi = float(k.min()), float(k.max())
         grid = np.linspace(klo - affine_fit._K_PAD, khi + affine_fit._K_PAD, affine_fit._N_SMILE)
         quote_vol = np.sqrt(np.maximum(w, 1e-12) / t)
         twin_iv = affine_fit._model_vol_at(sol, i_exp, t, k)
-        twin_conv_iv = affine_fit._model_vol_at(conv, i_conv, t, k)
+        sheet_iv = affine_fit._model_vol_at(sheet_sol, i_exp, t, k)
+        flat_iv = affine_fit._model_vol_at(flat_sol, i_exp, t, k)
         param_iv = np.sqrt(np.maximum(np.asarray(slice_.implied_w(k), dtype=float), 0.0) / t)
         e_twin = np.abs(quote_errors(twin_iv, quote_vol, band)) * 1e4
-        e_conv = np.abs(quote_errors(twin_conv_iv, quote_vol, band)) * 1e4
         e_param = np.abs(quote_errors(param_iv, quote_vol, band)) * 1e4
-        e_rt = np.abs(twin_conv_iv - param_iv) * 1e4
-        e_rt_op = np.abs(twin_iv - param_iv) * 1e4
+        e_rt = np.abs(twin_iv - param_iv) * 1e4
+        e_sheet = np.abs(sheet_iv - param_iv) * 1e4
+        e_op = np.abs(flat_iv - flat_vol) * 1e4
         twin_bp.extend(e_twin.tolist())
-        conv_bp.extend(e_conv.tolist())
         param_bp.extend(e_param.tolist())
         rt_bp.extend(e_rt.tolist())
+        sheet_bp.extend(e_sheet.tolist())
+        op_bp.extend(e_op.tolist())
         # the calibration-consistent weighted basis (var-swap term included)
         weights = resolve_weights(weight_scheme, k, w)
         target = service.varswap_target(state, ticker, iso, k, weights, t)
         vs_quote = float(np.sqrt(max(target.total_var, 0.0) / t)) if target is not None else None
-        twin_vs = affine_fit._model_varswap_vol(
-            sol, i_exp, t, x_grid, surface=surface, t_grid=t_grid, method=opts.varSwapMethod
-        )
+        # The twin's fair var-swap: the static log-contract replication on its
+        # marched prices (model-agnostic; the source PDE needs the hat basis).
+        twin_vs = affine_fit._model_varswap_vol(sol, i_exp, t, x_fine, method="static")
         param_vs = float(np.sqrt(max(displayed_var_swap_w(rec), 0.0) / t))
         vs_twin = (twin_vs, vs_quote, float(target.weight)) if target is not None else None
         vs_param = (param_vs, vs_quote, float(target.weight)) if target is not None else None
@@ -256,7 +290,7 @@ def _twin_record(
                 forward=float(prepared.forward),
                 twin=affine_fit._reconstruct_smile(sol, i_exp, t, klo, khi, put_sol),
                 twinExt=affine_views_ext.extended_model(
-                    sol, i_exp, t, klo, khi, x_grid, affine_fit._K_PAD, affine_fit._N_SMILE,
+                    sol, i_exp, t, klo, khi, x_fine, affine_fit._K_PAD, affine_fit._N_SMILE,
                     put_solution=put_sol, ext_call_solution=ext,
                 ),
                 parametric=_points(
@@ -265,8 +299,7 @@ def _twin_record(
                 quotes=affine_fit._quote_bands(state, ticker, iso, prepared, request.fitMode),
                 affine=list(aff.model) if aff is not None else [],
                 twinScore=LvCompareScore(
-                    rmsError=rms_of_terms(n_t, d_t), maxBp=_bp(e_twin)[1],
-                    rmsBp=_bp(e_twin)[0], convergedBp=_bp(e_conv)[0],
+                    rmsError=rms_of_terms(n_t, d_t), maxBp=_bp(e_twin)[1], rmsBp=_bp(e_twin)[0]
                 ),
                 parametricScore=LvCompareScore(
                     rmsError=rms_of_terms(n_p, d_p), maxBp=_bp(e_param)[1], rmsBp=_bp(e_param)[0]
@@ -274,7 +307,8 @@ def _twin_record(
                 affineScore=_affine_score(aff) if aff is not None else None,
                 roundTripBp=_bp(e_rt)[0],
                 roundTripMaxBp=_bp(e_rt)[1],
-                roundTripInOpBp=_bp(e_rt_op)[0],
+                sheetRoundTripBp=_bp(e_sheet)[0],
+                operatorBp=_bp(e_op)[0],
             )
         )
 
@@ -292,6 +326,7 @@ def _twin_record(
         f"{request.tInterp} twin on {t_nodes.size} x {x_nodes.size} vertices "
         f"({n_diff} strikes differentiated); repairs: butterfly {c.total_butterfly}, "
         f"calendar {c.total_calendar}, floored {c.total_floored}, capped {c.total_capped}"
+        f"; smile on the {TWIN_SCHEME} operator dt/{TWIN_DT_FACTOR} dx/{TWIN_DX_FACTOR}"
     )
     if skipped:
         message += f"; no parametric fit on {len(skipped)} expiries (skipped)"
@@ -324,7 +359,6 @@ def _twin_record(
             rmsError=rms_of_terms(twin_num, twin_den),
             maxBp=_bp(np.array(twin_bp))[1],
             rmsBp=_bp(np.array(twin_bp))[0],
-            convergedBp=_bp(np.array(conv_bp))[0],
         ),
         parametricScore=LvCompareScore(
             rmsError=rms_of_terms(param_num, param_den),
@@ -340,6 +374,9 @@ def _twin_record(
         ),
         roundTripBp=_bp(np.array(rt_bp))[0],
         roundTripMaxBp=_bp(np.array(rt_bp))[1],
+        sheetRoundTripBp=_bp(np.array(sheet_bp))[0],
+        operatorBp=_bp(np.array(op_bp))[0],
+        twinRepairs=(smooth.n_butterfly, smooth.n_calendar, smooth.n_floored, smooth.n_capped),
         message=message,
     )
 

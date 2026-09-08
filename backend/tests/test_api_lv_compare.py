@@ -95,37 +95,45 @@ def test_clean_surface_and_per_expiry_content(compare, universe):
         for score in (s["twinScore"], s["parametricScore"], s["affineScore"]):
             assert score is not None
             assert np.isfinite(score["rmsError"]) and np.isfinite(score["maxBp"])
-        assert s["twinScore"]["convergedBp"] is not None
+        assert s["twinScore"]["convergedBp"] is None  # the twin has one operator: its display operator
         assert s["parametricScore"]["convergedBp"] is None
+        assert s["affineScore"]["convergedBp"] is not None
         # The parametric source fits the synthetic quotes tightly; the twin's
         # scores are finite and its round trip is what the lattice can carry.
         assert s["parametricScore"]["rmsBp"] < 50.0
-        assert np.isfinite(s["roundTripBp"]) and np.isfinite(s["roundTripInOpBp"])
+        assert np.isfinite(s["roundTripBp"]) and np.isfinite(s["sheetRoundTripBp"]) and np.isfinite(s["operatorBp"])
     assert compare["affineScore"] is not None
     assert "twin on" in compare["message"]
 
 
 def test_round_trip_is_a_measured_figure(compare):
-    # Measured 2026-09-08 on the synthetic ALPHA ladder (11 × 14 vertices):
-    # round trip 24.4 bp rms / 96 max (49 bp on the one-month front, 5 bp at
-    # one year — the coarse lattice's sampling of a smooth surface), the twin's
-    # converged score 25.4 bp (the affine sheet's own: 51.7). Recorded in the
-    # ROADMAP D2 wrap; the lock keeps 2x slack so a lattice or scheme change
-    # that doubles it is caught, not a rounding drift.
+    # Measured 2026-09-08 on the synthetic ALPHA ladder (11 × 14 vertices) on
+    # the twin's display operator (Rannacher dt/8 dx/4): the SMOOTH twin
+    # repriced back against its parametric source reads 0.93 bp rms pooled —
+    # 1.98 on the one-month front against a 1.80 bp operator floor, 0.16 at
+    # one year — and scores the quotes like the parametric does (5.2 vs 5.0
+    # bp); the NODAL sheet on the same operator reads 14.3 bp (what the
+    # coarse lattice loses). The first cut marched the nodal sheet on the
+    # calibration operator and read 24 bp: the first-order operator (a flat
+    # control read 154 bp on the front), not the twin. The lock keeps 2x
+    # slack so a lattice or scheme change that doubles it is caught.
     rt = compare["roundTripBp"]
     assert 0.0 < rt < ROUND_TRIP_BP_CEILING
     assert compare["roundTripMaxBp"] >= rt
-    assert compare["twinScore"]["convergedBp"] < TWIN_CONVERGED_BP_CEILING
-    # The converged operator reads a smaller residual than the calibration
-    # operator on the twin (the operator error is real and measured, as for
-    # the affine sheet's rmsConvergedBp).
-    assert compare["twinScore"]["convergedBp"] < compare["twinScore"]["rmsBp"]
+    # The twin reads the operator: its round trip sits within a couple of
+    # floors of the flat control's error, never far above it.
+    assert rt <= 2.0 * compare["operatorBp"] + 0.5
+    for s in compare["smiles"]:
+        assert s["roundTripBp"] <= 2.0 * s["operatorBp"] + 0.5
+        assert s["sheetRoundTripBp"] > s["roundTripBp"]  # the lattice loses, the twin does not
+    # The twin fits the quotes as its source does (the same surface, marched).
+    assert abs(compare["twinScore"]["rmsBp"] - compare["parametricScore"]["rmsBp"]) < 1.0
+    assert compare["sheetRoundTripBp"] > 5.0 * rt
 
 
-#: Round-trip / converged-score ceilings (bp) — 2x the figures measured at the
-#: D2 wrap (ROADMAP 2026-09-08); tighten only from a new measurement.
-ROUND_TRIP_BP_CEILING = 50.0
-TWIN_CONVERGED_BP_CEILING = 50.0
+#: Round-trip ceiling (bp) — 2x the figure measured at the twin-fidelity fix
+#: (ROADMAP 2026-09-08); tighten only from a new measurement.
+ROUND_TRIP_BP_CEILING = 2.0
 
 
 def test_buckets_chip_is_another_sheet_on_the_same_lattice(compare, client):

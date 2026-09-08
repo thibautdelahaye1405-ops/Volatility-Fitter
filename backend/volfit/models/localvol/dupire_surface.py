@@ -79,13 +79,25 @@ def w_surface_buckets(ts: np.ndarray, slices: Sequence) -> WSurface:
 
     Within [0, t_last] this is the standard variance-time interpolation
     (calendar-safe when the slice fits are); beyond t_last the last bucket's
-    forward variance is extended flat.
+    forward variance is extended flat. The slice rows are memoized per k
+    array (the same arithmetic, computed once: a Dupire march asks the same
+    strikes at every time level — without the memo a display march re-fitted
+    every slice's closed form hundreds of times, 50 s on the synthetic ladder).
     """
+    memo: dict[bytes, list] = {}
+
+    def rows_for(k: np.ndarray) -> list:
+        key = k.tobytes()
+        hit = memo.get(key)
+        if hit is None:
+            hit = [s.implied_w(k) for s in slices]  # lazily small: few expiries
+            memo[key] = hit
+        return hit
 
     def w(k: np.ndarray, t: float) -> np.ndarray:
         k = np.asarray(k, dtype=float)
         t = float(t)
-        w_rows = [s.implied_w(k) for s in slices]  # lazily small: few expiries
+        w_rows = rows_for(k)
         if t <= 0.0:
             return np.zeros_like(k)
         i = int(np.searchsorted(ts, t))

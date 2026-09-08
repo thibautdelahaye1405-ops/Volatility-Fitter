@@ -19,8 +19,8 @@ describe("LvCompareTable", () => {
     expect(rows).toHaveLength(2);
     const first = rows[0];
     const cells = Array.from(first.querySelectorAll("td")).map((td) => td.textContent);
-    // Expiry · parametric rms/max · twin rms/conv/max · affine rms/conv/max · round trip rms/max
-    expect(cells).toEqual(["2026-07-10", "5", "12", "25", "18", "60", "1", "40", "3", "30", "90"]);
+    // Expiry · parametric rms/max · twin rms/max · affine rms/conv/max · round trip rms/max/floor/sheet
+    expect(cells).toEqual(["2026-07-10", "5", "12", "5", "18", "1", "40", "3", "30.0", "90.0", "24.0", "300"]);
     expect(rows[1].getAttribute("data-selected")).toBe("true");
     expect(first.getAttribute("data-selected")).toBeNull();
   });
@@ -40,6 +40,6 @@ describe("LvCompareTable", () => {
     render(<LvCompareTable data={c} selectedExpiry={null} onSelectExpiry={() => {}} formatExpiry={fmt} />);
     const first = screen.getByText("2026-07-10").closest("tr")!;
     const cells = Array.from(first.querySelectorAll("td")).map((td) => td.textContent);
-    expect(cells.slice(6, 9)).toEqual(["—", "—", "—"]);
+    expect(cells.slice(5, 8)).toEqual(["—", "—", "—"]);
   });
 });

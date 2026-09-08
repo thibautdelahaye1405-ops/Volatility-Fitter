@@ -214,8 +214,10 @@ export default function LvCompareView({
             Dupire twin
           </span>
         )}
-        <span className="ml-auto" title="Twin vs its parametric source at the quoted strikes on the converged operator (in-operator in brackets)">
-          round trip {cs.roundTripBp.toFixed(1)} bp ({cs.roundTripInOpBp.toFixed(1)} in-op)
+        <span className="ml-auto" title="The smooth twin vs its parametric source at this expiry's quoted strikes; the operator's floor (a flat surface's error on the same operator) and the nodal sheet's own round trip (what the coarse lattice loses) beside it">
+          round trip {cs.roundTripBp.toFixed(1)} bp
+          {cs.operatorBp != null ? ` · floor ${cs.operatorBp.toFixed(1)}` : ""}
+          {cs.sheetRoundTripBp != null ? ` · sheet ${cs.sheetRoundTripBp.toFixed(0)}` : ""}
         </span>
       </div>
       <div className="min-h-0 flex-1">

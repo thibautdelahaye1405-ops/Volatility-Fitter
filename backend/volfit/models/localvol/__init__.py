@@ -47,6 +47,13 @@ from volfit.models.localvol.dupire_surface import (
     w_surface_buckets,
     w_surface_pchip,
 )
+from volfit.models.localvol.dupire_twin import (
+    TWIN_DT_FACTOR,
+    TWIN_DX_FACTOR,
+    TWIN_SCHEME,
+    DupireTwinSurface,
+    FlatSurface,
+)
 from volfit.models.localvol.grid import LocalVolGrid
 from volfit.models.localvol.model import (
     LocalVolDiagnostics,
@@ -70,7 +77,12 @@ __all__ = [
     "AffineVarianceSurface",
     "DupireCounters",
     "DupireSteps",
+    "DupireTwinSurface",
     "ExtractionResult",
+    "FlatSurface",
+    "TWIN_DT_FACTOR",
+    "TWIN_DX_FACTOR",
+    "TWIN_SCHEME",
     "TwinExtraction",
     "build_w_surface",
     "extract_twin",

@@ -303,3 +303,35 @@ def test_chip_vocabulary_and_gates():
     k = np.linspace(-0.3, 0.3, 7)
     assert np.array_equal(w(k, 0.7), w(k.copy(), 0.7))  # memo hit == fresh build
     assert np.all(w(k, 0.0) == 0.0) and np.all(w(k, -1.0) == 0.0)
+
+
+# --------------------------------------------------------------------------
+# 9. The smooth twin as a pricing surface (dupire_twin) and the flat control
+# --------------------------------------------------------------------------
+
+
+def test_twin_surface_matches_the_vertex_extraction_and_memoizes():
+    from volfit.models.localvol import DupireTwinSurface, FlatSurface
+
+    w = w_surface_pchip(TS, LADDER)
+    twin = extract_twin(w, TS, X_NODES, T_NODES, t_interp="smooth", **BOX)
+    surf = DupireTwinSurface(w, TS, t_interp="smooth", **BOX)
+    # On the vertices, at the rows' own times, the on-demand surface IS the extraction.
+    for i, t in enumerate(twin.t_rows):
+        np.testing.assert_allclose(surf.variance(X_NODES, float(t)), twin.theta[i], rtol=1e-13)
+    assert surf.clean
+    # The same (x, t) again returns the memoized array (one build shares its marches).
+    a = surf.variance(X_NODES, 0.5)
+    assert surf.variance(X_NODES, 0.5) is a
+    # The guard holds flat beyond the bounds, exactly as extract_twin does.
+    guarded = DupireTwinSurface(w, TS, t_interp="smooth", k_lo=-0.3, k_hi=0.3, **BOX)
+    row = guarded.variance(X_NODES, 0.5)
+    k = np.log(X_NODES[1:])
+    lo = int(np.argmax(k >= -0.3)) + 1
+    assert np.all(row[:lo] == row[lo])
+    with pytest.raises(ValueError):
+        DupireTwinSurface(w, TS, t_interp="cubic", **BOX)
+    flat = FlatSurface(0.04)
+    np.testing.assert_array_equal(flat.variance(X_NODES, 0.3), np.full(X_NODES.size, 0.04))
+    with pytest.raises(ValueError):
+        FlatSurface(0.0)

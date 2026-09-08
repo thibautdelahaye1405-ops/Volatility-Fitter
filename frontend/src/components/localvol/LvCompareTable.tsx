@@ -19,9 +19,13 @@ export interface LvCompareTableProps {
 
 const GROUPS: { label: string; color: string; title: string; cols: string[] }[] = [
   { label: "Parametric", color: PARAMETRIC_COLOR, title: "The displayed parametric fit (closed form): weighted RMS · worst quote, bp", cols: ["rms", "max"] },
-  { label: "Dupire twin", color: TWIN_COLOR, title: "The twin marched through the LV operator: weighted RMS · converged-operator RMS · worst quote, bp", cols: ["rms", "conv", "max"] },
+  { label: "Dupire twin", color: TWIN_COLOR, title: "The smooth twin marched on its display operator (second-order, refined): weighted RMS · worst quote, bp", cols: ["rms", "max"] },
   { label: "Affine", color: AFFINE_COLOR, title: "The displayed LV sheet: weighted RMS · converged-operator RMS · worst quote, bp", cols: ["rms", "conv", "max"] },
-  { label: "Round trip", color: "rgb(148 163 184)", title: "Twin vs its own parametric source at the quoted strikes (converged operator): rms · max, bp", cols: ["rms", "max"] },
+  {
+    label: "Round trip", color: "rgb(148 163 184)",
+    title: "Twin vs its own parametric source at the quoted strikes: rms · max · the operator's floor (a flat surface's error on the same operator) · the nodal SHEET's own round trip (what the coarse lattice loses), bp",
+    cols: ["rms", "max", "floor", "sheet"],
+  },
 ];
 
 const CELL = "px-2 py-1 font-mono";
@@ -69,13 +73,14 @@ export default function LvCompareTable({ data, selectedExpiry, onSelectExpiry, f
                 <td className={CELL}>{formatBp(p.rms)}</td>
                 <td className={CELL}>{formatBp(p.max)}</td>
                 <td className={CELL}>{formatBp(tw.rms)}</td>
-                <td className={CELL}>{formatBp(tw.conv)}</td>
                 <td className={CELL}>{formatBp(tw.max)}</td>
                 <td className={CELL}>{formatBp(af.rms)}</td>
                 <td className={CELL}>{formatBp(af.conv)}</td>
                 <td className={CELL}>{formatBp(af.max)}</td>
-                <td className={CELL}>{formatBp(s.roundTripBp)}</td>
-                <td className={CELL}>{formatBp(s.roundTripMaxBp)}</td>
+                <td className={CELL}>{formatBp(s.roundTripBp, 1)}</td>
+                <td className={CELL}>{formatBp(s.roundTripMaxBp, 1)}</td>
+                <td className={CELL}>{formatBp(s.operatorBp, 1)}</td>
+                <td className={CELL}>{formatBp(s.sheetRoundTripBp)}</td>
               </tr>
             );
           })}

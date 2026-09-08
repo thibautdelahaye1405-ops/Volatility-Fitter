@@ -30,10 +30,10 @@ function smile(expiry: string, t: number, rt: number): LvCompareSmile {
       { k: -0.1, bid: 0.199, ask: 0.203, mid: 0.201, index: 0, excluded: false, amended: false },
       { k: 0.1, bid: 0.198, ask: 0.202, mid: 0.2, index: 1, excluded: false, amended: false },
     ],
-    twinScore: { rmsError: 0.0025, maxBp: 60, rmsBp: 25, convergedBp: 18 },
+    twinScore: { rmsError: 0.0005, maxBp: 18, rmsBp: 5.2, convergedBp: null },
     parametricScore: { rmsError: 0.0005, maxBp: 12, rmsBp: 5, convergedBp: null },
     affineScore: { rmsError: 0.0001, maxBp: 3, rmsBp: null, convergedBp: 40 },
-    roundTripBp: rt, roundTripMaxBp: rt * 3, roundTripInOpBp: rt * 2,
+    roundTripBp: rt, roundTripMaxBp: rt * 3, sheetRoundTripBp: rt * 10, operatorBp: rt * 0.8,
   };
 }
 
@@ -58,11 +58,14 @@ export function lvCompareFixture(overrides: Partial<LvCompareResponse> = {}): Lv
     spotShift: 0,
     smiles: [smile("2026-07-10", 0.1, 30), smile("2026-12-10", 0.5, 8)],
     skippedExpiries: [],
-    twinScore: { rmsError: 0.0065, maxBp: 276, rmsBp: 65, convergedBp: 25.4 },
+    twinScore: { rmsError: 0.00052, maxBp: 18.2, rmsBp: 5.2, convergedBp: null },
     parametricScore: { rmsError: 0.0005, maxBp: 16, rmsBp: 5, convergedBp: null },
     affineScore: { rmsError: 0.00009, maxBp: 2.7, rmsBp: 0.9, convergedBp: 51.7 },
-    roundTripBp: 24.4,
-    roundTripMaxBp: 96.4,
+    roundTripBp: 0.93,
+    roundTripMaxBp: 3.67,
+    sheetRoundTripBp: 14.3,
+    operatorBp: 0.78,
+    twinRepairs: [0, 0, 0, 4498],
     message: "smooth twin on 3 x 4 vertices",
     ...overrides,
   };

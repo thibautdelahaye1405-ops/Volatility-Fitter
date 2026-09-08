@@ -74,9 +74,16 @@ export interface LvCompareSmile {
   twinScore: LvCompareScore;
   parametricScore: LvCompareScore;
   affineScore?: LvCompareScore | null;
+  /** The SMOOTH twin repriced back against its parametric source at the
+   *  quoted strikes on the twin's display operator (rms · max, bp). */
   roundTripBp: number;
   roundTripMaxBp: number;
-  roundTripInOpBp: number;
+  /** The NODAL sheet (the lattice's sample of the twin) on the same operator:
+   *  what the coarse lattice loses. Absent on older payloads. */
+  sheetRoundTripBp?: number;
+  /** The operator's own floor (a flat surface's error on the same operator):
+   *  no round trip reads below it. Absent on older payloads. */
+  operatorBp?: number;
 }
 
 /** Response of POST /fit/affine/{ticker}/compare (mirrors LvCompareResponse). */
@@ -117,6 +124,11 @@ export interface LvCompareResponse {
   affineScore?: LvCompareScore | null;
   roundTripBp: number;
   roundTripMaxBp: number;
+  sheetRoundTripBp?: number;
+  operatorBp?: number;
+  /** Repairs the smooth twin needed over its march (butterfly, calendar,
+   *  floored, capped). Absent on older payloads. */
+  twinRepairs?: [number, number, number, number];
   message: string;
 }
 

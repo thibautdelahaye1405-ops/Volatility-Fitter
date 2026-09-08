@@ -102,13 +102,15 @@ export default function LvCompareChips({
               ANCHOR
             </span>
           )}
-          <span title="Converged-operator RMS vs the fit target (bp): the Dupire twin · the affine sheet · the parametric source's closed form">
-            conv twin {formatBp(twin.convergedBp)}
-            {affine ? ` · affine ${formatBp(affine.convergedBp)}` : ""}
+          <span title="RMS vs the fit target (bp): the Dupire twin on its display operator · the affine sheet on the converged operator · the parametric source's closed form">
+            twin {formatBp(twin.rmsBp)}
+            {affine ? ` · affine conv ${formatBp(affine.convergedBp)}` : ""}
             {` · param ${formatBp(param.rmsBp)} bp`}
           </span>
-          <span title="Round trip: the twin repriced back against its own parametric source at the quoted strikes (converged operator) — the lattice sampling + discretization, nothing else: rms · max">
-            round trip {formatBp(data.roundTripBp)} · {formatBp(data.roundTripMaxBp)} bp
+          <span title="Round trip: the smooth twin repriced back against its own parametric source at the quoted strikes — rms · max, then the operator's floor (a flat surface's error on the same operator; no round trip reads below it) and the nodal sheet's own round trip (what the coarse lattice loses)">
+            round trip {formatBp(data.roundTripBp, 1)} · {formatBp(data.roundTripMaxBp, 1)} bp
+            {data.operatorBp != null ? ` · floor ${formatBp(data.operatorBp, 1)}` : ""}
+            {data.sheetRoundTripBp != null ? ` · sheet ${formatBp(data.sheetRoundTripBp)}` : ""}
           </span>
           <span
             title={repairDetail(data.counters, data.tNodes)}
