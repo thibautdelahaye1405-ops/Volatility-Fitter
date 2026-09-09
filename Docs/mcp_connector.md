@@ -49,6 +49,12 @@ Developer and its tools under the chat's "+" menu. The first chart prompts
 first transport here: the Bloomberg Terminal lives on this machine and a
 cloud-hosted connector could not reach it.
 
+After changing connector code, quit Claude Desktop from the system-tray icon
+(closing the window leaves the app and its connector processes running, so the
+old server keeps answering). Pages reload from disk on every read; the tool
+list and the bridge need that full quit. LIVE-VERIFIED 2026-09-09: SPX from
+Cboe, LQD-24 + Local-Vol, the interactive LV compare rendered in the chat.
+
 Manual check: `.venv\Scripts\python -m volfit_mcp` from any directory starts
 the server on stdio (Ctrl-C to stop); `--api-url` points it elsewhere.
 
@@ -117,7 +123,7 @@ decimals, `k = ln(K/F)`, `x = K/F`, `t` in years.
 
 * One desk per app instance: two chats against the same :8000 share the
   universe and settings.
-* Chart hosts: Claude Desktop renders local-server apps (documented);
+* Chart hosts: Claude Desktop renders local-server apps (verified here);
   claude.ai rendering of apps from *custom remote* connectors had an open
   report in June 2026 — verify with the remote path before relying on it.
 * Tool-call time budgets in chat hosts are undocumented: `calibrate` waits at

@@ -1605,9 +1605,19 @@ below) — every recorded rider is closed except the ones listed here:
    headless host harness frontend/scripts/mcp_app_check.mjs (12 checks).
    Docs/mcp_connector.md. RIDERS (none are gates): M3 remote = HTTPS
    exposure + auth (`MCPServer(auth=…)` OAuth 2.1 or the request-header
-   API key) + one app instance per tenant; a LIVE look in Claude Desktop
-   on the user's window (first "Allow app" prompt, Bloomberg SX5E/SPX
-   end to end); verify claude.ai renders apps from a CUSTOM remote
+   API key) + one app instance per tenant; ~~a LIVE look in Claude Desktop
+   on the user's window~~ DONE 2026-09-09d: SPX from Cboe, LQD-24 + LV,
+   the interactive LV compare renders in the chat. Three wire fixes were
+   needed (diffed against `@modelcontextprotocol/server-customer-segmentation`
+   via the new `VOLFIT_MCP_TRACE` wire trace): `ui/initialize` must send
+   `appInfo` + `appCapabilities` + `protocolVersion` (not clientInfo), the
+   legacy `_meta["ui/resourceUri"]` tool key beside `ui.resourceUri`, and
+   self-contained pages (Plotly inlined from backend/.cache); plus the
+   tray-quit gotcha (Desktop keeps the server alive across window closes —
+   pages now render from disk per read). EuroStoxx still blocked on the
+   data side (SX5E "no listed options within the requested expiries" on
+   Bloomberg, Eurex unreachable that day) — a market-data rider, not a
+   connector one; verify claude.ai renders apps from a CUSTOM remote
    connector (open report June 2026) before relying on the remote path;
    MCPB bundle for one-click install; a Help Center page; tool-call time
    budgets in chat hosts are undocumented (calibrate waits ≤ wait_seconds
