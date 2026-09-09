@@ -26,12 +26,14 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--api-url", default=os.environ.get("VOLFIT_API_URL", DEFAULT_API_URL),
                     help="base URL of the running vol-fitter API")
     ap.add_argument("--no-apps", action="store_true", help="disable the inline chart apps")
+    ap.add_argument("--trace", default=os.environ.get("VOLFIT_MCP_TRACE"),
+                    help="append a JSONL wire trace of every MCP message to this file")
     ap.add_argument("--log-level", default="WARNING")
     args = ap.parse_args(argv)
 
     logging.basicConfig(level=args.log_level, stream=sys.stderr,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    server = build_server(VolfitApi(args.api_url), with_apps=not args.no_apps)
+    server = build_server(VolfitApi(args.api_url), with_apps=not args.no_apps, trace_path=args.trace)
     print(f"vol-fitter MCP server ({args.transport}) -> API {args.api_url}", file=sys.stderr, flush=True)
     if args.transport == "stdio":
         server.run("stdio")

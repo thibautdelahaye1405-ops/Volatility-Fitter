@@ -248,3 +248,32 @@ def test_png_fallbacks_render_from_fixtures():
 def test_api_error_detail_formatting():
     with pytest.raises(ApiError):
         raise ApiError("boom", 422)
+
+
+def test_wire_trace_records_handshake_and_reads(tmp_path):
+    """VOLFIT_MCP_TRACE / --trace: one JSON line per inbound message, with the
+    client capabilities of ``initialize`` and the URI of every resources/read."""
+    trace = tmp_path / "trace.jsonl"
+
+    async def go():
+        app = create_app(reference_date=REF_DATE)
+        api = VolfitApi("http://volfit.test", transport=httpx.ASGITransport(app=app))
+        try:
+            async with Client(build_server(api, trace_path=str(trace))) as c:
+                await c.read_resource(LV_COMPARE_URI)
+                await c.call_tool("get_universe", {})
+        finally:
+            await api.aclose()
+
+    asyncio.run(go())
+    lines = [json.loads(l) for l in trace.read_text(encoding="utf-8").splitlines()]
+    methods = [l["method"] for l in lines]
+    # The 2026-07-28 client opens with server/discover before initialize; either way both are traced.
+    assert "initialize" in methods and "resources/read" in methods and "tools/call" in methods
+    init = next(l for l in lines if l["method"] == "initialize")
+    assert "capabilities" in init["params"] and init["result"]["capabilities"]["extensions"] == {"io.modelcontextprotocol/ui": {}}
+    read = next(l for l in lines if l["method"] == "resources/read")
+    assert read["params"]["uri"] == LV_COMPARE_URI
+    assert read["result"]["contents"][0]["mimeType"] == "text/html;profile=mcp-app"
+    call = next(l for l in lines if l["method"] == "tools/call")
+    assert call["params"]["name"] == "get_universe" and call["result"]["isError"] is False and call["ms"] >= 0

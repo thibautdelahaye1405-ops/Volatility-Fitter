@@ -12,12 +12,14 @@ routines a user will type most.
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
 from volfit_mcp import __version__, aliases, tools_calibrate, tools_charts, tools_universe, tools_views
 from volfit_mcp.client import VolfitApi
+from volfit_mcp.trace import TraceMiddleware
 
 INSTRUCTIONS = """\
 vol-fitter: implied-volatility surface fitter (LQD / SVI / sigmoid smiles, Local-Vol
@@ -51,7 +53,11 @@ moved since it was calibrated — recalibrate before quoting it. Expiries are IS
 
 
 def build_server(
-    api: VolfitApi | None = None, *, with_apps: bool = True, log_level: str = "WARNING"
+    api: VolfitApi | None = None,
+    *,
+    with_apps: bool = True,
+    log_level: str = "WARNING",
+    trace_path: str | None = None,
 ) -> MCPServer:
     api = api or VolfitApi()
     extensions = []
@@ -61,6 +67,8 @@ def build_server(
         apps = tools_charts.build_apps()
         tools_charts.register(api, apps)
         extensions.append(apps)
+    trace_path = trace_path or os.environ.get("VOLFIT_MCP_TRACE") or None
+    middleware = [TraceMiddleware(trace_path)] if trace_path else None
     mcp = MCPServer(
         "vol-fitter",
         title="Vol-Fitter",
@@ -68,6 +76,7 @@ def build_server(
         version=__version__,
         extensions=extensions,
         log_level=log_level,  # type: ignore[arg-type]
+        middleware=middleware,
     )
     tools_universe.register(mcp, api)
     tools_calibrate.register(mcp, api)

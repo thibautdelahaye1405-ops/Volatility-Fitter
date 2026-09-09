@@ -4,7 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Local Vol compare</title>
-<script src="https://cdn.plot.ly/plotly-3.1.0.min.js"></script>
+<script>/*__BRIDGE__*/</script>
+<script>
+  // Handshake FIRST: the host may time the ui/initialize out while a 4.7 MB
+  // Plotly downloads, so the bridge talks before the chart library exists.
+  window.__plotly = { ready: false, failed: false };
+  window.__plotlyLoaded = function () { window.__plotly.ready = true; if (window.__onPlotly) window.__onPlotly(); };
+  window.__plotlyFailed = function () { window.__plotly.failed = true; if (window.__onPlotly) window.__onPlotly(); };
+</script>
+<script src="https://cdn.plot.ly/plotly-3.1.0.min.js" async onload="window.__plotlyLoaded()" onerror="window.__plotlyFailed()"></script>
 <style>
   :root { --bg:#ffffff; --fg:#1b1f24; --muted:#6b7280; --line:#e5e7eb; --chip:#f3f4f6; --chipOn:#1f6feb; --chipOnFg:#fff; --warn:#b45309; }
   html[data-theme="dark"] { --bg:#171717; --fg:#e5e7eb; --muted:#9ca3af; --line:#2f3136; --chip:#26282c; --chipOn:#4c8dff; --chipOnFg:#0b0f14; --warn:#f59e0b; }
@@ -19,8 +27,8 @@
   #main { width:100%; height:440px; }
   #rms { width:100%; height:190px; }
   .foot { display:flex; gap:10px; align-items:center; padding:6px 10px; color:var(--muted); font-size:11.5px; border-top:1px solid var(--line); }
-  .foot a { color:inherit; cursor:pointer; text-decoration:underline; }
-  #empty { padding:24px; color:var(--muted); text-align:center; }
+  #status { padding:18px 12px; color:var(--muted); text-align:center; }
+  #status.err { color:var(--warn); }
 </style>
 </head>
 <body>
@@ -37,24 +45,29 @@
   <span class="grow"></span>
   <button class="chip" id="full">Fullscreen</button>
 </div>
-<div id="empty" hidden>No Local-Vol surfaces yet — calibrate with Local-Vol on.</div>
-<div id="main"></div>
-<div id="rms"></div>
+<div id="status">Connecting to the host…</div>
+<div id="main" hidden></div>
+<div id="rms" hidden></div>
 <div class="foot">
   <span id="meta"></span>
   <span class="grow"></span>
   <span>click an rms bar → open that smile</span>
 </div>
-<script>/*__BRIDGE__*/</script>
 <script>
 (function () {
   var B = window.VolfitBridge;
   var data = null;                         // the tool's structuredContent
   var state = { layer: "affine", view: "3d", selected: null };
-  var dark = false;
+  var dark = false, initDone = false;
 
   function $(s) { return document.querySelector(s); }
   function $$(s) { return Array.prototype.slice.call(document.querySelectorAll(s)); }
+  function status(text, err) {
+    var el = $("#status"); el.hidden = !text; el.textContent = text || ""; el.className = err ? "err" : "";
+    $("#main").hidden = !!text; $("#rms").hidden = !!text;
+    B.sizeChanged(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
+  }
+  window.addEventListener("error", function (ev) { status("Chart error: " + (ev.message || ev), true); });
   function pct(z) { return z.map(function (r) { return r.map(function (v) { return v == null ? null : 100 * v; }); }); }
   function fontColor() { return dark ? "#e5e7eb" : "#1b1f24"; }
   function paper() { return dark ? "#171717" : "#ffffff"; }
@@ -100,8 +113,9 @@
         layout["yaxis" + (i ? i + 1 : "")] = { domain: [0, 0.94], title: { text: i === 0 ? "T (y)" : "" }, anchor: xa };
       }
     });
-    $("#empty").hidden = traces.length > 0;
+    if (!traces.length) { status("No Local-Vol surfaces to draw — calibrate with Local-Vol on.", false); return false; }
     Plotly.react($("#main"), traces, layout, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] });
+    return true;
   }
 
   function renderRms() {
@@ -142,13 +156,17 @@
     $$("[data-layer]").forEach(function (b) { b.classList.toggle("on", b.dataset.layer === state.layer); });
     $$("[data-view]").forEach(function (b) { b.classList.toggle("on", b.dataset.view === state.view); });
     renderChips();
-    if (data) {
-      renderMain(); renderRms();
-      $("#meta").textContent = "twin t-interp " + data.tInterp + " · target " + (data.fitMode || "app default") + " · " + data.generatedAt
-        + (data.skipped && data.skipped.length ? " · skipped: " + data.skipped.map(function (s) { return s.ticker; }).join(", ") : "");
-    }
+    if (!data) { status(initDone ? "Waiting for the tool result…" : "Connecting to the host…"); return; }
+    if (window.__plotly.failed) { status("Plotly failed to load from https://cdn.plot.ly — the host blocked the chart library (CSP).", true); return; }
+    if (!window.__plotly.ready) { status("Loading the chart library…"); return; }
+    status("");
+    if (!renderMain()) return;
+    renderRms();
+    $("#meta").textContent = "twin t-interp " + data.tInterp + " · target " + (data.fitMode || "app default") + " · " + data.generatedAt
+      + (data.skipped && data.skipped.length ? " · skipped: " + data.skipped.map(function (s) { return s.ticker; }).join(", ") : "");
     B.sizeChanged(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
   }
+  window.__onPlotly = render;
 
   $$("[data-layer]").forEach(function (b) { b.onclick = function () { state.layer = b.dataset.layer; render(); }; });
   $$("[data-view]").forEach(function (b) { b.onclick = function () { state.view = b.dataset.view; render(); }; });
@@ -165,12 +183,15 @@
 
   B.on("hostContext", function (hc) {
     dark = hc.theme === "dark"; document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-    applyMode();
+    initDone = true; applyMode();
   });
   B.on("toolResult", function (res) {
     data = res.structuredContent || null;
     if (!data && res.content) { try { data = JSON.parse(res.content[0].text); } catch (e) { data = null; } }
-    state.selected = null; render();
+    if (data && data.kind !== "lv_compare") data = null;
+    state.selected = null;
+    if (!data) { status("The tool result carried no chart data" + (res.isError ? " (tool error)." : "."), true); return; }
+    render();
   });
   B.init("volfit-lv-compare");
 })();

@@ -4,7 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Smile viewer</title>
-<script src="https://cdn.plot.ly/plotly-basic-3.1.0.min.js"></script>
+<script>/*__BRIDGE__*/</script>
+<script>
+  // Handshake first (see lv_compare.html): Plotly loads asynchronously.
+  window.__plotly = { ready: false, failed: false };
+  window.__plotlyLoaded = function () { window.__plotly.ready = true; if (window.__onPlotly) window.__onPlotly(); };
+  window.__plotlyFailed = function () { window.__plotly.failed = true; if (window.__onPlotly) window.__onPlotly(); };
+</script>
+<script src="https://cdn.plot.ly/plotly-basic-3.1.0.min.js" async onload="window.__plotlyLoaded()" onerror="window.__plotlyFailed()"></script>
 <style>
   :root { --bg:#ffffff; --fg:#1b1f24; --muted:#6b7280; --line:#e5e7eb; --chip:#f3f4f6; --chipOn:#1f6feb; --chipOnFg:#fff; --warn:#b45309; }
   html[data-theme="dark"] { --bg:#171717; --fg:#e5e7eb; --muted:#9ca3af; --line:#2f3136; --chip:#26282c; --chipOn:#4c8dff; --chipOnFg:#0b0f14; --warn:#f59e0b; }
@@ -17,6 +24,8 @@
   .grow { flex:1; }
   .warn { color:var(--warn); }
   #plot { width:100%; height:360px; }
+  #status { padding:18px 12px; color:var(--muted); text-align:center; }
+  #status.err { color:var(--warn); }
   .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:8px; padding:8px 10px; border-top:1px solid var(--line); }
   .tile { border:1px solid var(--line); border-radius:8px; padding:6px 8px; }
   .tile .k { color:var(--muted); font-size:11px; }
@@ -33,21 +42,30 @@
   <button class="chip" id="prev">◀ prev expiry</button>
   <button class="chip" id="next">next expiry ▶</button>
 </div>
-<div id="plot"></div>
+<div id="status">Connecting to the host…</div>
+<div id="plot" hidden></div>
 <div class="tiles" id="tiles"></div>
-<script>/*__BRIDGE__*/</script>
 <script>
 (function () {
   var B = window.VolfitBridge;
-  var sm = null, axis = "k", dark = false, busy = false;
+  var sm = null, axis = "k", dark = false, busy = false, initDone = false;
   function $(s) { return document.querySelector(s); }
   function $$(s) { return Array.prototype.slice.call(document.querySelectorAll(s)); }
   function X(k) { return axis === "k" ? k : sm.forward * Math.exp(k); }
   function paper() { return dark ? "#171717" : "#ffffff"; }
   function fg() { return dark ? "#e5e7eb" : "#1b1f24"; }
+  function status(text, err) {
+    var el = $("#status"); el.hidden = !text; el.textContent = text || ""; el.className = err ? "err" : "";
+    $("#plot").hidden = !!text;
+    B.sizeChanged(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
+  }
+  window.addEventListener("error", function (ev) { status("Chart error: " + (ev.message || ev), true); });
 
   function render() {
-    if (!sm) return;
+    if (!sm) { status(initDone ? "Waiting for the tool result…" : "Connecting to the host…"); return; }
+    if (window.__plotly.failed) { status("Plotly failed to load from https://cdn.plot.ly — the host blocked the chart library (CSP).", true); return; }
+    if (!window.__plotly.ready) { status("Loading the chart library…"); return; }
+    status("");
     $$("[data-axis]").forEach(function (b) { b.classList.toggle("on", b.dataset.axis === axis); });
     $("#title").textContent = sm.ticker + " " + sm.expiry + " · " + (sm.model || "") + " · T " + sm.T + "y · F " + sm.forward;
     $("#flags").textContent = (sm.stale ? "stale " : "") + (sm.hasFit ? "" : "not fitted ") + (sm.degraded ? sm.degraded : "");
@@ -79,6 +97,7 @@
     $("#tiles").innerHTML = tiles.map(function (t) { return '<div class="tile"><div class="k">' + t[0] + '</div><div class="v">' + (t[1] == null ? "" : t[1]) + "</div></div>"; }).join("");
     B.sizeChanged(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
   }
+  window.__onPlotly = render;
 
   function step(delta) {
     var i = sm.expiries.indexOf(sm.expiry) + delta; if (i < 0 || i >= sm.expiries.length) return;
@@ -90,10 +109,11 @@
   $$("[data-axis]").forEach(function (b) { b.onclick = function () { axis = b.dataset.axis; render(); }; });
   $("#prev").onclick = function () { step(-1); };
   $("#next").onclick = function () { step(1); };
-  B.on("hostContext", function (hc) { dark = hc.theme === "dark"; document.documentElement.setAttribute("data-theme", dark ? "dark" : "light"); render(); });
+  B.on("hostContext", function (hc) { dark = hc.theme === "dark"; document.documentElement.setAttribute("data-theme", dark ? "dark" : "light"); initDone = true; render(); });
   B.on("toolResult", function (res) {
     sm = res.structuredContent || null;
     if (!sm && res.content) { try { sm = JSON.parse(res.content[0].text); } catch (e) { sm = null; } }
+    if (!sm) { status("The tool result carried no smile data" + (res.isError ? " (tool error)." : "."), true); return; }
     render();
   });
   B.init("volfit-smile");
