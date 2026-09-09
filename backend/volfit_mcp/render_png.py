@@ -77,6 +77,12 @@ def smile_png(sm: dict[str, Any]) -> bytes:
             ax.plot([p[0] for p in c], [p[1] for p in c], style, lw=1.6, label=label)
     d = sm.get("diagnostics") or {}
     ax.set_title(f"{sm['ticker']} {sm['expiry']} — rms {d.get('rmsBp')} bp, ATM {d.get('atmVol')}")
+    if q:  # frame the quoted range (the model wings run far beyond it)
+        lo, hi = min(p["k"] for p in q), max(p["k"] for p in q)
+        pad = max(0.25 * (hi - lo), 0.02)
+        ax.set_xlim(lo - pad, hi + pad)
+        ys = [p["bid"] for p in q] + [p["ask"] for p in q]
+        ax.set_ylim(max(0.0, min(ys) - 0.02), max(ys) + 0.02)
     ax.set_xlabel("k = ln(K/F)")
     ax.set_ylabel("implied vol")
     ax.grid(alpha=0.3)

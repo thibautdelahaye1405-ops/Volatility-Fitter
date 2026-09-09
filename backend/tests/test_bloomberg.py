@@ -634,6 +634,14 @@ def test_security_spells_a_bare_index_root_as_index():
     assert provider._security("VIX") == "VIX Index"
     assert provider._security("SPX INDEX") == "SPX Index"
     assert provider._security("SPY") == "SPY US Equity"
+    # Non-US index roots in their Bloomberg spelling (roots.INTL_INDEX_ROOTS):
+    # the desk types "SX5E", the security is "SX5E Index", not "SX5E US Equity"
+    # (the "no listed options for 'SX5E'" of 2026-09-09).
+    assert provider._security("SX5E") == "SX5E Index"
+    assert provider._security("sx5e") == "SX5E Index"
+    assert provider._security("DAX") == "DAX Index"
+    assert provider._security("UKX") == "UKX Index"
+    assert provider._security("SX5E Index") == "SX5E Index"
 
 
 # ----------------------------------------------------- non-US names & indices

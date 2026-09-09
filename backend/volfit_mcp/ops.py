@@ -131,6 +131,16 @@ async def read_settings(api: VolfitApi) -> tuple[dict[str, Any], dict[str, Any]]
     return await api.get("/settings/fit"), await api.get("/settings/options")
 
 
+async def resolve_fit_mode(api: VolfitApi, fit_mode: str | None) -> str:
+    """An omitted target means the Options' ``fitMode`` — the setting the
+    connector echoes as "target". (A bare app call would use the target the
+    UI last VIEWED, which a chat has no way to see: the run and its report
+    must name the same target.)"""
+    if fit_mode:
+        return fit_mode
+    return str((await api.get("/settings/options")).get("fitMode") or "mid")
+
+
 async def configure(api: VolfitApi, patch: dict[str, Any],
                     base: tuple[dict[str, Any], dict[str, Any]] | None = None) -> dict[str, Any]:
     """Apply a partial settings change on top of ``base`` (default: the live
@@ -159,6 +169,7 @@ async def progress(ctx: Context | None, done: float, total: float, msg: str) -> 
 async def wait_idle(api: VolfitApi, ctx: Context | None, wait_seconds: float,
                     fit_mode: str | None, prefix: str = "") -> dict[str, Any]:
     """Poll /calibration/status until idle or the budget is spent; progress forwarded."""
+    fit_mode = await resolve_fit_mode(api, fit_mode)
     t0 = monotonic()
     st = await api.get("/calibration/status", fit_mode=fit_mode)
     while st["running"] and monotonic() - t0 < wait_seconds:
@@ -177,7 +188,9 @@ async def calibrate(api: VolfitApi, ctx: Context | None, *, tickers: list[str] |
                     stage: str = "all", fit_mode: str | None = None, wait_seconds: float = 90.0,
                     prefix: str = "") -> dict[str, Any]:
     """Run the calibration: all lit nodes in the background (waited on with
-    progress) or the given tickers synchronously, one at a time."""
+    progress) or the given tickers synchronously, one at a time. An omitted
+    ``fit_mode`` resolves to the Options' target (``resolve_fit_mode``)."""
+    fit_mode = await resolve_fit_mode(api, fit_mode)
     if tickers:
         names = names_of(tickers) or []
         last: dict[str, Any] = {}
@@ -200,6 +213,7 @@ async def calibrate(api: VolfitApi, ctx: Context | None, *, tickers: list[str] |
 async def report(api: VolfitApi, tickers: list[str] | None, fit_mode: str | None,
                  rms_budget_bp: float | None = None) -> tuple[str, dict[str, Any]]:
     """GET /quality compacted; text = the roll-up + per-expiry tables."""
+    fit_mode = await resolve_fit_mode(api, fit_mode)
     q = await api.get("/quality", fit_mode=fit_mode, rms_budget_bp=rms_budget_bp)
     out = quality_summary(q, names_of(tickers))
     s = out.get("summary") or {}
@@ -226,10 +240,9 @@ async def lv_panels(api: VolfitApi, names: list[str], fit_mode: str | None,
     """The ``chart_lv_compare`` structured panels (one per ticker) + the skipped."""
     panels: list[dict[str, Any]] = []
     skipped: list[dict[str, str]] = []
+    fit_mode = await resolve_fit_mode(api, fit_mode)
     for t in names:
-        body: dict[str, Any] = {"tInterp": t_interp}
-        if fit_mode:
-            body["fitMode"] = fit_mode
+        body: dict[str, Any] = {"tInterp": t_interp, "fitMode": fit_mode}
         try:
             cmp = compact_compare(await api.post(f"/fit/affine/{t}/compare", body), with_grid=True)
         except Exception as exc:  # one ticker without a fit must not sink the chart

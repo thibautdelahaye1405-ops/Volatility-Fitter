@@ -73,7 +73,7 @@ async def _pipeline() -> dict[str, Any]:
         out["prompt"] = await c.get_prompt("desk_calibration", {"tickers": "EuroStoxx, SPX", "n_order": "24"})
         # The macro tools, last (they reshape the universe and the settings).
         out["workflow"] = await c.call_tool("run_desk_workflow", {
-            "tickers": ["SPY"], "model": "lqd", "n_order": 10, "local_vol": True, "wait_seconds": 240})
+            "tickers": ["SPY"], "model": "lqd", "n_order": 10, "local_vol": True, "fit_mode": "haircut", "wait_seconds": 240})
         out["workflow_fail"] = await c.call_tool("run_desk_workflow", {"tickers": ["SPY"], "n_order": 99, "fetch": False})
         out["ab"] = await c.call_tool("compare_settings", {
             "a": {"n_order": 8, "label": "LQD-8"}, "b": {"n_order": 12}, "tickers": ["SPY"], "keep": "a", "wait_seconds": 240})
@@ -305,6 +305,9 @@ def test_run_desk_workflow_is_one_call(pipe):
     assert [s["step"] for s in wf["steps"]] == ["universe", "fetch", "configure", "calibrate", "report", "lv_compare"]
     assert all(s["ok"] for s in wf["steps"]) and wf["stoppedAt"] is None
     assert wf["settings"]["fit"]["nOrder"] == 10 and wf["settings"]["options"]["localVolEnabled"] is True
+    # One target end to end: the settings, the report and the panels all say haircut.
+    assert wf["settings"]["options"]["fitMode"] == "haircut" and wf["fitMode"] == "haircut"
+    assert wf["report"]["fitMode"] == "haircut" and sc["fitMode"] == "haircut"
     assert wf["calibration"]["finished"] is True and wf["calibration"]["staleNodes"] == 0
     assert [t["ticker"] for t in wf["report"]["tickers"]] == ["SPY"]
     # The same call renders the LV compare: the chart page's contract is honoured.

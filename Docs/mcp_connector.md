@@ -53,7 +53,10 @@ After changing connector code, quit Claude Desktop from the system-tray icon
 (closing the window leaves the app and its connector processes running, so the
 old server keeps answering). Pages reload from disk on every read; the tool
 list and the bridge need that full quit. LIVE-VERIFIED 2026-09-09: SPX from
-Cboe, LQD-24 + Local-Vol, the interactive LV compare rendered in the chat.
+Cboe, LQD-24 + Local-Vol, the interactive LV compare rendered in the chat;
+then EuroStoxx + SPX from the Bloomberg Terminal through `run_desk_workflow`
+(SX5E 9 expiries, SPX 5; 176 s end to end, of which 136 s were the two
+Bloomberg chain fetches).
 
 Manual check: `.venv\Scripts\python -m volfit_mcp` from any directory starts
 the server on stdio (Ctrl-C to stop); `--api-url` points it elsewhere.
@@ -89,6 +92,10 @@ tenant; Bloomberg stays local-only.
 Resources: `volfit://status`, `volfit://settings`, `volfit://help/settings-schema`,
 `volfit://help/docs` (+ `/{id}`), `volfit://aliases`. Prompts: `desk_calibration`,
 `morning_check`.
+
+Fit target: a tool called without `fit_mode` targets the Options' `fitMode`
+(what `configure_fit` / `get_fit_settings` echo), never the target the UI
+last viewed — the run, its report and its charts always name one target.
 
 Units everywhere: rms in vol basis points (1 bp = 0.01 vol point), vols as
 decimals, `k = ln(K/F)`, `x = K/F`, `t` in years.

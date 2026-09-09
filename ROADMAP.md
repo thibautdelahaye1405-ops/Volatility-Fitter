@@ -1634,8 +1634,25 @@ below) — every recorded rider is closed except the ones listed here:
    violations, click -> smile); every card carries a Workbench button
    (`ui/open-link` -> `/?node=TICKER|YYYY-MM-DD&activity=...`, consumed
    once by the new frontend `useDeepLink` hook in the Shell — 4 vitest
-   locks); 21 backend locks, 25 headless-host checks. Next: EuroStoxx
-   with the Terminal; MCPB bundle for one-click install; a Help Center page; tool-call time
+   locks); 21 backend locks, 25 headless-host checks. EUROSTOXX LIVE
+   2026-09-09g (Terminal up): root cause of "no listed options for 'SX5E'"
+   = `BloombergProvider._security` only knew the US index roots, so a
+   bare SX5E became "SX5E US Equity" — FIXED: `roots.INTL_INDEX_ROOTS`
+   (SX5E, SXXP, DAX, UKX, CAC, SMI, NKY, HSI, ... in Bloomberg spelling)
+   -> "<ROOT> Index" (test_bloomberg lock). `run_desk_workflow(EuroStoxx,
+   SPX, LQD-24, LV)` on the live Terminal: SX5E 9 expiries / SPX 5, 176 s
+   (136 s = the two chain fetches), SX5E surface rms 84 bp driven ENTIRELY
+   by the 2-day 2026-09-11 slice (197 quotes, 125 bp rms, 228 bp max; the
+   quotes show an ATM discontinuity between the put and call sides — a
+   forward / parity or stale-delayed-quote question on a 2-day European
+   index slice, NOT a fitter regression: 09-14 fits at 3.9 bp, the rest
+   at 0.1–1.2 bp; LV 84 bp for the same reason). Connector rule shipped
+   with it: an omitted fit target resolves to the Options' fitMode (the
+   UI's last-viewed target is invisible to a chat), so run / report /
+   status / panels name ONE target (the first live report said "target
+   mid" under a haircut setting). RIDER: look at the SX5E front slice on
+   the Terminal (forward vs put-call parity on the 2-day rung; Bloomberg
+   delayed marks at fetch time). Next: MCPB bundle for one-click install; a Help Center page; tool-call time
    budgets in chat hosts are undocumented (calibrate waits ≤ wait_seconds
    then hands back a resumable status).
 1. USER-WINDOW runs (Next-up item 0 under WHERE THINGS STAND): benchmark-pack

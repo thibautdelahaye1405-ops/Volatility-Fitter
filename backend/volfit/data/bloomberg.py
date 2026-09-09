@@ -71,7 +71,7 @@ from volfit.data.bloomberg_search import instrument_search
 from volfit.data.dividends import Dividend
 from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.expiry_time import session_close_utc
-from volfit.data.roots import is_index_root, normalize_root
+from volfit.data.roots import is_index_root, is_intl_index_root, normalize_root
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
 from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
@@ -279,7 +279,9 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
           code but no asset class ("SAP GY", "VOD LN", "7203 JT"): append
           " Equity" (the asset class is implied by the exchange code);
         * **bare index root** — a known cash-index root ("SPX", "NDX", "VIX",
-          the universe's portable spelling, volfit.data.symbols): " Index";
+          the universe's portable spelling, volfit.data.symbols) or a known
+          non-US index root in its Bloomberg spelling ("SX5E", "DAX", "UKX",
+          volfit.data.roots.INTL_INDEX_ROOTS): " Index";
         * **bare ticker** — a single token ("SPY", "NVDA"): append the default
           yellow key (``yellow_key``, "US Equity"), i.e. the US listing.
         """
@@ -292,7 +294,7 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
             return " ".join(parts[:-1] + [asset_class])
         if len(parts) >= 2:  # exchange-coded equity (root + market code)
             return f"{t} Equity"
-        if is_index_root(t):  # the portable bare index root ("SPX") -> "SPX Index"
+        if is_index_root(t) or is_intl_index_root(t):  # bare index root -> "SPX Index" / "SX5E Index"
             return f"{normalize_root(t)} Index"
         return f"{t} {self.yellow_key}"
 

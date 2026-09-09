@@ -38,9 +38,31 @@ def normalize_root(symbol: str) -> str:
     return s.lstrip("^").lstrip("_")
 
 
+#: Non-US cash-index roots with listed options, in their Bloomberg root
+#: spelling (the "<ROOT> Index" security). NOT part of ``INDEX_ROOTS``: those
+#: are the Cboe roots the US adapters and the parent/sibling logic key on;
+#: these only tell the Bloomberg adapter that a bare root is an index (so
+#: "SX5E" becomes "SX5E Index", not "SX5E US Equity"). Add a root here when a
+#: desk names it bare; a full security ("SX5E Index") always works regardless.
+INTL_INDEX_ROOTS: frozenset[str] = frozenset({
+    # Europe
+    "SX5E", "SXXP", "SX7E", "SX5T", "V2X", "DAX", "MDAX", "TDXP", "UKX", "MCX", "CAC", "SMI",
+    "AEX", "IBEX", "FTSEMIB", "OMX", "OBX", "BEL20", "ATX", "PSI20", "WIG20",
+    # Asia-Pacific
+    "NKY", "TPX", "HSI", "HSCEI", "HSTECH", "KOSPI2", "AS51", "TWSE", "NIFTY", "STI",
+    # Americas ex-US
+    "SPTSX60", "IBOV", "MEXBOL",
+})
+
+
 def is_index_root(symbol: str) -> bool:
     """Whether the symbol names a known cash-index root (parent or sibling)."""
     return normalize_root(symbol) in INDEX_ROOTS
+
+
+def is_intl_index_root(symbol: str) -> bool:
+    """Whether the symbol names a known NON-US cash-index root (Bloomberg spelling)."""
+    return normalize_root(symbol) in INTL_INDEX_ROOTS
 
 
 def parent_root(root: str) -> str:

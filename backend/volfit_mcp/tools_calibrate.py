@@ -96,14 +96,16 @@ def register(mcp: MCPServer, api: VolfitApi) -> None:
     async def calibration_status() -> dict[str, Any]:
         """The calibration job state right now (running, done/total, phase,
         last error) and the stale accounting (lit nodes, stale nodes, LV-stale
-        tickers). Cheap; poll-safe."""
-        return compact_status(await api.get("/calibration/status"))
+        tickers) for the Options' fit target. Cheap; poll-safe."""
+        fit_mode = await ops.resolve_fit_mode(api, None)
+        return compact_status(await api.get("/calibration/status", fit_mode=fit_mode))
 
     @mcp.tool(annotations=MUTATING)
     async def cancel_calibration() -> dict[str, Any]:
         """Cancel the running background calibration (cooperative: the node in
         flight completes)."""
-        return compact_status(await api.post("/calibrate/cancel"))
+        fit_mode = await ops.resolve_fit_mode(api, None)
+        return compact_status(await api.post("/calibrate/cancel", fit_mode=fit_mode))
 
     @mcp.tool(annotations=READ_ONLY)
     async def calibration_report(

@@ -122,6 +122,7 @@ def register_apps(api: VolfitApi, apps: Apps) -> None:
                                        ("local_vol", local_vol)) if v is not None}
             wf["settings"] = await step("configure", ops.configure(api, patch))
             f, o = wf["settings"]["fit"], wf["settings"]["options"]
+            fit_mode = fit_mode or o["fitMode"]  # the run, the report and the panels name ONE target
             text.append(f"Settings: {f['model'].upper()}{'-' + str(f['nOrder']) if f['model'] == 'lqd' else ''}, "
                         f"target {o['fitMode']}, Local-Vol {'on' if o['localVolEnabled'] else 'off'}, "
                         f"weights {f['weightScheme']}, LV grid {o['gridXNodes']}x{o['gridTNodes']}")
@@ -143,6 +144,7 @@ def register_apps(api: VolfitApi, apps: Apps) -> None:
         wf["elapsedSeconds"] = round(monotonic() - t0, 1)
         structured = {"kind": "lv_compare", "fitMode": fit_mode, "tInterp": "smooth", "generatedAt": ops.now_iso(),
                       "tickers": panels, "skipped": skipped, "workflow": wf, "workbenchUrl": workbench_url()}
+        wf["fitMode"] = fit_mode
         head = f"Desk workflow ({wf['elapsedSeconds']} s): " + " → ".join(
             f"{s['step']}{'' if s['ok'] else ' ✗'}" for s in steps)
         return _result("\n".join([head, *text]), structured)
@@ -172,7 +174,7 @@ def register(mcp: MCPServer, api: VolfitApi) -> None:
         for i, (label, spec) in enumerate(order):
             name = spec.name(label.upper())
             settings = await ops.configure(api, spec.patch(), base=base)
-            fm = spec.fit_mode
+            fm = spec.fit_mode or str(base[1].get("fitMode") or "mid")
             cal = await ops.calibrate(api, ctx, tickers=None, stage="all", fit_mode=fm,
                                       wait_seconds=wait_seconds, prefix=f"{name}: ")
             rtxt, rep = await ops.report(api, tickers, fm)
