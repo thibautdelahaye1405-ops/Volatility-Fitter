@@ -23,8 +23,9 @@ from importlib import resources
 from pathlib import Path
 from typing import Any, Literal
 
-from mcp.server.apps import Apps, ResourceCsp, client_supports_apps
+from mcp.server.apps import APP_MIME_TYPE, Apps, ResourceCsp, client_supports_apps
 from mcp.server.mcpserver import Context
+from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import CallToolResult, ContentBlock, TextContent, ToolAnnotations
 
@@ -96,12 +97,22 @@ def _html(name: str) -> str:
     return page
 
 
+def _page_resource(uri: str, name: str, title: str, page: str) -> FunctionResource:
+    """A ``ui://`` resource rendered from disk on EVERY read, so an edit to the
+    page (or the bridge) reaches a host that keeps the server process alive
+    across app restarts — Claude Desktop lingers in the tray — without a
+    relaunch. Same ``_meta.ui`` as ``Apps.add_html_resource`` would stamp."""
+    return FunctionResource(
+        uri=uri, name=name, title=title, mime_type=APP_MIME_TYPE,
+        meta={"ui": {"csp": CSP.model_dump(by_alias=True, exclude_none=True), "prefersBorder": True}},
+        fn=lambda: _html(page),
+    )
+
+
 def build_apps() -> Apps:
     apps = Apps()
-    apps.add_html_resource(LV_COMPARE_URI, _html("lv_compare.html"), name="volfit-lv-compare",
-                           title="Local Vol compare", csp=CSP, prefers_border=True)
-    apps.add_html_resource(SMILE_URI, _html("smile.html"), name="volfit-smile",
-                           title="Smile viewer", csp=CSP, prefers_border=True)
+    apps.add_resource(_page_resource(LV_COMPARE_URI, "volfit-lv-compare", "Local Vol compare", "lv_compare.html"))
+    apps.add_resource(_page_resource(SMILE_URI, "volfit-smile", "Smile viewer", "smile.html"))
     return apps
 
 
