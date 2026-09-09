@@ -268,10 +268,12 @@ def test_wire_trace_records_handshake_and_reads(tmp_path):
     asyncio.run(go())
     lines = [json.loads(l) for l in trace.read_text(encoding="utf-8").splitlines()]
     methods = [l["method"] for l in lines]
-    # The 2026-07-28 client opens with server/discover before initialize; either way both are traced.
-    assert "initialize" in methods and "resources/read" in methods and "tools/call" in methods
-    init = next(l for l in lines if l["method"] == "initialize")
-    assert "capabilities" in init["params"] and init["result"]["capabilities"]["extensions"] == {"io.modelcontextprotocol/ui": {}}
+    # A 2026-07-28 client opens with server/discover instead of initialize; the
+    # handshake line, whichever it is, carries the server's advertised extensions.
+    assert ("initialize" in methods or "server/discover" in methods)
+    assert "resources/read" in methods and "tools/call" in methods
+    init = next(l for l in lines if l["method"] in ("initialize", "server/discover"))
+    assert init["result"]["capabilities"]["extensions"] == {"io.modelcontextprotocol/ui": {}}
     read = next(l for l in lines if l["method"] == "resources/read")
     assert read["params"]["uri"] == LV_COMPARE_URI
     assert read["result"]["contents"][0]["mimeType"] == "text/html;profile=mcp-app"
