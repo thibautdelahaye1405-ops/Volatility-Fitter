@@ -94,6 +94,25 @@ decimals, `k = ln(K/F)`, `x = K/F`, `t` in years.
   Apps host, feeds the recorded fixtures to both chart apps, drives their
   controls and screenshots `.smoke/mcp-*.png`.
 
+## Diagnostics
+
+* `VOLFIT_MCP_TRACE=<file>` (or `--trace`): one JSON line per inbound MCP
+  message — the host's advertised capabilities, every `resources/read` URI,
+  every `tools/call` and its outcome. Chat hosts log message names only, so
+  this is how a silent "no card" is diagnosed. The Desktop launch writes
+  `backend\.mcp_trace.jsonl`.
+* The chart pages carry a status line for every failure state ("Connecting
+  to the host", "Loading the chart library", "the host blocked the chart
+  library", "no chart data") instead of a blank card.
+* `VOLFIT_MCP_PLOTLY=inline|cdn` (default inline): the pages embed a Plotly
+  bundle cached once under `backend\.cache` — self-contained like the
+  reference app servers, so a sandbox that ignores the declared CSP still
+  renders; `cdn` serves the 15 KB page and loads Plotly from cdn.plot.ly.
+* The handshake sends exactly what the ext-apps host schema validates
+  (`appInfo`, `appCapabilities`, `protocolVersion`), and the tools carry the
+  legacy `ui/resourceUri` metadata key next to `ui.resourceUri`, as the
+  reference servers do.
+
 ## Known limits
 
 * One desk per app instance: two chats against the same :8000 share the

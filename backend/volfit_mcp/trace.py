@@ -33,6 +33,7 @@ class TraceMiddleware(ServerMiddleware[Any]):
             "method": ctx.method,
             "id": ctx.request_id,
             "protocol": ctx.protocol_version,
+            "client": _client_name(ctx),
             "params": _clip(ctx.params),
         }
         try:
@@ -53,6 +54,17 @@ class TraceMiddleware(ServerMiddleware[Any]):
                 fh.write(json.dumps(line, default=str) + "\n")
         except OSError:  # a trace must never break the server
             pass
+
+
+def _client_name(ctx: ServerRequestContext[Any, Any]) -> str | None:
+    """The connected client's ``clientInfo.name`` (a host may open several
+    connections — e.g. a chat lane and an agent lane — and route tool calls
+    down either; the trace tells them apart)."""
+    try:
+        params = ctx.session.client_params
+        return params.client_info.name if params is not None else None
+    except Exception:
+        return None
 
 
 def _clip(obj: Any) -> Any:

@@ -51,6 +51,7 @@ window.VolfitBridge = (function () {
       case "ping":
         if (m.id !== undefined) post({ jsonrpc: "2.0", id: m.id, result: {} }); break;
       case "ui/resource-teardown":
+      case "ui/notifications/request-teardown":
         emit("teardown", m.params || {});
         if (m.id !== undefined) post({ jsonrpc: "2.0", id: m.id, result: {} }); break;
       default: break;
@@ -61,11 +62,12 @@ window.VolfitBridge = (function () {
     on: function (name, fn) { (handlers[name] = handlers[name] || []).push(fn); return this; },
     context: function () { return hostContext; },
     init: function (name) {
+      // Exactly the three fields the ext-apps host schema validates:
+      // appInfo (not clientInfo), appCapabilities, protocolVersion.
       return request("ui/initialize", {
-        protocolVersion: "2026-01-26",
-        capabilities: {},
-        clientInfo: { name: name || "volfit-app", version: "0.1.0" },
-        appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] }
+        appInfo: { name: name || "volfit-app", version: "0.1.0" },
+        appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] },
+        protocolVersion: "2026-01-26"
       }).then(function (res) {
         hostContext = Object.assign({}, hostContext, (res && res.hostContext) || {});
         notify("ui/notifications/initialized", {});

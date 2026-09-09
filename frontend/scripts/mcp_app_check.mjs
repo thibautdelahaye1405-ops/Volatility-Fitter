@@ -6,8 +6,8 @@
 // script drives the app's own controls, screenshotting each state:
 //   lv-compare: 3D affine, heatmap twin, difference, dark theme, rms-bar click
 //   smile:      light, strike axis, dark, next-expiry (tools/call round trip)
-// No server needed: the app HTML is rendered by the Python package and Plotly
-// loads from its CDN (network). Screenshots in .smoke/mcp-*.png. Prereqs:
+// No server needed: the app HTML is rendered by the Python package (Plotly
+// inlined from backend/.cache, else the CDN). Screenshots in .smoke/mcp-*.png. Prereqs:
 // ../.venv (mcp installed), Edge, puppeteer-core (npm i --no-save puppeteer-core).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -27,7 +27,7 @@ const pages = JSON.parse(execFileSync(PY, ["-c", `
 import json
 from volfit_mcp.tools_charts import _html
 print(json.dumps({"lv": _html("lv_compare.html"), "smile": _html("smile.html")}))
-`], { encoding: "utf-8", cwd: winPath(new URL("../../backend/", import.meta.url)) }));
+`], { encoding: "utf-8", cwd: winPath(new URL("../../backend/", import.meta.url)), maxBuffer: 64 * 1024 * 1024 }));  // the pages inline Plotly (~6 MB)
 const fixtures = {
   lv: JSON.parse(readFileSync(FIX + "mcp_lv_compare.json", "utf-8")),
   smile: JSON.parse(readFileSync(FIX + "mcp_smile.json", "utf-8")),
@@ -44,6 +44,13 @@ window.addEventListener("message", (ev) => {
   const m = ev.data; if (!m || m.jsonrpc !== "2.0") return;
   window.__msgs.push(m);
   if (m.method === "ui/initialize") {
+    // Validate like the ext-apps host schema: appInfo + appCapabilities + protocolVersion.
+    const p = m.params || {};
+    if (!p.appInfo || !p.appInfo.name || !p.appCapabilities || typeof p.protocolVersion !== "string") {
+      window.__initError = "ui/initialize params invalid: " + JSON.stringify(p);
+      send({ jsonrpc: "2.0", id: m.id, error: { code: -32602, message: window.__initError } });
+      return;
+    }
     send({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: "2026-01-26",
       hostCapabilities: { serverTools: {}, openLinks: {} }, hostInfo: { name: "harness", version: "0" },
       hostContext: { theme: window.__theme, displayMode: "inline", containerDimensions: { width: 960, maxHeight: 900 }, locale: "en-US" } } });
@@ -76,7 +83,10 @@ async function openApp(browser, key, theme) {
   const file = OUT + `_mcp_harness_${key}_${theme}.html`;
   writeFileSync(file, harness(pages[key], theme));
   await page.goto("file:///" + file.replace(/\\/g, "/"), { waitUntil: "load" });
-  await page.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+  await page.waitForFunction(() => window.__ready === true || window.__initError, { timeout: 30000 });
+  const initError = await page.evaluate(() => window.__initError || null);
+  check(`${key}: ui/initialize params valid`, !initError, initError || "");
+  if (initError) throw new Error(initError);
   await page.evaluate((fx, args) => window.__deliver(fx, args), fixtures[key], key === "lv" ? { tickers: ["SPY"] } : { ticker: "SPY", expiry: fixtures.smile.expiry });
   const frame = page.frames().find((f) => f !== page.mainFrame());
   await frame.waitForFunction(() => document.querySelectorAll(".js-plotly-plot .plot-container").length > 0, { timeout: 40000 });

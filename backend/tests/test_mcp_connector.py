@@ -90,8 +90,10 @@ def test_tool_surface_is_curated(pipe):
 
 
 def test_chart_tools_bind_ui_resources(pipe):
-    assert pipe["tools"]["chart_lv_compare"].meta == {"ui": {"resourceUri": LV_COMPARE_URI}}
-    assert pipe["tools"]["chart_smile"].meta == {"ui": {"resourceUri": SMILE_URI}}
+    # Both the 2026-01-26 key and the legacy "ui/resourceUri" key, like the
+    # reference TypeScript app servers (older hosts mount from the legacy one).
+    assert pipe["tools"]["chart_lv_compare"].meta == {"ui": {"resourceUri": LV_COMPARE_URI}, "ui/resourceUri": LV_COMPARE_URI}
+    assert pipe["tools"]["chart_smile"].meta == {"ui": {"resourceUri": SMILE_URI}, "ui/resourceUri": SMILE_URI}
     for key, uri in (("ui_lv", LV_COMPARE_URI), ("ui_smile", SMILE_URI)):
         res = pipe["resources"][uri]
         assert res.mime_type == "text/html;profile=mcp-app"

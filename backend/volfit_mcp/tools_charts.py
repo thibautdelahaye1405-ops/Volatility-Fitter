@@ -17,8 +17,10 @@ Structured-content contracts (the HTML reads exactly these keys):
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from importlib import resources
+from pathlib import Path
 from typing import Any, Literal
 
 from mcp.server.apps import Apps, ResourceCsp, client_supports_apps
@@ -38,12 +40,60 @@ SMILE_URI = "ui://volfit/smile.html"
 CSP = ResourceCsp(resource_domains=["https://cdn.plot.ly"])
 
 
+def _legacy_meta(uri: str) -> dict[str, str]:
+    """The pre-2026-01-26 tool metadata key. The reference app servers (the
+    TypeScript ``registerAppTool``) stamp BOTH ``_meta.ui.resourceUri`` and
+    ``_meta["ui/resourceUri"]``; hosts of the older vintage (Claude Desktop
+    on protocol 2025-11-25) mount the app from the legacy key."""
+    return {"ui/resourceUri": uri}
+
+
+#: Plotly bundle per page: (cache file, CDN URL, the exact tag the page carries).
+_PLOTLY = {
+    "lv_compare.html": ("plotly-3.1.0.min.js", "https://cdn.plot.ly/plotly-3.1.0.min.js"),
+    "smile.html": ("plotly-basic-3.1.0.min.js", "https://cdn.plot.ly/plotly-basic-3.1.0.min.js"),
+}
+_TAG = '<script src="{url}" async onload="window.__plotlyLoaded()" onerror="window.__plotlyFailed()"></script>'
+_CACHE = Path(os.environ.get("VOLFIT_MCP_CACHE") or Path(__file__).resolve().parent.parent / ".cache")
+
+
+def _plotly_bundle(name: str) -> str | None:
+    """The Plotly source to inline, or ``None`` to keep the CDN tag.
+
+    Self-contained pages are what the reference app servers ship and the only
+    thing every host sandbox renders (a CSP that ignores ``resourceDomains``
+    silently blocks the CDN). ``VOLFIT_MCP_PLOTLY=cdn`` keeps the 15 KB page
+    + CDN load; the default inlines a cached bundle (downloaded once into
+    ``backend/.cache``), falling back to the CDN when it cannot be fetched."""
+    if os.environ.get("VOLFIT_MCP_PLOTLY", "inline").lower() == "cdn":
+        return None
+    fname, url = _PLOTLY[name]
+    path = _CACHE / fname
+    if not path.exists():
+        try:
+            import httpx
+
+            data = httpx.get(url, timeout=60.0, follow_redirects=True)
+            data.raise_for_status()
+            _CACHE.mkdir(parents=True, exist_ok=True)
+            path.write_text(data.text, encoding="utf-8")
+        except Exception:
+            return None
+    src = path.read_text(encoding="utf-8")
+    return src.replace("</script", "<\/script")  # never close our own tag
+
+
 def _html(name: str) -> str:
-    """One UI page with the shared postMessage bridge inlined."""
+    """One UI page with the shared postMessage bridge (and Plotly) inlined."""
     ui = resources.files("volfit_mcp") / "ui"
     bridge = (ui / "bridge.js").read_text(encoding="utf-8")
-    page = (ui / name).read_text(encoding="utf-8")
-    return page.replace("/*__BRIDGE__*/", bridge)
+    page = (ui / name).read_text(encoding="utf-8").replace("/*__BRIDGE__*/", bridge)
+    bundle = _plotly_bundle(name)
+    if bundle is not None:
+        tag = _TAG.format(url=_PLOTLY[name][1])
+        assert tag in page, f"{name}: Plotly tag drifted from _TAG"
+        page = page.replace(tag, "<script>" + bundle + "</script><script>window.__plotlyLoaded()</script>")
+    return page
 
 
 def build_apps() -> Apps:
@@ -66,7 +116,7 @@ def register(api: VolfitApi, apps: Apps) -> None:
     """Bind the chart tools to ``apps``. Must run BEFORE ``MCPServer(extensions=
     [apps])`` is built: the server consumes an extension's tools at construction."""
 
-    @apps.tool(resource_uri=LV_COMPARE_URI, annotations=READ_ONLY)
+    @apps.tool(resource_uri=LV_COMPARE_URI, meta=_legacy_meta(LV_COMPARE_URI), annotations=READ_ONLY)
     async def chart_lv_compare(
         ctx: Context,
         tickers: list[str] | None = None,
@@ -135,7 +185,7 @@ def register(api: VolfitApi, apps: Apps) -> None:
         image = render_png.lv_compare_png(structured) if (png and panels) else None
         return CallToolResult(content=_blocks("\n".join(lines), image), structured_content=structured)
 
-    @apps.tool(resource_uri=SMILE_URI, annotations=READ_ONLY)
+    @apps.tool(resource_uri=SMILE_URI, meta=_legacy_meta(SMILE_URI), annotations=READ_ONLY)
     async def chart_smile(
         ctx: Context,
         ticker: str,

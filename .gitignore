@@ -48,3 +48,4 @@ deploy/client.env
 *.sqlite-wal
 Docs/notes/build_coordinates/
 backend/.mcp_trace.jsonl
+backend/.cache/
