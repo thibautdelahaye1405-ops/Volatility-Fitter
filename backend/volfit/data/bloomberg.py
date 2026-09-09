@@ -70,10 +70,15 @@ from volfit.data.bloomberg_live import BloombergStreamingMixin
 from volfit.data.bloomberg_search import instrument_search
 from volfit.data.dividends import Dividend
 from volfit.data.fieldmap import int_or_none, price_or_none
-from volfit.data.expiry_time import session_close_utc
+from volfit.data.bloomberg_roots import one_root_per_date, parent_root
+from volfit.data.expiry_time import ExpirySettlement, default_settlement, session_close_utc
 from volfit.data.roots import is_index_root, is_intl_index_root, normalize_root
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
 from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Bloomberg "yellow key" asset-class words that complete a security string
 #: ("SPX Index", "SAP GY Equity"). Stored canonically (title-case) and indexed
@@ -245,6 +250,9 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         #: ticker -> (clock stamp, parsed contracts); entries older than
         #: ``chain_ttl`` are re-requested (see ``_chain``).
         self._chain_cache: dict[str, tuple[float, list[ParsedOption]]] = {}
+        #: ticker -> {expiry: the option root kept for that date} (bloomberg_roots:
+        #: one root per date; the settlement convention reads it).
+        self._roots_cache: dict[str, dict[date, str]] = {}
         self._history_cache: dict[str, list[date]] = {}
         #: Lazily-opened blpapi session for the instrument-search service, reused
         #: across searches and guarded so concurrent searches serialize.
@@ -427,8 +435,34 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
                 rows = []
             parsed.extend(_with_mirrored_puts(rows))
         parsed = _dedupe_contracts(parsed)
+        # One option root per expiry date (bloomberg_roots): a Eurex weekly and
+        # daily, or SPX and SPXW, listing the same Friday are different
+        # instruments — keeping both stacks two smiles on one slice.
+        selection = one_root_per_date(parsed, parent_root(security), self._probe_open_interest)
+        for note in selection.dropped:
+            logger.info("%s chain — one root per date: %s", key, note)
+        parsed = selection.contracts
+        self._roots_cache[key] = selection.roots
         self._chain_cache[key] = (now, parsed)
         return parsed
+
+    def _probe_open_interest(self, securities: list[str]) -> dict[str, int]:
+        """OPEN_INT of a few representative contracts (one bdp) — the liquidity
+        vote of ``one_root_per_date`` for a date two sibling roots list."""
+        pivot = pivot_bdp(self._blp_module().bdp(securities, ["OPEN_INT"]))
+        out: dict[str, int] = {}
+        for s in securities:
+            oi = int_or_none(pivot.get(s, {}).get("OPEN_INT"))
+            if oi is not None:
+                out[s] = oi
+        return out
+
+    def _settlement(self, ticker: str, expiries) -> dict[date, ExpirySettlement]:
+        """Per-expiry settlement records, each under the root that LISTS the
+        date (``_roots_cache``: SPX AM on the monthlies, SPXW PM on the
+        weeklies); the ticker's own root where the chain was never listed."""
+        roots = self._roots_cache.get(ticker.upper(), {})
+        return {e: default_settlement(e, roots.get(e, ticker)) for e in sorted(set(expiries))}
 
     def refresh_chain_cache(self, ticker: str | None = None) -> None:
         """Drop the cached OPT_CHAIN ladder(s) so the next call re-requests them
@@ -541,7 +575,8 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
                     raise ValueError(f"no historical close available for {ticker!r}")
                 style = "european" if self._security(ticker).endswith(" Index") else "american"
                 snap = _fetch_eod(
-                    self._blp_module(), ticker, self._security(ticker), contracts, on, style
+                    self._blp_module(), ticker, self._security(ticker), contracts, on, style,
+                    roots=self._roots_cache.get(ticker.upper()),
                 )
             else:
                 # Streaming: serve the chain from the //blp/mktdata book (no bdp);
@@ -602,8 +637,6 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
                     timestamp=timestamp,
                 )
             )
-        from volfit.data.expiry_time import settlement_map
-
         style = _resolve_style(styles)
         # Remember the reference-only facts the stream cannot carry (OI, exercise
         # style) so a streamed chain still reports them (bloomberg_live).
@@ -618,7 +651,7 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
             quotes=quotes,
             exercise_style=style,
             tick_size=US_OPTION_TICK,
-            settlement=settlement_map({q.expiry for q in quotes}, root=ticker),
+            settlement=self._settlement(ticker, {q.expiry for q in quotes}),
         )
 
     # -- dividends (provider-specific capability, not part of the contract) --

@@ -1583,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-09i (resume here)
+## STATUS — updated 2026-09-09j (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1650,9 +1650,14 @@ below) — every recorded rider is closed except the ones listed here:
    with it: an omitted fit target resolves to the Options' fitMode (the
    UI's last-viewed target is invisible to a chat), so run / report /
    status / panels name ONE target (the first live report said "target
-   mid" under a haircut setting). RIDER: look at the SX5E front slice on
+   mid" under a haircut setting). ~~RIDER: look at the SX5E front slice on
    the Terminal (forward vs put-call parity on the 2-day rung; Bloomberg
-   delayed marks at fetch time). 2026-09-09h (items "1 and 2"): the macros
+   delayed marks at fetch time).~~ **CLOSED 2026-09-09j** (wrap below): not
+   the forward — Bloomberg listed 2026-09-11 under TWO roots (weekly WSX5EB
+   + daily SX5EODJ) and the provider deduped by security, so the slice
+   carried two smiles 2.4 vol pts apart; the chain now keeps ONE root per
+   date (`bloomberg_roots.py`: parent wins, else the open-interest vote).
+   2026-09-09h (items "1 and 2"): the macros
    run as BACKGROUND JOBS (`volfit_mcp/jobs.py`: the call waits
    `wait_seconds` = 60 s default with streamed progress, returns the full
    result if done, else a `workflow_pending` handle that
@@ -1816,6 +1821,54 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-09j) — BLOOMBERG: ONE OPTION ROOT PER EXPIRY DATE (THE SX5E 2-DAY SLICE WAS TWO SERIES, NOT A FORWARD)
+
+Roadmap item 3 of this session's confirm-per-item pass (the item-0 rider
+"look at the SX5E front slice on the Terminal"). Diagnosed read-only on the
+user's running :8000 (the 16:10 Bloomberg fetch) and the Terminal, then fixed.
+
+- **The finding.** The 2026-09-11 slice held 185 quotes for 93 strikes — TWO
+  quotes of the same type per strike, from two Bloomberg roots expiring the
+  same Friday: the weekly `WSX5EB` (P6300 28.1/30.2, open interest 7,624) and
+  the daily `SX5EODJ` (31.5/36.0, OI 1,546; different settlement instant, so
+  ~15 % richer). `_dedupe_contracts` keyed on the security string, so both
+  survived: two parallel smiles 2.4 vol pts apart at every strike = the
+  125 bp rms, the "ATM put/call discontinuity" (it was series vs series, not
+  put vs call), and the 16 %/yr parity discount (the regression straddled
+  two C−P lines). Same on 09-18: monthly `SX5E` (OI 108k) + daily `SX5EODO`
+  (44 contracts, OI 200, priced like the monthly — hidden at 3.9 bp). SPX
+  through Bloomberg lists SPX + SPXW on every monthly (the recorded AM/PM
+  twin); the user's SPX is clean only because Cboe's adapter already keeps
+  one root per date.
+- **The fix.** `volfit/data/bloomberg_roots.py` (130 lines): `one_root_per_date`
+  — the parent root (the underlying's own) wins when it lists the date; else
+  the root whose median-strike call carries the larger OPEN_INT (one bdp over
+  the contested dates' representatives, injected by the provider, cached with
+  the chain, nothing when no date is contested); ties / a refused probe → more
+  strikes, then first listed. `_chain` applies it after the dedupe, logs each
+  dropped root, and keeps `{date: root}` in `_roots_cache`; the THREE snapshot
+  builders (`_fetch_live`, the stream book, `fetch_eod`) read each expiry's
+  settlement from the kept root (`_settlement`) — so SPX monthlies are AM and
+  SPXW weeklies PM through Bloomberg, where `settlement_map(root=ticker)` had
+  stamped every expiry with the ticker's root.
+- **Locks.** tests/test_bloomberg_roots.py (6): the pure rule (parent, OI,
+  strike-count tie, first-listed, representative = median call), the live
+  SX5E shape (weekly beats daily, the parent needs no probe, each date once,
+  the dropped root is never quoted, one smile), the refused probe, SPX/SPXW
+  with the settlement following the root, the selection cached with the
+  chain. Bloomberg + stream + expiry-time suites: 85 green.
+- **Live on the Terminal (read-only, through the provider).** SX5E: 09-11 →
+  WSX5EB kept (476 contracts, dropped SX5EODJ 452) after ONE 2-security
+  OPEN_INT probe; 09-18 → SX5E kept (dropped SX5EODO 88); 43 dates, none with
+  two roots. SPX: SPX kept on all five monthlies (SPXW dropped), no probe.
+- **Riders.** The app times every non-US expiry at the US session close;
+  Eurex index options settle at 12:00 CET, so a 2-day SX5E rung is ~0.2 d
+  too long (a few % on its vol level) — a settlement-calendar item, not this
+  one. `bloomberg.py` is 704 lines (was 671; the 400-line policy was already
+  behind — the dividend and history helpers could move out). USER-side:
+  restart :8000 and refetch SX5E to see the 09-11 slice fit like its
+  neighbours (the running app still holds the doubled chain).
 
 ### 🧭 SESSION WRAP (2026-09-09i) — HELP CENTER: THE MCP CONNECTOR HAS ITS PAGE (GUIDE · DOCS ENTRY · GLOSSARY · TIP · WHAT'S NEW)
 

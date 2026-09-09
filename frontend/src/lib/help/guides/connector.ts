@@ -57,7 +57,7 @@ export const CONNECTOR: GuidePage = {
     "",
     "**Example.** *Run the desk routine on EuroStoxx and SPX in LQD-24 with Local Vol, and show the LV comparison.* The connector resolves EuroStoxx to SX5E on a source that lists it (Bloomberg or Eurex) and SPX to Cboe, fetches both chains, sets the model and Local Vol, calibrates with progress, and returns the report: per-ticker surface rms, per-expiry rms with the worst slice named, arbitrage flags, readiness. The Local Vol compare card renders in the same reply. On the Terminal this took 102 s for 14 expiries, most of it the first quote request of each new ticker.",
     "",
-    "Read the report the way you read the Quality lens: a surface rms driven by one slice is that slice's story, not the fitter's — a 2-day index expiry with an ATM put / call discontinuity in its delayed marks reads 125 bp while its neighbours read 1–4 bp.",
+    "Read the report the way you read the Quality lens: a surface rms driven by one slice is that slice's story, not the fitter's. The first live EuroStoxx run read 125 bp on its 2-day expiry beside neighbours at 1–4 bp because Bloomberg listed that Friday under two option roots, the weekly and the daily, and both had been quoted; the provider now keeps one root per date (see [Data sources](help:guides:data-sources)).",
     "",
     "## A vs B settings",
     "",

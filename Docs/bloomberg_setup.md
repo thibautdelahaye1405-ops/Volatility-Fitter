@@ -45,6 +45,21 @@ as its live book (`volfit/data/bloomberg_stream.py` book + blpapi transport,
   and the `CHAIN_POINTS_OVRD` count cap; calls only, puts mirrored, the
   yellow key appended — live-verified 2026-09-02) — and one `PX_LAST` to
   centre the strike window, per ticker, per 10-minute chain cache.
+- **One option root per expiry date** (`volfit.data.bloomberg_roots`,
+  2026-09-09). The chain union can list one date under several roots that are
+  different instruments: Eurex's weekly `WSX5EB` and daily `SX5EODJ` both
+  expire Friday 2026-09-11 (the weekly and the daily settle at different
+  instants and price ~15 % apart), the monthly `SX5E` and the daily `SX5EODO`
+  on the 18th; SPX and SPXW on every third Friday. Keeping both stacked two
+  smiles on the SX5E 2-day slice (125 bp rms, an "ATM discontinuity", a
+  16 %/yr parity discount). The provider now keeps ONE root per date — the
+  parent root when it lists the date, else the root whose median-strike call
+  carries the larger open interest (one small `OPEN_INT` bdp over the
+  contested dates' representatives, cached with the chain; a refused probe
+  falls back to the root with more strikes, then the first listed) — logs the
+  dropped root, and reads each expiry's settlement convention from the kept
+  root (SPX AM on the monthlies, SPXW PM on the weeklies). The (date, root)
+  expiry key stays the recorded redesign.
 - Subscription budget: the Desktop API caps concurrent real-time subscriptions
   per Terminal. Contracts are windowed to `strike_window` (default 0.5–1.5 ×
   spot) around a centre held with 5 % hysteresis (no restart when spot wobbles

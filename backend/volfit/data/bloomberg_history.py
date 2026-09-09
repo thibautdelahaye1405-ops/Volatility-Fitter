@@ -46,8 +46,11 @@ def fetch_eod(
     contracts: list[ParsedOption],
     on: date,
     exercise_style: str,
+    roots: dict[date, str] | None = None,
 ) -> ChainSnapshot:
-    """The closing chain for ``on``: one ``bdh`` over the contracts + underlying."""
+    """The closing chain for ``on``: one ``bdh`` over the contracts + underlying.
+    ``roots`` (expiry -> the option root kept for that date, bloomberg_roots)
+    drives each expiry's settlement convention; the ticker's root otherwise."""
     securities = [c.security for c in contracts]
     frame = blp.bdh(securities + [security], list(_HIST_FIELDS), on.isoformat(), on.isoformat())
     pivot = pivot_bdh(frame, on)
@@ -70,8 +73,9 @@ def fetch_eod(
         )
         for c in contracts
     ]
-    from volfit.data.expiry_time import settlement_map
+    from volfit.data.expiry_time import default_settlement
 
+    kept = roots or {}
     return ChainSnapshot(
         ticker=ticker,
         spot=spot,
@@ -79,5 +83,7 @@ def fetch_eod(
         quotes=quotes,
         exercise_style=exercise_style,
         tick_size=US_OPTION_TICK,
-        settlement=settlement_map({q.expiry for q in quotes}, root=ticker),
+        settlement={
+            e: default_settlement(e, kept.get(e, ticker)) for e in sorted({q.expiry for q in quotes})
+        },
     )

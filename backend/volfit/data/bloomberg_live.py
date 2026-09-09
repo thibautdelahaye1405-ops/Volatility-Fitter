@@ -278,8 +278,6 @@ class BloombergStreamingMixin:
                     timestamp=(tick.ts if tick else None) or newest or now,
                 )
             )
-        from volfit.data.expiry_time import settlement_map
-
         style = self._style_cache.get(key) or (
             "european" if self._security(ticker).endswith(" Index") else "american"
         )
@@ -290,7 +288,7 @@ class BloombergStreamingMixin:
             quotes=quotes,
             exercise_style=style,
             tick_size=US_OPTION_TICK,
-            settlement=settlement_map({q.expiry for q in quotes}, root=key),
+            settlement=self._settlement(key, {q.expiry for q in quotes}),  # the kept root per date
         )
 
     # ------------------------------------------------------------- status
