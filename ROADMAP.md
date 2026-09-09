@@ -1587,6 +1587,31 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
+0. MCP CONNECTOR — M0+M1+M2 SHIPPED 2026-09-09c (user: "turn the API into
+   an MCP connector I can use from the Claude app"). `backend/volfit_mcp` =
+   a thin httpx client of the running :8000 app wrapped as an MCP server
+   (official `mcp` 2.2 SDK, `MCPServer` + the built-in MCP Apps extension):
+   ~20 curated tools (universe/fetch/configure/calibrate-with-progress/
+   report/views/charts), spoken-name aliases (EuroStoxx→SX5E pinned to
+   Bloomberg or Eurex, SPX→Cboe…), model-sized outputs (rms in bp, arb
+   flags, readiness), resources (status/settings/settings-schema/docs),
+   two prompts; the charts are MCP Apps (`volfit_mcp/ui`: Plotly LV
+   compare — affine vs Dupire twin vs difference, 3D/heatmap, rms strip
+   whose bars send a chat message — and the smile viewer with prev/next
+   expiry via tools/call) + matplotlib PNG fallback. Registered in Claude
+   Desktop's config (stdio; the Terminal is local, so local-first). Locked
+   by tests/test_mcp_connector.py (in-process pipeline on the synthetic
+   app) + test_mcp_stdio.py (real `python -m volfit_mcp` launch) and the
+   headless host harness frontend/scripts/mcp_app_check.mjs (12 checks).
+   Docs/mcp_connector.md. RIDERS (none are gates): M3 remote = HTTPS
+   exposure + auth (`MCPServer(auth=…)` OAuth 2.1 or the request-header
+   API key) + one app instance per tenant; a LIVE look in Claude Desktop
+   on the user's window (first "Allow app" prompt, Bloomberg SX5E/SPX
+   end to end); verify claude.ai renders apps from a CUSTOM remote
+   connector (open report June 2026) before relying on the remote path;
+   MCPB bundle for one-click install; a Help Center page; tool-call time
+   budgets in chat hosts are undocumented (calibrate waits ≤ wait_seconds
+   then hands back a resumable status).
 1. USER-WINDOW runs (Next-up item 0 under WHERE THINGS STAND): benchmark-pack
    regression, MCS adjudication (decides the `mcsChart` flip — the dial is
    in the UI), certification refresh (`calendar_active_set_exchange` now

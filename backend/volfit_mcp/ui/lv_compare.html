@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Vol compare</title>
+<script src="https://cdn.plot.ly/plotly-3.1.0.min.js"></script>
+<style>
+  :root { --bg:#ffffff; --fg:#1b1f24; --muted:#6b7280; --line:#e5e7eb; --chip:#f3f4f6; --chipOn:#1f6feb; --chipOnFg:#fff; --warn:#b45309; }
+  html[data-theme="dark"] { --bg:#171717; --fg:#e5e7eb; --muted:#9ca3af; --line:#2f3136; --chip:#26282c; --chipOn:#4c8dff; --chipOnFg:#0b0f14; --warn:#f59e0b; }
+  html, body { margin:0; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); }
+  .bar .title { font-weight:600; margin-right:6px; }
+  .bar .sep { width:1px; height:18px; background:var(--line); margin:0 4px; }
+  .chip { border:1px solid var(--line); background:var(--chip); color:var(--fg); border-radius:999px; padding:3px 10px; cursor:pointer; font-size:12px; }
+  .chip.on { background:var(--chipOn); color:var(--chipOnFg); border-color:var(--chipOn); }
+  .chip.warn { color:var(--warn); }
+  .grow { flex:1; }
+  #main { width:100%; height:440px; }
+  #rms { width:100%; height:190px; }
+  .foot { display:flex; gap:10px; align-items:center; padding:6px 10px; color:var(--muted); font-size:11.5px; border-top:1px solid var(--line); }
+  .foot a { color:inherit; cursor:pointer; text-decoration:underline; }
+  #empty { padding:24px; color:var(--muted); text-align:center; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="title">Local Vol compare</span>
+  <span id="tickers"></span>
+  <span class="sep"></span>
+  <button class="chip on" data-layer="affine">Affine LV</button>
+  <button class="chip" data-layer="twin">Dupire twin</button>
+  <button class="chip" data-layer="diff">Affine − twin</button>
+  <span class="sep"></span>
+  <button class="chip on" data-view="3d">3D</button>
+  <button class="chip" data-view="heat">Heatmap</button>
+  <span class="grow"></span>
+  <button class="chip" id="full">Fullscreen</button>
+</div>
+<div id="empty" hidden>No Local-Vol surfaces yet — calibrate with Local-Vol on.</div>
+<div id="main"></div>
+<div id="rms"></div>
+<div class="foot">
+  <span id="meta"></span>
+  <span class="grow"></span>
+  <span>click an rms bar → open that smile</span>
+</div>
+<script>/*__BRIDGE__*/</script>
+<script>
+(function () {
+  var B = window.VolfitBridge;
+  var data = null;                         // the tool's structuredContent
+  var state = { layer: "affine", view: "3d", selected: null };
+  var dark = false;
+
+  function $(s) { return document.querySelector(s); }
+  function $$(s) { return Array.prototype.slice.call(document.querySelectorAll(s)); }
+  function pct(z) { return z.map(function (r) { return r.map(function (v) { return v == null ? null : 100 * v; }); }); }
+  function fontColor() { return dark ? "#e5e7eb" : "#1b1f24"; }
+  function paper() { return dark ? "#171717" : "#ffffff"; }
+  function panels() {
+    if (!data) return [];
+    return data.tickers.filter(function (p) { return !state.selected || p.ticker === state.selected; });
+  }
+  function layerOf(p) {
+    if (state.layer === "affine") return { z: p.affine, title: p.ticker + " affine LV (%)", cs: "Viridis", sym: false };
+    if (state.layer === "twin") return { z: p.twin, title: p.ticker + " Dupire twin (%)", cs: "Viridis", sym: false };
+    return { z: p.diff, title: p.ticker + " affine − twin (vol pts)", cs: "RdBu", sym: true };
+  }
+  function symRange(z) {
+    var m = 0; z.forEach(function (r) { r.forEach(function (v) { if (v != null) m = Math.max(m, Math.abs(100 * v)); }); });
+    return m || 1;
+  }
+
+  function renderMain() {
+    var ps = panels();
+    var traces = [], layout = { paper_bgcolor: paper(), plot_bgcolor: paper(), font: { color: fontColor(), size: 11 },
+      margin: { l: 40, r: 10, t: 30, b: 40 }, showlegend: false };
+    var n = ps.length || 1, gap = 0.04, w = (1 - gap * (n - 1)) / n;
+    ps.forEach(function (p, i) {
+      var L = layerOf(p); if (!L.z || !L.z.length) return;
+      var x0 = i * (w + gap), x1 = x0 + w;
+      var z = pct(L.z), cs = L.cs, extra = L.sym ? { zmin: -symRange(L.z), zmax: symRange(L.z) } : {};
+      var annot = { text: L.title + (p.affineStale ? "  · stale" : ""), showarrow: false, xref: "paper", yref: "paper",
+        x: (x0 + x1) / 2, y: 1.0, yanchor: "bottom", font: { size: 12 } };
+      layout.annotations = (layout.annotations || []).concat([annot]);
+      if (state.view === "3d") {
+        var key = "scene" + (i ? i + 1 : "");
+        traces.push(Object.assign({ type: "surface", x: p.xNodes, y: p.tNodes, z: z, colorscale: cs, scene: key,
+          showscale: i === ps.length - 1, colorbar: { thickness: 10, len: 0.7 }, contours: { z: { show: true, usecolormap: true, width: 1 } },
+          hovertemplate: "K/F %{x:.3f}<br>T %{y:.3f}y<br>%{z:.2f}<extra></extra>" }, extra));
+        layout[key] = { domain: { x: [x0, x1], y: [0, 0.94] }, xaxis: { title: { text: "K/F" } }, yaxis: { title: { text: "T (y)" } },
+          zaxis: { title: { text: state.layer === "diff" ? "Δ vol pts" : "local vol %" } }, camera: { eye: { x: 1.6, y: -1.6, z: 0.9 } },
+          bgcolor: paper() };
+      } else {
+        var xa = "x" + (i ? i + 1 : ""), ya = "y" + (i ? i + 1 : "");
+        traces.push(Object.assign({ type: "heatmap", x: p.xNodes, y: p.tNodes, z: z, colorscale: cs, xaxis: xa, yaxis: ya,
+          showscale: i === ps.length - 1, colorbar: { thickness: 10 }, hovertemplate: "K/F %{x:.3f}<br>T %{y:.3f}y<br>%{z:.2f}<extra></extra>" }, extra));
+        layout["xaxis" + (i ? i + 1 : "")] = { domain: [x0, x1], title: { text: "K/F" }, anchor: ya };
+        layout["yaxis" + (i ? i + 1 : "")] = { domain: [0, 0.94], title: { text: i === 0 ? "T (y)" : "" }, anchor: xa };
+      }
+    });
+    $("#empty").hidden = traces.length > 0;
+    Plotly.react($("#main"), traces, layout, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] });
+  }
+
+  function renderRms() {
+    var ps = panels(), traces = [], layout = { paper_bgcolor: paper(), plot_bgcolor: paper(), font: { color: fontColor(), size: 11 },
+      margin: { l: 44, r: 10, t: 34, b: 40 }, barmode: "group", legend: { orientation: "h", y: 1.32, x: 1, xanchor: "right" },
+      yaxis: { title: { text: "rms (vol bp)" } }, xaxis: { title: { text: "expiry" }, type: "category" },
+      title: { text: "Per-expiry rms vs quotes", font: { size: 12 }, x: 0 } };
+    ps.forEach(function (p) {
+      var ex = p.expiries.map(function (e) { return e.expiry; });
+      [["affineRmsBp", "affine LV", "#2563eb"], ["twinRmsBp", "Dupire twin", "#f59e0b"], ["parametricRmsBp", "parametric", "#6b7280"]]
+        .forEach(function (s) {
+          traces.push({ type: "bar", name: (ps.length > 1 ? p.ticker + " " : "") + s[1], x: ex,
+            y: p.expiries.map(function (e) { return e[s[0]]; }), marker: { color: s[2] }, customdata: ex.map(function () { return p.ticker; }),
+            hovertemplate: "%{customdata} %{x}<br>%{y:.1f} bp<extra>" + s[1] + "</extra>" });
+        });
+    });
+    var el = $("#rms");
+    Plotly.react(el, traces, layout, { responsive: true, displaylogo: false, displayModeBar: false });
+    el.removeAllListeners && el.removeAllListeners("plotly_click");
+    el.on("plotly_click", function (ev) {
+      var pt = ev.points && ev.points[0]; if (!pt) return;
+      B.sendMessage("Show me the " + pt.customdata + " " + pt.x + " smile (chart_smile with the Local-Vol reconstruction).");
+    });
+  }
+
+  function renderChips() {
+    var host = $("#tickers"); host.innerHTML = "";
+    if (!data || data.tickers.length < 2) return;
+    var all = document.createElement("button"); all.className = "chip" + (state.selected ? "" : " on"); all.textContent = "All";
+    all.onclick = function () { state.selected = null; render(); }; host.appendChild(all);
+    data.tickers.forEach(function (p) {
+      var b = document.createElement("button"); b.className = "chip" + (state.selected === p.ticker ? " on" : "") + (p.hasAffine ? "" : " warn");
+      b.textContent = p.ticker + (p.hasAffine ? "" : " (no LV)"); b.onclick = function () { state.selected = p.ticker; render(); }; host.appendChild(b);
+    });
+  }
+
+  function render() {
+    $$("[data-layer]").forEach(function (b) { b.classList.toggle("on", b.dataset.layer === state.layer); });
+    $$("[data-view]").forEach(function (b) { b.classList.toggle("on", b.dataset.view === state.view); });
+    renderChips();
+    if (data) {
+      renderMain(); renderRms();
+      $("#meta").textContent = "twin t-interp " + data.tInterp + " · target " + (data.fitMode || "app default") + " · " + data.generatedAt
+        + (data.skipped && data.skipped.length ? " · skipped: " + data.skipped.map(function (s) { return s.ticker; }).join(", ") : "");
+    }
+    B.sizeChanged(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
+  }
+
+  $$("[data-layer]").forEach(function (b) { b.onclick = function () { state.layer = b.dataset.layer; render(); }; });
+  $$("[data-view]").forEach(function (b) { b.onclick = function () { state.view = b.dataset.view; render(); }; });
+  $("#full").onclick = function () {
+    var mode = B.context().displayMode === "fullscreen" ? "inline" : "fullscreen";
+    B.requestDisplayMode(mode).then(applyMode, function () {});
+  };
+  function applyMode() {
+    var full = B.context().displayMode === "fullscreen";
+    $("#main").style.height = full ? "calc(100vh - 300px)" : "440px";
+    $("#full").textContent = full ? "Inline" : "Fullscreen";
+    render();
+  }
+
+  B.on("hostContext", function (hc) {
+    dark = hc.theme === "dark"; document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    applyMode();
+  });
+  B.on("toolResult", function (res) {
+    data = res.structuredContent || null;
+    if (!data && res.content) { try { data = JSON.parse(res.content[0].text); } catch (e) { data = null; } }
+    state.selected = null; render();
+  });
+  B.init("volfit-lv-compare");
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smile viewer</title>
+<script src="https://cdn.plot.ly/plotly-basic-3.1.0.min.js"></script>
+<style>
+  :root { --bg:#ffffff; --fg:#1b1f24; --muted:#6b7280; --line:#e5e7eb; --chip:#f3f4f6; --chipOn:#1f6feb; --chipOnFg:#fff; --warn:#b45309; }
+  html[data-theme="dark"] { --bg:#171717; --fg:#e5e7eb; --muted:#9ca3af; --line:#2f3136; --chip:#26282c; --chipOn:#4c8dff; --chipOnFg:#0b0f14; --warn:#f59e0b; }
+  html, body { margin:0; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); }
+  .bar .title { font-weight:600; }
+  .chip { border:1px solid var(--line); background:var(--chip); color:var(--fg); border-radius:999px; padding:3px 10px; cursor:pointer; font-size:12px; }
+  .chip.on { background:var(--chipOn); color:var(--chipOnFg); border-color:var(--chipOn); }
+  .chip:disabled { opacity:.45; cursor:default; }
+  .grow { flex:1; }
+  .warn { color:var(--warn); }
+  #plot { width:100%; height:360px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:8px; padding:8px 10px; border-top:1px solid var(--line); }
+  .tile { border:1px solid var(--line); border-radius:8px; padding:6px 8px; }
+  .tile .k { color:var(--muted); font-size:11px; }
+  .tile .v { font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="title" id="title">Smile</span>
+  <span id="flags" class="warn"></span>
+  <span class="grow"></span>
+  <button class="chip on" data-axis="k">k = ln(K/F)</button>
+  <button class="chip" data-axis="strike">Strike</button>
+  <button class="chip" id="prev">◀ prev expiry</button>
+  <button class="chip" id="next">next expiry ▶</button>
+</div>
+<div id="plot"></div>
+<div class="tiles" id="tiles"></div>
+<script>/*__BRIDGE__*/</script>
+<script>
+(function () {
+  var B = window.VolfitBridge;
+  var sm = null, axis = "k", dark = false, busy = false;
+  function $(s) { return document.querySelector(s); }
+  function $$(s) { return Array.prototype.slice.call(document.querySelectorAll(s)); }
+  function X(k) { return axis === "k" ? k : sm.forward * Math.exp(k); }
+  function paper() { return dark ? "#171717" : "#ffffff"; }
+  function fg() { return dark ? "#e5e7eb" : "#1b1f24"; }
+
+  function render() {
+    if (!sm) return;
+    $$("[data-axis]").forEach(function (b) { b.classList.toggle("on", b.dataset.axis === axis); });
+    $("#title").textContent = sm.ticker + " " + sm.expiry + " · " + (sm.model || "") + " · T " + sm.T + "y · F " + sm.forward;
+    $("#flags").textContent = (sm.stale ? "stale " : "") + (sm.hasFit ? "" : "not fitted ") + (sm.degraded ? sm.degraded : "");
+    var i = (sm.expiries || []).indexOf(sm.expiry);
+    $("#prev").disabled = busy || i <= 0; $("#next").disabled = busy || i < 0 || i >= sm.expiries.length - 1;
+    var traces = [];
+    var q = sm.quotes || [];
+    if (q.length) {
+      traces.push({ type: "scatter", mode: "markers", name: "bid/ask (mid)", x: q.map(function (p) { return X(p.k); }), y: q.map(function (p) { return 100 * p.mid; }),
+        marker: { color: q.map(function (p) { return p.excluded ? "#bbb" : "#6b7280"; }), size: 5 },
+        error_y: { type: "data", symmetric: false, array: q.map(function (p) { return 100 * (p.ask - p.mid); }), arrayminus: q.map(function (p) { return 100 * (p.mid - p.bid); }), color: "#9ca3af", thickness: 1 },
+        hovertemplate: "x %{x:.4f}<br>bid %{customdata[0]:.2f}% · mid %{y:.2f}% · ask %{customdata[1]:.2f}%<extra></extra>",
+        customdata: q.map(function (p) { return [100 * p.bid, 100 * p.ask]; }) });
+    }
+    [["fit", sm.model || "fit", "#2563eb", "solid"], ["prior", "prior", "#9333ea", "dash"], ["lv", "Local Vol" + (sm.lvRmsBp != null ? " (" + sm.lvRmsBp + " bp)" : ""), "#f59e0b", "dot"]]
+      .forEach(function (s) {
+        var c = sm[s[0]]; if (!c || !c.length) return;
+        traces.push({ type: "scatter", mode: "lines", name: s[1], x: c.map(function (p) { return X(p[0]); }), y: c.map(function (p) { return 100 * p[1]; }),
+          line: { color: s[2], width: 2, dash: s[3] }, hovertemplate: "x %{x:.4f}<br>%{y:.2f}%<extra>" + s[1] + "</extra>" });
+      });
+    var layout = { paper_bgcolor: paper(), plot_bgcolor: paper(), font: { color: fg(), size: 11 }, margin: { l: 58, r: 12, t: 12, b: 44 },
+      xaxis: { title: { text: axis === "k" ? "k = ln(K/F)" : "strike" }, gridcolor: dark ? "#2f3136" : "#eee" },
+      yaxis: { title: { text: "implied vol (%)", standoff: 6 }, gridcolor: dark ? "#2f3136" : "#eee" }, legend: { orientation: "h", y: 1.1 }, hovermode: "closest" };
+    Plotly.react($("#plot"), traces, layout, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] });
+    var d = sm.diagnostics || {};
+    var tiles = [["rms (bp)", d.rmsBp], ["quotes", sm.nQuotes], ["ATM vol", d.atmVol != null ? (100 * d.atmVol).toFixed(2) + "%" : ""],
+      ["skew", d.skew], ["curvature", d.curvature], ["Lee L / R", d.leeLeft + " / " + d.leeRight], ["var-swap vol", d.varSwapVol != null ? (100 * d.varSwapVol).toFixed(2) + "%" : ""]];
+    Object.keys(sm.modelParams || {}).slice(0, 4).forEach(function (k) { tiles.push([k, sm.modelParams[k]]); });
+    $("#tiles").innerHTML = tiles.map(function (t) { return '<div class="tile"><div class="k">' + t[0] + '</div><div class="v">' + (t[1] == null ? "" : t[1]) + "</div></div>"; }).join("");
+    B.sizeChanged(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
+  }
+
+  function step(delta) {
+    var i = sm.expiries.indexOf(sm.expiry) + delta; if (i < 0 || i >= sm.expiries.length) return;
+    busy = true; render();
+    B.callTool("chart_smile", { ticker: sm.ticker, expiry: sm.expiries[i], with_lv: !!sm.lv }).then(function (res) {
+      busy = false; if (res && res.structuredContent) sm = res.structuredContent; render();
+    }, function () { busy = false; render(); });
+  }
+  $$("[data-axis]").forEach(function (b) { b.onclick = function () { axis = b.dataset.axis; render(); }; });
+  $("#prev").onclick = function () { step(-1); };
+  $("#next").onclick = function () { step(1); };
+  B.on("hostContext", function (hc) { dark = hc.theme === "dark"; document.documentElement.setAttribute("data-theme", dark ? "dark" : "light"); render(); });
+  B.on("toolResult", function (res) {
+    sm = res.structuredContent || null;
+    if (!sm && res.content) { try { sm = JSON.parse(res.content[0].text); } catch (e) { sm = null; } }
+    render();
+  });
+  B.init("volfit-smile");
+})();
+</script>
+</body>
+</html>

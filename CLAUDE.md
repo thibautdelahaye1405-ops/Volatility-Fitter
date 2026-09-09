@@ -122,6 +122,16 @@ Key commands (Windows, repo root):
             scripts\surface_crop_check.mjs (the 3D surfaces' crop / zoom, :4195),
             scripts\weight_strip_check.mjs (the Weights strip on the smile's axis
             + the Uniform scheme, :4196).
+- MCP connector (2026-09-09c): backend\volfit_mcp = the app's API as a Model
+            Context Protocol server for Claude Desktop / claude.ai (Docs\mcp_connector.md).
+            `.venv\Scripts\python -m volfit_mcp` (stdio; registered in
+            %APPDATA%\Claude\claude_desktop_config.json, needs the app on :8000) or
+            `--transport streamable-http --port 8765` (remote, /mcp). Curated tools
+            (set_universe / fetch_quotes / configure_fit / calibrate / calibration_report /
+            get_* / chart_lv_compare / chart_smile), inline chart apps (MCP Apps, Plotly,
+            volfit_mcp\ui). Tests: tests\test_mcp_connector.py + test_mcp_stdio.py
+            (~25 s); headless app check: cd frontend ; node scripts\mcp_app_check.mjs
+            (screenshots .smoke\mcp-*.png). `mcp>=2.2` is in the venv (pyproject extra `mcp`).
 - Help Center: Help ▾ (HELP CENTER ARC 2026-08-31) — corpora in frontend\src\lib\help\*
             (commandDocs · settingsDocs · glossary · tips · guides · docsCatalog ·
             whatsNew · walkthrough), vitest-locked complete vs the command

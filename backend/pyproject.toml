@@ -55,9 +55,19 @@ providers = [
 flatfiles = [
     "duckdb>=1.1",
 ]
+# The MCP connector (backend/volfit_mcp): the official MCP Python SDK 2.x
+# (MCPServer + the built-in MCP Apps extension); httpx is the API client.
+mcp = [
+    "mcp>=2.2",
+    "httpx>=0.27",
+]
 
 [tool.setuptools.packages.find]
 include = ["volfit*"]
+
+[tool.setuptools.package-data]
+# The MCP connector's inline chart apps (volfit_mcp/ui) ship with the package.
+volfit_mcp = ["ui/*.html", "ui/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
