@@ -17,7 +17,7 @@ const commandIds = new Set<string>(COMMANDS.map((c) => c.id));
 const glossaryIds = new Set(GLOSSARY.map((g) => g.id));
 const docIds = new Set(DOCS_CATALOG.map((d) => d.id));
 const settingKeys = new Set(SETTING_DOCS.map((s) => s.key));
-const GUIDE_IDS: GuideId[] = ["getting-started", "workbench", "universe", "data-sources", "workflow", "graph", "forwards", "parametric", "localvol", "quality", "options", "priors", "filter", "files"];
+const GUIDE_IDS: GuideId[] = ["getting-started", "workbench", "universe", "data-sources", "workflow", "graph", "forwards", "parametric", "localvol", "quality", "options", "priors", "filter", "files", "connector"];
 
 /** A help: link must parse and its anchor must exist in the target corpus. */
 function expectLinkResolves(link: string, where: string) {

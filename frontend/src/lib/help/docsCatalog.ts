@@ -335,6 +335,13 @@ export const DOCS_CATALOG: DocEntry[] = [
     related: ["docs_bloomberg_setup"],
   },
   {
+    id: "docs_mcp_connector", kind: "guide", topic: "Connector",
+    title: "The vol-fitter MCP connector — setup, tools, diagnostics",
+    abstract: "Operator note for driving the app from a Claude chat: the Claude Desktop and remote setups, the tool table by step, the one-call routine and the A vs B macro, the inline chart apps, the wire trace and the known limits.",
+    markdown: { root: "docs", name: "mcp_connector.md" },
+    related: ["help:guides:connector", "docs_bloomberg_setup"],
+  },
+  {
     id: "docs_localvol_methodology", kind: "guide", topic: "Local vol",
     title: "Local-volatility calibration — methodology & optimisation",
     abstract: "The LV calibration as it stands: model, pricing map, objective, grid, the two solvers, every shipped optimisation and everything tried and shelved with the reason.",

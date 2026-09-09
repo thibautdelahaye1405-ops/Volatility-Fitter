@@ -7,6 +7,16 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-09",
+    title: "Drive the desk from a Claude chat: the MCP connector, the routine in one call, four inline charts",
+    items: [
+      "The app is now a connector for Claude Desktop (and, over HTTPS, claude.ai): about twenty curated tools wrap the running backend — universe, fetch, settings, calibrate with streamed progress, report, views, charts — so a chat edits the same universe, settings and fits the workbench shows. Setup and the tool list are in Help ▸ Guides ▸ *Drive the desk from a Claude chat*.",
+      "Two macros: `run_desk_workflow` runs the desk routine in one call (universe → fetch → settings → calibrate → report, the Local Vol compare chart in the same reply) as a background job that no chat time budget can cut short; `compare_settings` calibrates under two settings and tabulates the differences per ticker and per expiry in vol bp. A ticker just added is not quoted twice.",
+      "Four charts render inside the conversation as MCP Apps — Local Vol compare (affine sheet, Dupire twin, difference), the smile with bands and prev / next expiry, the vol surface (3D / heatmap, k / K/F / strike axis, quoted-range crop, ATM ridge) and the term structure (calendar or event-dilated clock, events, dividends, calendar violations). Every card has a **Workbench** button that opens the node in the app.",
+      "Bloomberg: a bare non-US index root (SX5E, SXXP, DAX, UKX, CAC, SMI, NKY, HSI…) now resolves to the index security, so EuroStoxx quotes on the first try. A tool called without a fit target uses the Options' target, so a run, its report and its charts always name one target.",
+    ],
+  },
+  {
+    date: "2026-09-09",
     title: "Local Vol: the fast solver now runs the Bid-Ask and Haircut targets — a haircut calibration is 2.5–4× faster",
     items: [
       "The Local Vol calibration's matrix-free solver used to hand the Bid-Ask and Haircut fit targets to the legacy trust-region solver, whose dense factorisation made a haircut fit on a SPY ladder the slowest calibration in the app. Its step is now refined until the variance box and the band edges it will meet are part of the step it takes, and a step is accepted whenever the objective truly falls — so the band targets run on the fast solver too.",

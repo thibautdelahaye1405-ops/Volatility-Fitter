@@ -3,7 +3,8 @@
 // the sibling modules (≤ 400 lines each): workbench.ts (getting-started,
 // workbench, files), universe.ts (universe, data-sources, workflow),
 // lenses_a.ts (graph, forwards), lenses_b.ts (parametric, localvol, quality),
-// options.ts (options, priors, filter). PURE DATA — vitest-testable.
+// options.ts (options, priors, filter), connector.ts (the MCP connector).
+// PURE DATA — vitest-testable.
 import type { Activity } from "../../../state/workbenchPersist";
 import type { GuideId, GuidePage } from "../types";
 import { FILES, GETTING_STARTED, WORKBENCH } from "./workbench";
@@ -11,6 +12,7 @@ import { DATA_SOURCES, UNIVERSE, WORKFLOW } from "./universe";
 import { FORWARDS, GRAPH } from "./lenses_a";
 import { LOCALVOL, PARAMETRIC, QUALITY } from "./lenses_b";
 import { FILTER, OPTIONS, PRIORS } from "./options";
+import { CONNECTOR } from "./connector";
 
 /** The guides, in the order the Guides page lists them. */
 export const GUIDES: GuidePage[] = [
@@ -28,6 +30,7 @@ export const GUIDES: GuidePage[] = [
   PRIORS,
   FILTER,
   FILES,
+  CONNECTOR,
 ];
 
 const BY_ID: Record<string, GuidePage> = Object.fromEntries(GUIDES.map((g) => [g.id, g]));

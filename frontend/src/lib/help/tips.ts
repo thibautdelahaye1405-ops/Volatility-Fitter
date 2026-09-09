@@ -148,6 +148,13 @@ export const TIPS: Tip[] = [
     scope: "shell", level: "basic",
     action: { command: "layout.aside", label: "Try it: toggle the aside" },
   },
+  {
+    id: "drive-from-claude",
+    title: "Run the whole routine from a Claude chat",
+    body: "With the MCP connector registered in Claude Desktop, one message — *fetch EuroStoxx and SPX, calibrate in LQD-24 with Local Vol, chart the LV comparison* — runs the desk routine against this very app, tables the rms per expiry and renders the charts in the chat; every card's Workbench button lands back here on the node.",
+    scope: "shell", level: "pro",
+    action: { command: "help.open", arg: "guides:connector", label: "Read the connector guide" },
+  },
   // --------------------------------------------------------------- Graph
   {
     id: "graph-drag-to-light",

@@ -10,6 +10,10 @@ prompt such as
 becomes ONE tool call (`run_desk_workflow`), the numbers come back as tables,
 and the charts render inside the conversation.
 
+In-app: Help ▾ Guides ▸ *Drive the desk from a Claude chat* is the desk-voice
+edition of this note (setup, the tools by step, the routine, the charts, the
+fit-target rule); the Documentation page lists this note itself.
+
 ## What it is (and is not)
 
 * **A thin client of the app.** Every tool is an HTTP call to `serve.py` on

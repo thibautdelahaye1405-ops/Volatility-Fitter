@@ -140,6 +140,10 @@ Key commands (Windows, repo root):
             close keeps the old server alive). Tests: tests\test_mcp_connector.py + test_mcp_stdio.py
             (~25 s); headless app check: cd frontend ; node scripts\mcp_app_check.mjs
             (screenshots .smoke\mcp-*.png). `mcp>=2.2` is in the venv (pyproject extra `mcp`).
+            In-app help (2026-09-09i): Help ▾ Guides ▸ "Drive the desk from a Claude chat"
+            (frontend src/lib/help/guides/connector.ts, GuideId `connector`), the Docs
+            catalog entry `docs_mcp_connector`, glossary `mcp-connector` / `mcp-app`, a
+            shell tip and a What's new entry.
 - Help Center: Help ▾ (HELP CENTER ARC 2026-08-31) — corpora in frontend\src\lib\help\*
             (commandDocs · settingsDocs · glossary · tips · guides · docsCatalog ·
             whatsNew · walkthrough), vitest-locked complete vs the command

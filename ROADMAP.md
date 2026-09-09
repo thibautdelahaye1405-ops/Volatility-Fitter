@@ -1583,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-09b (resume here)
+## STATUS — updated 2026-09-09i (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1668,9 +1668,16 @@ below) — every recorded rider is closed except the ones listed here:
    quotes the selected rungs only). Not pursued: trimming _QUOTE_FIELDS
    (VOLUME / OPEN_INT feed the quote records), parallel bdp across tickers
    (one xbbg session). Observation: at 16:40 CET the SPX auto ladder had
-   2 usable rungs (5 at 15:xx) — a listing / population question. Next: MCPB bundle for one-click install; a Help Center page; tool-call time
-   budgets in chat hosts are undocumented (calibrate waits ≤ wait_seconds
-   then hands back a resumable status).
+   2 usable rungs (5 at 15:xx) — a listing / population question.
+   HELP CENTER PAGE SHIPPED 2026-09-09i (wrap below): Help ▾ Guides ▸ "Drive
+   the desk from a Claude chat" (GuideId `connector`), the Docs catalog entry
+   for Docs/mcp_connector.md, glossary `mcp-connector` / `mcp-app`, a shell
+   tip, a What's new entry. Next: MCPB bundle for one-click install (the
+   user chose to defer it 2026-09-09: manifest 0.4 `uv` runtime, bundle
+   source under backend/mcpb/, build script build_mcpb.py, mcpb CLI via npx
+   — fallback = a python-type bundle with server/lib if Desktop rejects uv);
+   tool-call time budgets in chat hosts are undocumented (calibrate waits ≤
+   wait_seconds then hands back a resumable status).
 1. USER-WINDOW runs (Next-up item 0 under WHERE THINGS STAND): benchmark-pack
    regression, MCS adjudication (decides the `mcsChart` flip — the dial is
    in the UI), certification refresh (`calendar_active_set_exchange` now
@@ -1809,6 +1816,38 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-09i) — HELP CENTER: THE MCP CONNECTOR HAS ITS PAGE (GUIDE · DOCS ENTRY · GLOSSARY · TIP · WHAT'S NEW)
+
+User: "continue implementing the roadmap while [the benchmark pack] runs.
+Item by item; for each item explain clearly what you are building and ask
+for confirmation" — item 1 (the MCPB bundle) was explained and DEFERRED by
+the user; item 2 (the connector's Help Center page) confirmed and built.
+
+- **The guide.** `frontend/src/lib/help/guides/connector.ts` — GuideId
+  `connector`, "Drive the desk from a Claude chat", listed after Files:
+  what the connector is and is not (a thin client of the running app, the
+  same universe / Options / fits as the workbench, one calibration at a
+  time), the Claude Desktop setup (app running, the config entry, restart,
+  Always allow, the tray-quit gotcha), the remote path, the tools by step
+  (a pipe table), the one-call routine with the EuroStoxx + SPX example and
+  how to read a one-slice-driven rms, A vs B settings, the four chart apps
+  and the Workbench button, the fit-target rule, the no-card diagnostics,
+  the limits. Tool names verbatim (they ARE what the chat shows); links to
+  `help:settings:fitMode`, the two new glossary terms and the Docs entry.
+- **The corpora.** Docs catalog `docs_mcp_connector` (root `docs`,
+  `mcp_connector.md` — the backend's non-recursive Docs/ scan already served
+  it: verified in-process, 84 entries, `read_markdown("mcp_connector")`
+  8.6 k chars); glossary `mcp-app` + `mcp-connector` (alphabetical, before
+  MCS); shell tip `drive-from-claude` (pro, Try-it opens the guide); What's
+  new 2026-09-09 (newest-first, same date as the GN entry). Search and Ask
+  index the new rows automatically.
+- **Locks.** `GuideId` union + content.test.ts GUIDE_IDS gain `connector`;
+  help vitest 7 files / 43 tests green; `tsc --noEmit` clean (no exhaustive
+  GuideId map anywhere). CLAUDE.md's connector paragraph and
+  Docs/mcp_connector.md point at the guide.
+- Not touched: Welcome, the Walkthrough, the command and settings references
+  (no new command or field).
 
 ### 🧭 SESSION WRAP (2026-09-09b) — LV SOLVER: THE MATRIX-FREE GN RUNS THE BID-ASK / HAIRCUT TARGETS — AN ACTIVE-SET STEP, ACCEPT-ON-DECREASE, A SHARED-BLOCK BAND OPERATOR; 2.5–4× OVER TRF AT THE SAME FIT
 

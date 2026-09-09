@@ -205,7 +205,8 @@ export type GuideId =
   | "options"
   | "priors"
   | "filter"
-  | "files";
+  | "files"
+  | "connector";
 
 export interface GuidePage {
   id: GuideId;
