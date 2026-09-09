@@ -30,6 +30,7 @@ their sequence.
 from __future__ import annotations
 
 from volfit.api import workflow
+from volfit.api.data_age import ticker_ages
 from volfit.api.schemas import FetchResult
 from volfit.api.state import AppState
 
@@ -61,16 +62,27 @@ def _roll_saved_priors(state: AppState, tickers: list[str]) -> int:
 
 
 def fetch_snapshot(
-    state: AppState, tickers: list[str] | None = None, fit_mode: str = "mid"
+    state: AppState,
+    tickers: list[str] | None = None,
+    fit_mode: str = "mid",
+    max_age_seconds: float | None = None,
 ) -> FetchResult:
     """The unified fetch: chains -> spot transport -> optional cheap prior roll
     -> optional auto-calibrate (the module docstring's (i)-(iv) sequence).
 
     Returns the same shape as ``fetch_options``: the tickers whose chain
     refreshed, a per-ticker spot (the live probe where it succeeded, else the
-    chain spot), and whether an auto-calibration job was started."""
+    chain spot), and whether an auto-calibration job was started.
+    ``max_age_seconds`` skips the chain refresh of tickers whose loaded chain
+    is younger than that (``FetchRequest.maxAgeSeconds``); they are reported
+    in ``skippedFresh`` and still get the spot probe / transport."""
     chosen = tickers if tickers is not None else state.active_tickers()
-    fetched, spots = workflow._refresh_chains(state, chosen)  # (i) quotes
+    skipped: list[str] = []
+    if max_age_seconds is not None:
+        ages = ticker_ages(state)  # minutes per ticker, only those with a live chain
+        skipped = [t for t in chosen if t in ages and ages[t] * 60.0 <= max_age_seconds]
+    to_fetch = [t for t in chosen if t not in skipped]
+    fetched, spots = workflow._refresh_chains(state, to_fetch) if to_fetch else ([], {})  # (i) quotes
     live = workflow.fetch_spots(state, chosen)  # (ii) spot shift — no refit
     spots.update({t: probe.liveSpot for t, probe in live.items()})
     if state.options().autoRollPriorOnFetch:  # (iii) cheap roll only
@@ -78,4 +90,4 @@ def fetch_snapshot(
     started = False
     if state.options().autoCalibrate and fetched:  # (iv) same tail as fetch_options
         started = workflow.calibrate_all(state, fit_mode)
-    return FetchResult(tickers=fetched, spots=spots, calibrationStarted=started)
+    return FetchResult(tickers=fetched, spots=spots, calibrationStarted=started, skippedFresh=skipped)

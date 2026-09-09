@@ -128,7 +128,9 @@ Key commands (Windows, repo root):
             %APPDATA%\Claude\claude_desktop_config.json, needs the app on :8000) or
             `--transport streamable-http --port 8765` (remote, /mcp). Macro tools
             run_desk_workflow (one call: universe→fetch→settings→calibrate→report + the LV
-            compare chart) and compare_settings (A vs B calibrations, bp differences);
+            compare chart; a BACKGROUND job — wait_for_workflow resumes past any host
+            tool-call budget; volfit_mcp\jobs.py) and compare_settings (A vs B
+            calibrations, bp differences); /fetch/snapshot maxAgeSeconds skips fresh chains;
             step tools (set_universe / fetch_quotes / configure_fit / calibrate /
             calibration_report / get_* / chart_lv_compare / chart_smile / chart_vol_surface /
             chart_term_structure); every card's Workbench button deep-links the app

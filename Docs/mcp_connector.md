@@ -79,7 +79,7 @@ tenant; Bloomberg stays local-only.
 
 | Step | Tool | What it does |
 |---|---|---|
-| **Routine** | `run_desk_workflow` | ONE call: universe → fetch → settings → calibrate (progress) → report, and the LV compare chart rendered inline; each step recorded, a failing step stops the chain |
+| **Routine** | `run_desk_workflow`, `wait_for_workflow`, `workflow_status` | ONE call: universe → fetch → settings → calibrate (progress) → report, and the LV compare chart rendered inline; each step recorded, a failing step stops the chain. Runs as a background job: the call waits `wait_seconds` (default 60) and returns the full result if done, else a job handle that `wait_for_workflow` resumes (the chart arrives with whichever call completes) — no host tool-call budget can truncate a live Bloomberg run. A ticker just added is not quoted twice: `refetch_if_older_than` (default 120 s) leaves fresh chains alone |
 | **A vs B** | `compare_settings` | two calibrations under two partial settings (LQD-24 vs LQD-16, mid vs haircut, calendar on/off…), per-ticker / per-expiry differences in vol bp; the app ends under `keep` |
 | Sources | `list_data_sources` | status light per feed, data age |
 | Universe | `set_universe`, `get_universe`, `list_expiries` | spoken names ("EuroStoxx", "the S&P") → app tickers pinned to a source that lists them |
@@ -137,4 +137,8 @@ decimals, `k = ln(K/F)`, `x = K/F`, `t` in years.
   claude.ai rendering of apps from *custom remote* connectors had an open
   report in June 2026 — verify with the remote path before relying on it.
 * Tool-call time budgets in chat hosts are undocumented: `calibrate` waits at
-  most `wait_seconds` (default 90) and hands back a resumable status.
+  most `wait_seconds` (default 90) and hands back a resumable status; the
+  macros run as background jobs and hand back a `wait_for_workflow` handle.
+* Live Bloomberg timing (2026-09-09, SX5E 9 expiries + SPX): the routine is
+  102 s, of which ~75 s is the first quote request of each new ticker (the
+  Terminal's reference-data throughput, ~800 rows/s); calibration is ~15 s.

@@ -91,9 +91,14 @@ async def set_universe(api: VolfitApi, tickers: list[str], replace: bool = True,
 
 
 # ------------------------------------------------------------------ fetch
-async def fetch_quotes(api: VolfitApi, tickers: list[str] | None, fit_mode: str | None) -> tuple[str, dict[str, Any]]:
-    """POST /fetch/snapshot for the universe (or a subset); text + result."""
-    body = {"tickers": names_of(tickers)} if tickers else {}
+async def fetch_quotes(api: VolfitApi, tickers: list[str] | None, fit_mode: str | None,
+                       max_age_seconds: float | None = None) -> tuple[str, dict[str, Any]]:
+    """POST /fetch/snapshot for the universe (or a subset); text + result.
+    ``max_age_seconds`` leaves chains younger than that alone (a ticker just
+    added was quoted on the way in — no second Bloomberg request)."""
+    body: dict[str, Any] = {"tickers": names_of(tickers)} if tickers else {}
+    if max_age_seconds is not None:
+        body["maxAgeSeconds"] = max_age_seconds
     res = await api.post("/fetch/snapshot", body, fit_mode=fit_mode)
     errors = (await api.get("/universe")).get("errors") or {}
     ds = await api.get("/datasources")
@@ -102,13 +107,15 @@ async def fetch_quotes(api: VolfitApi, tickers: list[str] | None, fit_mode: str 
         + ", ".join(f"{t} @ {res['spots'].get(t, float('nan')):.4g}" for t in res["tickers"]),
         f"Background calibration started: {'yes' if res['calibrationStarted'] else 'no'}",
     ]
+    if res.get("skippedFresh"):
+        lines.append(f"Chains younger than {max_age_seconds:g} s kept as loaded (no re-quote): {', '.join(res['skippedFresh'])}")
     if ds.get("dataAge"):
         age = ds["dataAge"]
         lines.append(f"Data age: {age['label']} ({age['level']}, worst {age['worstTicker']})")
     if errors:
         lines.append("Errors: " + md_table([{"ticker": k, "error": v} for k, v in errors.items()], ["ticker", "error"]))
     out = {"tickers": res["tickers"], "spots": res["spots"], "calibrationStarted": res["calibrationStarted"],
-           "dataAge": ds.get("dataAge"), "errors": errors}
+           "skippedFresh": res.get("skippedFresh", []), "dataAge": ds.get("dataAge"), "errors": errors}
     return "\n".join(lines), out
 
 

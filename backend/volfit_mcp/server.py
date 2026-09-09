@@ -28,6 +28,7 @@ from volfit_mcp import (
     tools_workflow,
 )
 from volfit_mcp.client import VolfitApi
+from volfit_mcp.jobs import JobRegistry
 from volfit_mcp.trace import TraceMiddleware
 
 INSTRUCTIONS = """\
@@ -43,7 +44,9 @@ Cboe, Massive; Yahoo has no EuroStoxx options), fetches quotes, applies the sett
 calibrates with streamed progress, returns the fit-quality report AND renders the
 comparative Local-Vol surfaces inline. Prefer it over the step tools whenever the user
 asks for fetch + calibrate (+ chart); the reply lists every step and says which one
-stopped the chain, if any. Then chart_smile(ticker, expiry) for one expiry,
+stopped the chain, if any. It runs in the background: if the reply is a job handle
+(kind workflow_pending) the run is still going — call wait_for_workflow (repeat until it
+returns the result; live Bloomberg chains take 1–3 minutes). Same for compare_settings. Then chart_smile(ticker, expiry) for one expiry,
 chart_vol_surface(ticker) for the whole implied-vol surface, chart_term_structure(ticker)
 for ATM / var-swap vol and total variance vs maturity (event-dilated clock, calendar
 violations), or the get_* tools for the numbers.
@@ -75,6 +78,7 @@ def build_server(
     trace_path: str | None = None,
 ) -> MCPServer:
     api = api or VolfitApi()
+    registry = JobRegistry()  # the background macro jobs of this server process
     extensions = []
     if with_apps:
         # The server consumes an extension's tools + resources at construction,
@@ -82,7 +86,7 @@ def build_server(
         apps = tools_charts.build_apps()
         tools_charts.register(api, apps)
         tools_charts_surface.register(api, apps)
-        tools_workflow.register_apps(api, apps)  # run_desk_workflow renders the LV compare
+        tools_workflow.register_apps(api, apps, registry)  # run_desk_workflow + wait_for_workflow render the LV compare
         extensions.append(apps)
     trace_path = trace_path or os.environ.get("VOLFIT_MCP_TRACE") or None
     middleware = [TraceMiddleware(trace_path)] if trace_path else None
@@ -98,7 +102,7 @@ def build_server(
     tools_universe.register(mcp, api)
     tools_calibrate.register(mcp, api)
     tools_views.register(mcp, api)
-    tools_workflow.register(mcp, api)
+    tools_workflow.register(mcp, api, registry)
     _register_resources(mcp, api)
     _register_prompts(mcp)
     return mcp

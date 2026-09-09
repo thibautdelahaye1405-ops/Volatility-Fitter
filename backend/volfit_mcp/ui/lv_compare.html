@@ -194,8 +194,13 @@
   B.on("toolResult", function (res) {
     data = res.structuredContent || null;
     if (!data && res.content) { try { data = JSON.parse(res.content[0].text); } catch (e) { data = null; } }
-    if (data && data.kind !== "lv_compare") data = null;
     state.selected = null;
+    if (data && data.kind === "workflow_pending") {
+      var pr = data.progress || {};
+      status("Workflow still running (" + (data.elapsedSeconds || 0) + " s" + (pr.message ? " · " + pr.message : "") + ") — the chart arrives with wait_for_workflow.", false);
+      data = null; return;
+    }
+    if (data && data.kind !== "lv_compare") { status("This result is not a Local-Vol compare (" + data.kind + "); see the text above.", false); data = null; return; }
     if (!data) { status("The tool result carried no chart data" + (res.isError ? " (tool error)." : "."), true); return; }
     render();
   });

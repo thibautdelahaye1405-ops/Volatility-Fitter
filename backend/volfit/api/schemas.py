@@ -2363,9 +2363,17 @@ class CalibrationStatus(BaseModel):
 
 
 class FetchRequest(BaseModel):
-    """Optional ticker subset for a fetch / calibrate action (None = all active)."""
+    """Optional ticker subset for a fetch / calibrate action (None = all active).
+
+    ``maxAgeSeconds`` (fetch/snapshot only): skip the chain refresh of a ticker
+    whose loaded chain is younger than this — a ticker just added to the
+    universe was quoted on the way in (``add_ticker`` pre-caches its
+    snapshot), so a routine that adds then fetches would otherwise pay the
+    Bloomberg quote request twice within a minute. The spot probe / transport
+    still runs for every chosen ticker. None (default) = always refresh."""
 
     tickers: list[str] | None = None
+    maxAgeSeconds: float | None = Field(None, ge=0.0)
 
 
 class FetchResult(BaseModel):
@@ -2374,6 +2382,9 @@ class FetchResult(BaseModel):
     tickers: list[str]  # tickers actually fetched
     spots: dict[str, float]  # ticker -> spot (live for spots, chain for options)
     calibrationStarted: bool  # whether auto-calibrate kicked off a background job
+    #: Tickers whose chain refresh was skipped because it was younger than the
+    #: request's ``maxAgeSeconds`` (their spot was still probed / transported).
+    skippedFresh: list[str] = []
 
 
 class SchedulerStatus(BaseModel):

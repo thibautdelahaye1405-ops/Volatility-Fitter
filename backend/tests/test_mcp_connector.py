@@ -79,6 +79,15 @@ async def _pipeline() -> dict[str, Any]:
             "a": {"n_order": 8, "label": "LQD-8"}, "b": {"n_order": 12}, "tickers": ["SPY"], "keep": "a", "wait_seconds": 240})
         out["settings_after"] = await c.call_tool("get_fit_settings", {})
         out["status_after"] = await c.call_tool("calibration_status", {})
+        # The background-job path: a call that outlives its wait returns a handle,
+        # a second start is refused while it runs, wait_for_workflow returns the result.
+        out["pending"] = await c.call_tool("run_desk_workflow", {"tickers": ["SPY"], "n_order": 10, "fetch": False, "wait_seconds": 0.01})
+        out["refused"] = await c.call_tool("run_desk_workflow", {"tickers": ["SPY"], "n_order": 10, "fetch": False, "wait_seconds": 0.01})
+        out["status_running"] = await c.call_tool("workflow_status", {})
+        job_id = out["pending"].structured_content["jobId"]
+        out["waited"] = await c.call_tool("wait_for_workflow", {"job_id": job_id, "wait_seconds": 240})
+        out["status_done"] = await c.call_tool("workflow_status", {"job_id": job_id})
+        out["no_job"] = await c.call_tool("wait_for_workflow", {"job_id": "nope"})
     await api.aclose()
     return out
 
@@ -372,3 +381,22 @@ def test_surface_and_term_chart_tools(pipe):
     assert len(sc["curve"]["t"]) == len(sc["curve"]["w"]) == len(sc["curve"]["vol"]) > 10
     assert sc["calendarViolations"] == 0 and isinstance(sc["events"], list)
     assert "term structure" in _text(tm)
+
+
+def test_workflow_runs_in_the_background(pipe):
+    pend = pipe["pending"]
+    assert pend.is_error is False
+    h = pend.structured_content
+    assert h["kind"] == "workflow_pending" and h["running"] is True and h["jobId"]
+    assert "wait_for_workflow" in _text(pend)
+    assert pipe["refused"].is_error is True and "still running" in _text(pipe["refused"])
+    assert pipe["status_running"].structured_content["jobId"] == h["jobId"]
+    done = pipe["waited"]
+    assert done.is_error is False
+    sc = done.structured_content
+    assert sc["kind"] == "lv_compare" and sc["workflow"]["jobId"] == h["jobId"]
+    assert sc["workflow"]["stoppedAt"] is None and [p["ticker"] for p in sc["tickers"]] == ["SPY"]
+    st = pipe["status_done"].structured_content
+    assert st["running"] is False and st["error"] is None and [s["step"] for s in st["steps"]][:2] == ["universe", "configure"]
+    assert pipe["no_job"].is_error is True and "no such job" in _text(pipe["no_job"])
+    assert pipe["tools"]["wait_for_workflow"].meta["ui"]["resourceUri"] == LV_COMPARE_URI

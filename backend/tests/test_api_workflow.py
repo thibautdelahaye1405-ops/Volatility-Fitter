@@ -106,3 +106,29 @@ def test_fetch_spots_transports_without_recal(client):
     moved = client.get(f"/smiles/{TICKER}/{iso}").json()
     assert moved["forward"] == pytest.approx(base["forward"], rel=1e-12)
     assert moved["stale"] is False  # a spot fetch never recalibrates
+
+
+def test_fetch_snapshot_skips_fresh_chains(client, monkeypatch):
+    """``maxAgeSeconds``: a ticker whose loaded chain is younger than the budget is
+    not re-quoted (a ticker just added was quoted on the way in), but is still
+    reported in ``skippedFresh``; the others refresh as before."""
+    from volfit.api import workflow, workflow_fetch
+
+    tickers = client.get("/universe").json()["tickers"]
+    fresh, stale = tickers[0], tickers[1]
+    monkeypatch.setattr(workflow_fetch, "ticker_ages", lambda state, now=None: {fresh: 0.5, stale: 30.0})
+    seen: list[list[str]] = []
+    real = workflow._refresh_chains
+
+    def spy(state, chosen):
+        seen.append(list(chosen))
+        return real(state, chosen)
+
+    monkeypatch.setattr(workflow, "_refresh_chains", spy)
+    res = client.post("/fetch/snapshot", json={"tickers": [fresh, stale], "maxAgeSeconds": 120}).json()
+    assert res["skippedFresh"] == [fresh]
+    assert seen == [[stale]] and res["tickers"] == [stale]
+    assert fresh in res["spots"] and stale in res["spots"]  # the spot probe still ran for both
+    # No budget = the historical behaviour: everything refreshes, nothing skipped.
+    res = client.post("/fetch/snapshot", json={"tickers": [fresh, stale]}).json()
+    assert res["skippedFresh"] == [] and sorted(res["tickers"]) == sorted([fresh, stale])

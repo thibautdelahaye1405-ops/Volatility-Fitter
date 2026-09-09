@@ -1652,7 +1652,23 @@ below) — every recorded rider is closed except the ones listed here:
    status / panels name ONE target (the first live report said "target
    mid" under a haircut setting). RIDER: look at the SX5E front slice on
    the Terminal (forward vs put-call parity on the 2-day rung; Bloomberg
-   delayed marks at fetch time). Next: MCPB bundle for one-click install; a Help Center page; tool-call time
+   delayed marks at fetch time). 2026-09-09h (items "1 and 2"): the macros
+   run as BACKGROUND JOBS (`volfit_mcp/jobs.py`: the call waits
+   `wait_seconds` = 60 s default with streamed progress, returns the full
+   result if done, else a `workflow_pending` handle that
+   `wait_for_workflow` resumes — the LV page shows the pending state; one
+   job at a time, a second start is refused) so no host budget truncates a
+   live run; and the routine no longer quotes a just-added ticker twice:
+   `FetchRequest.maxAgeSeconds` (/fetch/snapshot skips chains younger than
+   it, `skippedFresh` reported; the spot probe still runs) +
+   `refetch_if_older_than` = 120 s on the workflow. Measured on the
+   Terminal: 176 s -> 102 s (fetch step 58 s -> 5 s); the remaining ~75 s
+   is the add-time quote of each new ticker (Bloomberg bdp ~800 rows/s:
+   SX5E 7.8k contracts 42 s, SPX 20k 150 s for the FULL chain; the app
+   quotes the selected rungs only). Not pursued: trimming _QUOTE_FIELDS
+   (VOLUME / OPEN_INT feed the quote records), parallel bdp across tickers
+   (one xbbg session). Observation: at 16:40 CET the SPX auto ladder had
+   2 usable rungs (5 at 15:xx) — a listing / population question. Next: MCPB bundle for one-click install; a Help Center page; tool-call time
    budgets in chat hosts are undocumented (calibrate waits ≤ wait_seconds
    then hands back a resumable status).
 1. USER-WINDOW runs (Next-up item 0 under WHERE THINGS STAND): benchmark-pack

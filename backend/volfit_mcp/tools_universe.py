@@ -79,13 +79,14 @@ def register(mcp: MCPServer, api: VolfitApi) -> None:
 
     @mcp.tool(annotations=MUTATING)
     async def fetch_quotes(
-        tickers: list[str] | None = None, fit_mode: str | None = None
+        tickers: list[str] | None = None, fit_mode: str | None = None, max_age_seconds: float | None = None
     ) -> str:
         """Fetch option chains (bid/ask/mid) + spots for the universe (or the
         given tickers) from each ticker's pinned source, transport the existing
         fits to the new spot and, when auto-calibrate is on, start a background
         calibration. ``fit_mode`` = mid | bidask | haircut (default: the app's
-        current target). Returns the spots and whether a calibration started;
+        current target). ``max_age_seconds`` leaves chains younger than that
+        alone (no re-quote). Returns the spots and whether a calibration started;
         call ``calibrate`` next if it did not."""
-        text, _ = await ops.fetch_quotes(api, tickers, fit_mode)
+        text, _ = await ops.fetch_quotes(api, tickers, fit_mode, max_age_seconds)
         return text

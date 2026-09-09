@@ -188,7 +188,7 @@ def fetch_snapshot(
     ``autoRollPriorOnFetch`` is on (the cheap ladder branch only), then
     auto-calibrate when enabled. /fetch/spots + /fetch/options stay verbatim."""
     state = request.app.state.volfit
-    return workflow_fetch.fetch_snapshot(state, body.tickers, _mode(state, fit_mode))
+    return workflow_fetch.fetch_snapshot(state, body.tickers, _mode(state, fit_mode), body.maxAgeSeconds)
 
 
 @router.get("/fetch/preview", response_model=FetchPreview)
