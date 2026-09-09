@@ -7,8 +7,8 @@ prompt such as
 > fetch quotes on EuroStoxx and SPX, calibrate in LQD-24 and Local-Vol, and
 > chart the comparative LV surfaces
 
-becomes a handful of tool calls, the numbers come back as tables, and the
-charts render inside the conversation.
+becomes ONE tool call (`run_desk_workflow`), the numbers come back as tables,
+and the charts render inside the conversation.
 
 ## What it is (and is not)
 
@@ -76,6 +76,8 @@ tenant; Bloomberg stays local-only.
 
 | Step | Tool | What it does |
 |---|---|---|
+| **Routine** | `run_desk_workflow` | ONE call: universe → fetch → settings → calibrate (progress) → report, and the LV compare chart rendered inline; each step recorded, a failing step stops the chain |
+| **A vs B** | `compare_settings` | two calibrations under two partial settings (LQD-24 vs LQD-16, mid vs haircut, calendar on/off…), per-ticker / per-expiry differences in vol bp; the app ends under `keep` |
 | Sources | `list_data_sources` | status light per feed, data age |
 | Universe | `set_universe`, `get_universe`, `list_expiries` | spoken names ("EuroStoxx", "the S&P") → app tickers pinned to a source that lists them |
 | Data | `fetch_preview`, `fetch_quotes` | coverage dry-run; chains + spots |

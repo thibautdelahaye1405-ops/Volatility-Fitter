@@ -1619,7 +1619,16 @@ below) — every recorded rider is closed except the ones listed here:
    Bloomberg, Eurex unreachable that day) — a market-data rider, not a
    connector one; verify claude.ai renders apps from a CUSTOM remote
    connector (open report June 2026) before relying on the remote path;
-   MCPB bundle for one-click install; a Help Center page; tool-call time
+   MACRO TOOLS SHIPPED 2026-09-09e (user: "go ahead with items 2 and 3"):
+   `run_desk_workflow` = the desk routine in ONE call (universe → fetch →
+   settings → calibrate with progress → report + the LV compare rendered by
+   the same call; steps recorded, a failing step stops the chain) and
+   `compare_settings` = two calibrations under two partial settings with
+   per-ticker / per-expiry bp differences (the `keep` run goes last so the
+   app ends calibrated under it); shared steps in `volfit_mcp/ops.py`;
+   locked by 3 new tests (20 total). Next in the plan: two more chart apps
+   (3D IV surface, term structure) + "open in workbench" links; EuroStoxx
+   with the Terminal; MCPB bundle for one-click install; a Help Center page; tool-call time
    budgets in chat hosts are undocumented (calibrate waits ≤ wait_seconds
    then hands back a resumable status).
 1. USER-WINDOW runs (Next-up item 0 under WHERE THINGS STAND): benchmark-pack

@@ -126,10 +126,14 @@ Key commands (Windows, repo root):
             Context Protocol server for Claude Desktop / claude.ai (Docs\mcp_connector.md).
             `.venv\Scripts\python -m volfit_mcp` (stdio; registered in
             %APPDATA%\Claude\claude_desktop_config.json, needs the app on :8000) or
-            `--transport streamable-http --port 8765` (remote, /mcp). Curated tools
-            (set_universe / fetch_quotes / configure_fit / calibrate / calibration_report /
-            get_* / chart_lv_compare / chart_smile), inline chart apps (MCP Apps, Plotly,
-            volfit_mcp\ui). Tests: tests\test_mcp_connector.py + test_mcp_stdio.py
+            `--transport streamable-http --port 8765` (remote, /mcp). Macro tools
+            run_desk_workflow (one call: universe→fetch→settings→calibrate→report + the LV
+            compare chart) and compare_settings (A vs B calibrations, bp differences);
+            step tools (set_universe / fetch_quotes / configure_fit / calibrate /
+            calibration_report / get_* / chart_lv_compare / chart_smile); shared steps in
+            volfit_mcp\ops.py; inline chart apps (MCP Apps, Plotly inlined, volfit_mcp\ui).
+            After changing connector code: QUIT Claude Desktop from the tray (the window
+            close keeps the old server alive). Tests: tests\test_mcp_connector.py + test_mcp_stdio.py
             (~25 s); headless app check: cd frontend ; node scripts\mcp_app_check.mjs
             (screenshots .smoke\mcp-*.png). `mcp>=2.2` is in the venv (pyproject extra `mcp`).
 - Help Center: Help ▾ (HELP CENTER ARC 2026-08-31) — corpora in frontend\src\lib\help\*
