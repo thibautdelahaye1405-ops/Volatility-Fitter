@@ -15,7 +15,7 @@ import PenaltyCoefficients from "./PenaltyCoefficients";
 export type FitModel = "lqd" | "svi" | "sigmoid";
 
 /** Per-quote weighting scheme (mirror of the backend Literal). */
-export type WeightScheme = "equal" | "tv_density" | "vega_density" | "delta_density";
+export type WeightScheme = "equal" | "uniform_density" | "tv_density" | "vega_density" | "delta_density";
 
 /** Mirror of the backend FitSettings schema (volfit/api/schemas.py). */
 export interface FitSettings {
@@ -133,10 +133,21 @@ const TAIL_PRESETS: { label: string; value: number; title: string }[] = [
 
 const clampAlpha = (v: number) => Math.min(0.5, Math.max(0, Number.isFinite(v) ? v : 0));
 
-/** Per-quote weighting schemes (all density schemes share the Voronoi
- *  strike-crowding correction, so only the economic shape differs). */
+/** Per-quote weighting schemes. Every scheme but Equal names a TARGET
+ *  aggregate weight distribution over log-strike (uniform, time value, vega,
+ *  |delta|) reached through the shared Voronoi strike-density correction, so
+ *  only the target shape differs; Equal is one vote per quote, uncorrected. */
 const WEIGHT_SCHEMES: { id: WeightScheme; label: string; title: string }[] = [
-  { id: "equal", label: "Equal", title: "Unit weights — every quote's IV residual counts the same" },
+  {
+    id: "equal",
+    label: "Equal",
+    title: "Unit weights — one vote per quote, no density correction: the aggregate weight follows the exchange's listing grid",
+  },
+  {
+    id: "uniform_density",
+    label: "Uniform",
+    title: "Uniform target: the bare strike-density correction (sᵢ / s̄), so the aggregate weight is flat in log-strike whatever the listing grid — strikes listed every 5 points weigh like 1/K",
+  },
   {
     id: "tv_density",
     label: "TV",

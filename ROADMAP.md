@@ -1583,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-08c (resume here)
+## STATUS — updated 2026-09-09a (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1690,6 +1690,12 @@ below) — every recorded rider is closed except the ones listed here:
    loop could move out); under the user's haircut + 20-node options the
    dailies fit is TRF-SVD-bound (11.9 s at 359 nodes) — the graded lattice
    is not the lever there, the solver is.
+12. QUOTE-WEIGHTING riders (wrap 2026-09-09a below; none are gates): the
+   `equal` → `uniform_density` DEFAULT flip is a benchmark-pack adjudication
+   (item 1 above — `equal` stays the default by the standing rule); the
+   Quality tab could report the aggregate weight per strike bucket beside
+   the RMS; the strip's hover readout could become the chart's crosshair
+   badge on the strip (today: a native title tooltip).
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
 wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
 replace the five scheduler fields, migrated on load; the `/scheduler` payload
@@ -1703,6 +1709,63 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-09a) — QUOTE WEIGHTING: THE STRIP DRAWS THE TARGET BESIDE THE WEIGHT, ON THE SMILE'S OWN AXIS; A UNIFORM TARGET SCHEME
+
+User (2026-09-09): "About the quote weighting scheme: 1) when showed under
+the smile chart, it should follow the same x-axis as the chart. 2) I find it
+unclear what 'density 1/sᵢ' represent. I suppose what we want is (a) the
+target distribution (uniform, vega...) and (b) the actual relative weight of
+each quote to achieve this target, which I think is not what is shown
+currently. For instance with observed quotes equally spaced in absolute
+strike levels, and a uniform target, I think the weights should be
+decreasing in 1/K."
+
+- **The reading was right, on both counts.** The grey "density 1/sᵢ" bars
+  were the quote CROWDING (the inverse Voronoi cell width) — the quantity
+  the density correction divides OUT, not anything the fit sums — so on a
+  5-point strike grid they ROSE with K while the user expected a weight
+  that FALLS with K. And "equal" is not a uniform target: it is one vote
+  per quote with no density correction, so its aggregate weight follows the
+  exchange's listing histogram; the uniform-target-with-correction scheme
+  the user described did not exist. The strip's x axis mirrored only the
+  brushed window, never the wheel-zoom or the pan, and its wrapper carried
+  4 px of side padding the plot did not.
+- **What shipped.** `calib/weights.py` — `"uniform_density"`: the flat
+  target (`scheme_raw` = 1) through the shared density correction,
+  `w_i = s_i / s̄` mean-normalized (module docstring rewritten around
+  "a TARGET aggregate distribution reached through a per-quote density
+  correction"); `FitSettings.weightScheme` accepts it (schema regenerated;
+  `equal` stays the DEFAULT — any flip is benchmark-pack adjudication); the
+  prior data-gap anchor rides the general path (flat shape = uniform
+  pins). Frontend: `lib/weightStrip.ts` bars are now `target` (the scheme's
+  shape at the quote, weightRaw, max-normalized), `weightNorm` / `weight`
+  (what the LSQ sums) and `spacingMult` (the capped s_i / s̄ the backend
+  applied; 1 under equal) with `targetLabel()`; `WeightStrip.tsx` legend
+  "target · uniform | weight (mean 1) | excluded", one hover readout `k ·
+  target · ×spacing · weight` on both bars, `data-testid="weight-strip"` +
+  `data-quote-index` per pair (the QuoteLayer's quote groups carry the same
+  index); `SmileChart.footer` is a RENDER FUNCTION fed `ChartFooterContext
+  { xView, tx }` — the plot's live x view (brush → zoom → pan) and its k →
+  display transform — so the strip draws on the chart's exact axis in every
+  mode; the footer wrapper lost its `px-1`; the Options ▸ Quote weighting
+  row gained **Uniform** (Equal | Uniform | TV | Vega | Delta) with titles
+  that say which is which; help corpora (settings doc, glossary
+  `weight-scheme`, the lenses guide, What's new 2026-09-09), the LayerRail
+  title, `Docs/handoff/SETTINGS_REFERENCE.md`.
+- **Locks.** `test_weights.py::test_uniform_density_is_the_bare_density_
+  correction` (the user's example: 80…120 every 5 points around F = 100 →
+  weights decreasing in K, `w_i · K_i` flat to 1 %, mean 1; a log-uniform
+  grid reproduces equal weighting exactly) + `uniform_density` in both
+  scheme parametrizations; `test_api_settings.py` accepts it and it moves
+  the fit; `weightStrip.test.ts` (10) locks the multiplier, the equal
+  scheme's unit multiplier, the excluded rows out of s̄, the labels.
+  LIVE: `scripts/weight_strip_check.mjs` (:4196) — 14 bar pairs under their
+  14 quote markers at 0.00 px, still 0.00 px after 4 wheel steps (7 pairs
+  in view), a 167 px drag-pan and the Strike K axis; the uniform scheme:
+  target flat, weights mean 1, max/min 1.96 on the synthetic 5-point grid.
+  Screenshots `.smoke/weight-strip-{base,zoomed,panned,strike,uniform}.png`.
+- **Riders** → STATUS item 12.
 
 ### 🧭 SESSION WRAP (2026-09-08c) — LV OPERATOR ARC SHIPPED O0–O6: BDF2 ON A TIME GRID GRADED FROM THE KINK, THE STRIKE LATTICE GRADED PER EXPIRY — THE OPERATOR ERROR THE FIT USED TO ABSORB IS GONE, AND A SURFACE WITH DAILIES MARCHES A FIFTH OF THE NODES
 

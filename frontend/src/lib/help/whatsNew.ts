@@ -6,6 +6,15 @@ import type { WhatsNewEntry } from "./types";
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-09-09",
+    title: "Quote weighting: a Uniform target, and a weight strip that shows the target beside the weight — on the smile's own axis",
+    items: [
+      "Options ▸ Calibration ▸ Quote weighting gained **Uniform**: the flat target. Like the time-value, vega and delta schemes it multiplies its target shape by each quote's strike-density correction, so strikes listed every 5 points weigh like 1/K and the summed weight is uniform in log-strike whatever the exchange lists. **Equal** stays the default and is unchanged: one vote per quote, no correction, the aggregate weight follows the listing grid.",
+      "The **Weights** strip under the smile now draws what the scheme asks for beside what the fit does: the grey bars are the scheme's target shape at each quote (flat for Equal and Uniform, the time-value / vega / |delta| profile otherwise), the accent bars the mean-1 weight the least squares actually sums. The old \"density 1/sᵢ\" bars — the quote crowding, the inverse of the correction — are gone; hovering a bar reads the target, the multiplier applied and the weight.",
+      "The strip sits on the smile chart's own x axis: every axis mode, the brush window, and now the wheel-zoom and the pan too, so a bar is always under its quote.",
+    ],
+  },
+  {
     date: "2026-09-08",
     title: "Local Vol: a second-order march on graded grids — the operator error the fit used to absorb is gone, and a surface with dailies marches a fraction of the nodes",
     items: [

@@ -57,7 +57,7 @@ export default function LayerRail(p: LayerRailProps) {
     },
     {
       key: "weights", icon: Scale, label: "Weights",
-      title: "Show per-quote calibration weights under the chart (quote density vs the effective mean-1 weights)",
+      title: "Show per-quote calibration weights under the chart, on its x axis: the scheme's target shape vs the mean-1 weight the fit actually sums",
       on: p.showWeights, tone: "border-accent-500/50 bg-accent-500/10 text-accent-300",
       onClick: p.onShowWeights, views: ["smile"],
     },

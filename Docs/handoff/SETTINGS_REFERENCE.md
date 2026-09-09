@@ -36,7 +36,7 @@ spec, "State and invalidation").
 | `regPower` | float 0–4 | 1.0 | The r in n^{2r}. |
 | `nCores` | int 0–2 (validator clamps >2) | 2 | Multi-Core SIV hat-core count R. Hard-capped at 2: measured finding — 3+ cores overfit and manufacture wing arbitrage. A persisted config with more is *clamped, not rejected*, so old saves still load. |
 | `haircut` | float 0–0.05 | 0.005 | Band tightening of the "haircut" fit mode, in absolute vol (0.005 = 0.5 vol points). Only affects `fitMode="haircut"`. |
-| `weightScheme` | `equal` \| `tv_density` | `equal` | Per-quote calibration weights: unit weights, or time-value-density weights (economic time-value shape with strike oversampling divided out). Applies in every fit mode, every model. |
+| `weightScheme` | `equal` \| `uniform_density` \| `tv_density` \| `vega_density` \| `delta_density` | `equal` | Per-quote calibration weights: unit weights (one vote per quote, no correction), or a TARGET shape over log-strike (flat, time value, Black vega, OTM \|delta\|) times each quote's Voronoi cell width (the strike-density correction, capped at 10×), mean-normalized. Applies in every fit mode, every model. |
 | `barrierCenter` | float (0,1) | 0.90 | LQD right-tail-scale soft-barrier centre. |
 | `barrierScale` | float >0 | 50.0 | LQD right-tail-scale soft-barrier steepness. |
 | `sviPenaltyWeight` | float ≥0 | 1e3 | SVI no-arbitrage soft-penalty weight. |

@@ -129,7 +129,8 @@ def _desired_density(
     Spread over the FULL anchor span (so it reaches the wings the quotes miss).
     Each density scheme shapes it by its own economic raw profile evaluated on
     the prior (time value / vega / OTM delta — more pins where the scheme puts
-    more weight); "equal" (or any degenerate case) is uniform."""
+    more weight); "equal" (or any degenerate case) is uniform, and so is
+    "uniform_density" through the general path (its shape is the constant 1)."""
     x = np.asarray(x, dtype=float)
     span = max(float(x.max() - x.min()), _W_FLOOR) if x.size > 1 else 1.0
     if scheme != "equal" and x.size > 1:

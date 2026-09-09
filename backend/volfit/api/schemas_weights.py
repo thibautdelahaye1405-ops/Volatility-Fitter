@@ -24,10 +24,11 @@ class WeightEntry(BaseModel):
     #: the "quote crowding" is its inverse. 0 for excluded quotes and when
     #: fewer than 2 quotes remain (no cell exists).
     spacing: float
-    #: Pre-normalization economic weight of the scheme's shape: max(TV_i, eps)
-    #: for "tv_density", the Black-vega profile phi(d+) for "vega_density", the
-    #: OTM |forward delta| for "delta_density", 1.0 for "equal"; 0 for excluded
-    #: quotes.
+    #: The scheme's TARGET shape at the quote (pre-normalization economic
+    #: weight): max(TV_i, eps) for "tv_density", the Black-vega profile phi(d+)
+    #: for "vega_density", the OTM |forward delta| for "delta_density", 1.0 for
+    #: "uniform_density" and "equal"; 0 for excluded quotes. The weight strip
+    #: draws it beside ``weight`` — the target versus what the fit sums.
     weightRaw: float
     #: Final mean-1 weight the fit uses (ones materialized for "equal");
     #: 0 for excluded quotes (they are not fitted).
@@ -40,7 +41,7 @@ class WeightsData(BaseModel):
 
     ticker: str
     expiry: str  # ISO date, as requested
-    scheme: str  # FitSettings.weightScheme (equal | tv_density | vega_density | delta_density)
+    scheme: str  # FitSettings.weightScheme (equal | uniform_density | tv_density | vega_density | delta_density)
     maxMult: float  # cap on the spacing multiplier s_i / s_bar (density schemes)
     meanNormalized: bool = True  # included weights are normalized to mean 1
     entries: list[WeightEntry] = []

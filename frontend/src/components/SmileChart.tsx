@@ -106,8 +106,10 @@ interface SmileChartProps {
   /** Draw the fit-target overlay (mid polyline + bid-ask/haircut ribbons). */
   showTarget?: boolean;
   /** Optional strip rendered between the plot and the RangeBrush (the V3.4
-   *  weight strip mounts here so it shares the x extent above the brush). */
-  footer?: ReactNode;
+   *  weight strip mounts here). A render function: it receives the plot's
+   *  LIVE x view and k → display transform, so the strip shares the chart's
+   *  x axis exactly — axis mode, brush window, wheel-zoom and pan alike. */
+  footer?: ((ctx: ChartFooterContext) => ReactNode) | null;
   /** Y-axis auto-scale policy applied after x-view changes (wheel/pan/brush/
    *  axis mode — lib/autoScaleY): fit snaps the y window to the auto-fitted
    *  base, center keeps the y zoom but recenters it on the data. Both off =
@@ -116,6 +118,15 @@ interface SmileChartProps {
   /** When given, the chart shows Y-center / Y-fit as small overlay buttons
    *  (top-right of the plot) that flip the auto-scale toggles (wave 2). */
   onToggleAutoScale?: (key: keyof AutoScaleToggles) => void;
+}
+
+/** What a footer strip needs to draw on the plot's own x axis. */
+export interface ChartFooterContext {
+  /** The current x view in DISPLAY units: the brushed window mapped through
+   *  the axis transform, then the wheel-zoom / pan on top. */
+  xView: readonly [number, number];
+  /** k → display coordinate of the market frame (the chart's `tx`). */
+  tx: (k: number) => number;
 }
 
 /** Human labels for the named degraded-market conditions. */
@@ -702,8 +713,9 @@ export default function SmileChart({
           zoomed={zoom.zoomed} onReset={zoom.reset} left={MARGIN.left} />
       </div>
 
-      {/* Optional footer strip (V3.4 weight strip) — above the brush */}
-      {footer !== null && <div className="mt-2 shrink-0 px-1">{footer}</div>}
+      {/* Optional footer strip (V3.4 weight strip) — above the brush, on the
+          plot's live x view so it follows every zoom / pan / axis switch */}
+      {footer != null && <div className="mt-2 shrink-0">{footer({ xView, tx })}</div>}
 
       {/* Strike-window brush (coarse, in log-moneyness k) */}
       <div className="mt-2 shrink-0 px-1">

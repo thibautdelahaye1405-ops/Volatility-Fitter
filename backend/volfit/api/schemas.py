@@ -57,12 +57,16 @@ class FitSettings(BaseModel):
     band tightening of the "haircut" fit mode in absolute vol (0.005 = 0.5 vol
     points); it only affects fit_mode="haircut" (volfit.calib.band).
     ``weightScheme`` chooses the per-quote calibration weights (volfit.calib.
-    weights): "equal" (unit weights, the historical scheme), "tv_density"
-    (time-value density weights — economic time-value shape with the strike
-    oversampling divided out), "vega_density" (Black-vega shape, same density
-    correction — the flattest into the wings) or "delta_density" (OTM |forward
-    delta| shape, same density correction — between vega and time value in
-    wing decay); it applies in every fit mode and to every model.
+    weights): "equal" (unit weights, the historical scheme — one vote per
+    quote, so the aggregate weight follows the listing histogram),
+    "uniform_density" (the uniform TARGET: the bare Voronoi density
+    correction, so the aggregate weight is flat in log-strike whatever the
+    listing grid), "tv_density" (time-value density weights — economic
+    time-value shape with the strike oversampling divided out), "vega_density"
+    (Black-vega shape, same density correction — the flattest into the wings)
+    or "delta_density" (OTM |forward delta| shape, same density correction —
+    between vega and time value in wing decay); it applies in every fit mode
+    and to every model.
     """
 
     model: Literal["lqd", "svi", "sigmoid"] = "lqd"
@@ -116,9 +120,9 @@ class FitSettings(BaseModel):
         return self.tailAlphaLeft, self.tailAlphaRight
     nCores: int = Field(2, ge=0, le=2)  # Multi-Core SIV hat count R (sigmoid only; capped at 2)
     haircut: float = Field(0.005, ge=0.0, le=0.05)  # haircut-mode band shrink (vol)
-    weightScheme: Literal["equal", "tv_density", "vega_density", "delta_density"] = (
-        "equal"
-    )  # per-quote weights
+    weightScheme: Literal[
+        "equal", "uniform_density", "tv_density", "vega_density", "delta_density"
+    ] = "equal"  # per-quote weights
     # --- per-model optimization / penalty coefficients (Options exposes them
     # all explicitly; every default equals the historical hardcoded constant, so
     # a default fit is byte-identical to before they were tunable) ---

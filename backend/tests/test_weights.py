@@ -106,7 +106,31 @@ def test_wing_decay_ordering_vega_delta_tv():
     assert vega[wing] / vega[mid] > delta[wing] / delta[mid] > tv[wing] / tv[mid]
 
 
-@pytest.mark.parametrize("scheme", ["vega_density", "delta_density"])
+def test_uniform_density_is_the_bare_density_correction():
+    """The uniform TARGET (user ruling 2026-09-09): quotes equally spaced in
+    ABSOLUTE strike get weights decaying like 1 / K — the density correction
+    alone, since the target shape is flat. Under "equal" the same quotes all
+    weigh 1 (one vote per quote: the aggregate follows the listing grid)."""
+    strikes = np.arange(80.0, 125.0, 5.0)  # 80, 85, ..., 120 around F = 100
+    k = np.log(strikes / 100.0)
+    w = np.full(k.size, 0.04)
+    uni = resolve_weights("uniform_density", k, w)
+    assert uni is not None
+    np.testing.assert_allclose(float(uni.mean()), 1.0, atol=1e-12)
+    assert np.all(np.diff(uni[1:-1]) < 0)  # strictly decreasing in K (interior cells)
+    # Interior Voronoi cells are half the two-sided log gap = log(K_{i+1}/K_{i-1}) / 2,
+    # so the weights track the analytic 1 / K profile to first order.
+    interior = slice(1, -1)
+    ratio = uni[interior] * strikes[interior]
+    assert float(ratio.max() / ratio.min()) < 1.01
+    # "equal" ignores the spacing entirely.
+    assert resolve_weights("equal", k, w) is None
+    # And on a grid uniform in LOG-strike the uniform target IS equal weighting.
+    k_uniform = np.linspace(-0.3, 0.3, 9)
+    np.testing.assert_allclose(resolve_weights("uniform_density", k_uniform, w), 1.0, atol=1e-12)
+
+
+@pytest.mark.parametrize("scheme", ["uniform_density", "vega_density", "delta_density"])
 def test_new_schemes_mean_one_and_density_corrected(scheme):
     """New schemes: mean-1 weights equal to the density-corrected raw shape."""
     k = np.array([-0.5, -0.02, 0.0, 0.02, 0.8])  # crowded ATM, sparse wings
@@ -122,7 +146,7 @@ def test_new_schemes_mean_one_and_density_corrected(scheme):
     assert share[2] < share[0] and share[2] < share[4]
 
 
-@pytest.mark.parametrize("scheme", ["tv_density", "vega_density", "delta_density"])
+@pytest.mark.parametrize("scheme", ["uniform_density", "tv_density", "vega_density", "delta_density"])
 def test_weight_components_invariant_all_schemes(scheme):
     """raw * capped spacing multiplier, mean-normalized, reproduces weights."""
     k = np.array([-0.5, -0.02, 0.0, 0.02, 0.8])

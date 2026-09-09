@@ -115,7 +115,7 @@ export default function QuoteLayer({
         const d = 3.2;
         const markD = `${pathAt(x, ym - d)}L${(x + d).toFixed(2)},${ym.toFixed(2)}L${x.toFixed(2)},${(ym + d).toFixed(2)}L${(x - d).toFixed(2)},${ym.toFixed(2)}Z`;
         return (
-          <g key={key}>
+          <g key={key} data-quote-index={q.index}>
             {selected && <circle cx={x} cy={ym} r={7} fill="var(--color-accent-400)" opacity={0.18} />}
             <g opacity={q.excluded ? 0.25 : 1}>
               {marks ? (

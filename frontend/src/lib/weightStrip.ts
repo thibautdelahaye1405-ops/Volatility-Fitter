@@ -1,6 +1,18 @@
 // Pure binning/alignment helpers for the calibration weight strip (V3.4
-// item 5). The WeightStrip component stays thin: normalization and the mock
-// fallback are testable here, free of React.
+// item 5; series redefined 2026-09-09). The WeightStrip component stays thin:
+// normalization and the mock fallback are testable here, free of React.
+//
+// Two series per quote, both straight from GET .../weights:
+//   * target — the scheme's TARGET shape at the quote (weightRaw: 1 for
+//              equal / uniform, time value, Black vega or the OTM |delta|) —
+//              the aggregate distribution the fit is asked to follow along
+//              the smile;
+//   * weight — the mean-1 weight the least squares actually sums: the target
+//              times the Voronoi density correction min(s_i / s̄, maxMult),
+//              which hands each quote the room it alone represents in
+//              log-strike ("equal" applies no correction: one vote per quote).
+// Each series draws normalized to its included max; the raw values and the
+// multiplier ride along for the hover readout.
 
 /** One entry of GET /smiles/{ticker}/{expiry}/weights (index == QuoteBand.index). */
 export interface WeightEntry {
@@ -9,8 +21,8 @@ export interface WeightEntry {
   /** Voronoi cell width s_i in k over the included quotes (0 when excluded
    *  or fewer than 2 quotes remain). Quote crowding is its inverse. */
   spacing: number;
-  /** Pre-normalization economic weight (max(TV, eps) for tv_density; 1 for
-   *  equal; 0 when excluded). */
+  /** The scheme's target shape at the quote (max(TV, eps), the vega or |delta|
+   *  profile, 1 for equal / uniform_density; 0 when excluded). */
   weightRaw: number;
   /** Final mean-1 weight the fit uses (0 when excluded). */
   weight: number;
@@ -32,39 +44,78 @@ export interface WeightBar {
   index: number;
   k: number;
   excluded: boolean;
-  /** Quote crowding 1/s_i, normalized to max 1 over the included entries. */
-  density: number;
+  /** Target shape at the quote, normalized to max 1 over the included entries. */
+  target: number;
   /** Final weight normalized to the included max (bar height in [0, 1]). */
   weightNorm: number;
-  /** The actual mean-1 weight (hover/label readout; 0 when excluded). */
+  /** The scheme's raw target value (hover readout; 0 when excluded). */
+  targetRaw: number;
+  /** The density correction the fit applied at this quote:
+   *  min(s_i / s̄, maxMult) over the included cells — 1 under "equal" (no
+   *  correction) and when no cell exists. */
+  spacingMult: number;
+  /** The actual mean-1 weight (hover readout; 0 when excluded). */
   weight: number;
+}
+
+/** What the strip needs to know about the scheme the entries came from. */
+export interface WeightBarOptions {
+  scheme: string;
+  /** Cap on the spacing multiplier (WeightsData.maxMult). */
+  maxMult: number;
+}
+
+/** Short label of each scheme's target shape (the strip's legend). */
+export const TARGET_LABELS: Record<string, string> = {
+  equal: "one per quote",
+  uniform_density: "uniform",
+  tv_density: "time value",
+  vega_density: "vega",
+  delta_density: "|delta|",
+};
+
+export function targetLabel(scheme: string): string {
+  return TARGET_LABELS[scheme] ?? scheme;
 }
 
 /**
  * Normalize weight entries into drawable bars, in ascending-k order:
- * `density` = (1/s_i) / max(1/s_i) and `weightNorm` = w_i / max(w_i) over the
- * INCLUDED entries (each series peaks at 1 on its own scale); excluded rows
- * keep zeros so the component can draw them as hollow outlines.
+ * `target` = raw_i / max(raw_i) and `weightNorm` = w_i / max(w_i) over the
+ * INCLUDED entries (each series peaks at 1 on its own scale); `spacingMult`
+ * is the backend's capped s_i / s̄ (s̄ = mean cell width over the included
+ * quotes), reported as 1 under "equal" because that scheme never applies it.
+ * Excluded rows keep zeros so the component can draw them as hollow outlines.
  */
-export function buildWeightBars(entries: readonly WeightEntry[]): WeightBar[] {
-  let maxInvSpacing = 0;
+export function buildWeightBars(
+  entries: readonly WeightEntry[],
+  { scheme, maxMult }: WeightBarOptions = { scheme: "equal", maxMult: 10 },
+): WeightBar[] {
+  let maxRaw = 0;
   let maxWeight = 0;
+  let spacingSum = 0;
+  let cells = 0;
   for (const e of entries) {
     if (e.excluded) continue;
-    if (e.spacing > 0) maxInvSpacing = Math.max(maxInvSpacing, 1 / e.spacing);
+    maxRaw = Math.max(maxRaw, e.weightRaw);
     maxWeight = Math.max(maxWeight, e.weight);
+    if (e.spacing > 0) {
+      spacingSum += e.spacing;
+      cells += 1;
+    }
   }
+  const sBar = cells > 0 ? spacingSum / cells : 0;
+  const corrects = scheme !== "equal" && sBar > 0;
   return [...entries]
     .sort((a, b) => a.k - b.k)
     .map((e) => ({
       index: e.index,
       k: e.k,
       excluded: e.excluded,
-      density:
-        !e.excluded && e.spacing > 0 && maxInvSpacing > 0
-          ? 1 / e.spacing / maxInvSpacing
-          : 0,
+      target: !e.excluded && maxRaw > 0 ? e.weightRaw / maxRaw : 0,
       weightNorm: !e.excluded && maxWeight > 0 ? e.weight / maxWeight : 0,
+      targetRaw: e.excluded ? 0 : e.weightRaw,
+      spacingMult:
+        !e.excluded && corrects && e.spacing > 0 ? Math.min(e.spacing / sBar, maxMult) : 1,
       weight: e.excluded ? 0 : e.weight,
     }));
 }

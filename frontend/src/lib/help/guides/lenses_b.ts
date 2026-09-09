@@ -34,7 +34,7 @@ export const PARAMETRIC: GuidePage = {
     "- **Target** — the shaded fit target: the mid, the bid-ask band, or the haircut band.",
     "- **Calib. quotes** — the quotes the last calibration saw, with your exclusions and amendments.",
     "- **Calib. fit** — the fitted curve on its calibration spot (vs the market frame's rolled fit).",
-    "- **Weights** — the effective per-quote weight strip under the smile.",
+    "- **Weights** — the per-quote weight strip under the smile, on the chart's own x axis (it follows the zoom): the scheme's target shape in grey beside the weight the fit actually sums in accent; hover a bar for the strike-density multiplier.",
     "",
     "## Two frames on one chart",
     "",

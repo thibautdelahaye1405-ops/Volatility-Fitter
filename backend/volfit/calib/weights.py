@@ -1,9 +1,25 @@
 """Per-slice quote weighting schemes for calibration (a given maturity).
 
-Four schemes, selectable by the FitSettings.weightScheme hyperparameter:
+Five schemes, selectable by the FitSettings.weightScheme hyperparameter. Every
+scheme but ``"equal"`` is "a TARGET aggregate distribution over log-strike,
+reached through a per-quote density correction": the target names the shape
+the summed weight should follow along the smile, and each quote's weight is
+that shape at its strike times its Voronoi cell width (the room it alone
+represents), so the listing density never leaks into the objective.
 
   * ``"equal"`` — unit weights, the historical scheme (the calibrators' default
-    when ``weights is None``); every quote's IV residual counts the same.
+    when ``weights is None``); every quote's IV residual counts the same. This
+    is NOT a uniform target: one vote per quote means the aggregate weight
+    follows the exchange's listing histogram (dense near the money, sparse in
+    the wings). No density correction is applied.
+  * ``"uniform_density"`` — the UNIFORM target: flat economic shape
+    (``raw_i = 1``) with the density correction, ``w_i = s_i / s_bar``. The
+    aggregate weight is then uniform in log-strike whatever the listing
+    grid: quotes equally spaced in ABSOLUTE strike K sit at log-strike gaps
+    dK / K, so their weights decay like 1 / K_i — the crowded upper strikes
+    share one vote per unit of log-strike, exactly as the wider-spaced lower
+    strikes do. On a grid uniform in log-strike it is byte-identical to
+    ``"equal"``.
   * ``"tv_density"`` — the time-value density weights of
     ``Docs/iv_time_value_density_weights.tex``:
 
@@ -105,8 +121,12 @@ def scheme_raw(scheme: str, k: np.ndarray, w_mid: np.ndarray) -> np.ndarray:
     Single source of truth for the scheme -> shape mapping, shared by
     ``resolve_weights``, ``weight_components`` and the prior data-gap anchor's
     desired-density shape (volfit.calib.prior), so they can never disagree.
-    Raises on an unknown or non-density scheme ("equal" has no raw shape).
+    The uniform target's shape is the constant 1 (its weights are the bare
+    density correction). Raises on an unknown or non-density scheme ("equal"
+    has no raw shape: it applies no correction).
     """
+    if scheme == "uniform_density":
+        return np.ones(np.asarray(k, dtype=float).shape, dtype=float)
     if scheme == "tv_density":
         return np.maximum(otm_time_value(k, w_mid), _EPS)
     if scheme == "vega_density":
@@ -174,13 +194,16 @@ class WeightComponents:
 
       * ``spacing`` — the Voronoi cell width s_i actually used by tv_density
         (0.0 with fewer than 2 quotes, where no cell exists);
-      * ``raw`` — the pre-normalization economic weight: max(TV_i, eps) for
-        tv_density, 1.0 for equal;
+      * ``raw`` — the pre-normalization economic weight — the TARGET shape at
+        the quote: max(TV_i, eps) for tv_density, the vega / delta profiles,
+        1.0 for uniform_density and for equal;
       * ``weights`` — the final mean-1 weights the LSQ uses, byte-identical to
         ``resolve_weights`` (ones materialized for "equal" / degenerate sizes).
 
-    Invariant (>= 2 quotes, tv_density): mean-normalizing
+    Invariant (>= 2 quotes, every density scheme): mean-normalizing
     ``raw * min(spacing / spacing.mean(), max_mult)`` reproduces ``weights``.
+    The weight-strip UI draws ``raw`` (the target) beside ``weights`` (what
+    the least squares actually sums) and reports the multiplier on hover.
     """
 
     scheme: str
