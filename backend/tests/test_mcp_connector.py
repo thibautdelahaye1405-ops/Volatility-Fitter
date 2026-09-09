@@ -69,6 +69,14 @@ async def _pipeline() -> dict[str, Any]:
         out["schema_resource"] = json.loads((await c.read_resource("volfit://help/settings-schema")).contents[0].text)
         # Prompt arguments travel as strings on the wire (GetPromptRequestParams).
         out["prompt"] = await c.get_prompt("desk_calibration", {"tickers": "EuroStoxx, SPX", "n_order": "24"})
+        # The macro tools, last (they reshape the universe and the settings).
+        out["workflow"] = await c.call_tool("run_desk_workflow", {
+            "tickers": ["SPY"], "model": "lqd", "n_order": 10, "local_vol": True, "wait_seconds": 240})
+        out["workflow_fail"] = await c.call_tool("run_desk_workflow", {"tickers": ["SPY"], "n_order": 99, "fetch": False})
+        out["ab"] = await c.call_tool("compare_settings", {
+            "a": {"n_order": 8, "label": "LQD-8"}, "b": {"n_order": 12}, "tickers": ["SPY"], "keep": "a", "wait_seconds": 240})
+        out["settings_after"] = await c.call_tool("get_fit_settings", {})
+        out["status_after"] = await c.call_tool("calibration_status", {})
     await api.aclose()
     return out
 
@@ -281,3 +289,55 @@ def test_wire_trace_records_handshake_and_reads(tmp_path):
     assert read["result"]["contents"][0]["mimeType"] == "text/html;profile=mcp-app"
     call = next(l for l in lines if l["method"] == "tools/call")
     assert call["params"]["name"] == "get_universe" and call["result"]["isError"] is False and call["ms"] >= 0
+
+
+# ------------------------------------------------------------- macro tools
+def test_run_desk_workflow_is_one_call(pipe):
+    res = pipe["workflow"]
+    assert res.is_error is False
+    sc = res.structured_content
+    wf = sc["workflow"]
+    assert [s["step"] for s in wf["steps"]] == ["universe", "fetch", "configure", "calibrate", "report", "lv_compare"]
+    assert all(s["ok"] for s in wf["steps"]) and wf["stoppedAt"] is None
+    assert wf["settings"]["fit"]["nOrder"] == 10 and wf["settings"]["options"]["localVolEnabled"] is True
+    assert wf["calibration"]["finished"] is True and wf["calibration"]["staleNodes"] == 0
+    assert [t["ticker"] for t in wf["report"]["tickers"]] == ["SPY"]
+    # The same call renders the LV compare: the chart page's contract is honoured.
+    assert sc["kind"] == "lv_compare" and [p["ticker"] for p in sc["tickers"]] == ["SPY"]
+    assert len(sc["tickers"][0]["affine"]) == len(sc["tickers"][0]["tNodes"])
+    text = _text(res)
+    assert text.startswith("Desk workflow (") and "Fit quality" in text and "Local-Vol compare" in text
+    assert pipe["tools"]["run_desk_workflow"].meta["ui"]["resourceUri"] == LV_COMPARE_URI
+
+
+def test_run_desk_workflow_reports_the_failing_step(pipe):
+    res = pipe["workflow_fail"]
+    sc = res.structured_content
+    wf = sc["workflow"]
+    assert wf["stoppedAt"] == "configure"
+    assert [s["step"] for s in wf["steps"]] == ["universe", "configure"]
+    assert wf["steps"][-1]["ok"] is False and "422" in wf["steps"][-1]["error"]
+    assert _text(res).splitlines()[1].startswith("STOPPED at step 'configure'")
+    assert sc["tickers"] == []  # nothing charted
+
+
+def test_compare_settings_runs_both_and_keeps_a(pipe):
+    res = pipe["ab"]
+    assert res.is_error is False
+    sc = res.structured_content
+    assert sc["kind"] == "compare_settings" and sc["kept"] == "a"
+    assert sc["a"]["label"] == "LQD-8" and sc["b"]["label"] == "n_order=12"
+    assert sc["a"]["settings"]["fit"]["nOrder"] == 8 and sc["b"]["settings"]["fit"]["nOrder"] == 12
+    assert sc["a"]["calibration"]["finished"] and sc["b"]["calibration"]["finished"]
+    rows = sc["rows"]
+    assert len(rows) == 4 and all(r["ticker"] == "SPY" for r in rows)
+    assert all(isinstance(r["rmsA"], float) and isinstance(r["rmsB"], float) for r in rows)
+    assert all(abs(r["dRms"] - (r["rmsB"] - r["rmsA"])) < 0.11 for r in rows)
+    t = sc["tickers"][0]
+    assert t["ticker"] == "SPY" and t["surfaceRmsA"] > 0 and t["surfaceRmsB"] > 0
+    assert t["lvRmsA"] is not None and t["lvConvergedB"] is not None
+    text = _text(res)
+    assert text.startswith("A = LQD-8 | B = n_order=12 | kept in force: A") and "| dRms |" in text
+    # The kept run went last: A's settings are in force and nothing is stale.
+    assert pipe["settings_after"].structured_content["fit"]["nOrder"] == 8
+    assert pipe["status_after"].structured_content["staleNodes"] == 0

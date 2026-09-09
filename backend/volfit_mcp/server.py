@@ -17,7 +17,15 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from volfit_mcp import __version__, aliases, tools_calibrate, tools_charts, tools_universe, tools_views
+from volfit_mcp import (
+    __version__,
+    aliases,
+    tools_calibrate,
+    tools_charts,
+    tools_universe,
+    tools_views,
+    tools_workflow,
+)
 from volfit_mcp.client import VolfitApi
 from volfit_mcp.trace import TraceMiddleware
 
@@ -27,23 +35,27 @@ surfaces, graph extrapolation) driven through its running desktop app. You are a
 client of that app: every tool reads or changes the SAME state the user sees in the
 workbench, so say what you changed.
 
-Workflow for "fetch X and Y, calibrate LQD-24 and Local-Vol, chart the LV surfaces":
-1. set_universe(["EuroStoxx", "SPX"])  — spoken names resolve to app tickers and each
-   ticker is pinned to a source that lists it (SX5E: Bloomberg or Eurex; SPX: Bloomberg,
-   Cboe, Massive; Yahoo has no EuroStoxx options).
-2. fetch_preview() when the data moment matters, then fetch_quotes().
-3. configure_fit(model="lqd", n_order=24, local_vol=True) — settings are GLOBAL
-   (not per run); "LQD-24" means n_order=24 (app default 16, max 24). One calibrate
-   produces BOTH the parametric slices and the Local-Vol surfaces when local_vol is on.
-   Comparing two parametric settings (e.g. LQD-24 vs LQD-16) needs two calibrations.
-4. calibrate() — one background job at a time; progress is streamed; if it returns
-   finished=false call wait_for_calibration().
-5. calibration_report() for the numbers (rms in vol bp per expiry, converged-operator
-   rms for Local-Vol, arbitrage flags, readiness); get_smile / get_lv_surface /
-   get_lv_compare for detail.
-6. chart_lv_compare([...]) / chart_smile(ticker, expiry) — inline interactive charts
-   on hosts that render MCP Apps (Claude Desktop, claude.ai); elsewhere use the
-   structured data (pass png=true for a static image).
+ONE CALL for the desk routine: run_desk_workflow(tickers=["EuroStoxx", "SPX"],
+model="lqd", n_order=24, local_vol=True) sets the universe (spoken names resolve to app
+tickers pinned to a source that lists them — SX5E: Bloomberg or Eurex; SPX: Bloomberg,
+Cboe, Massive; Yahoo has no EuroStoxx options), fetches quotes, applies the settings,
+calibrates with streamed progress, returns the fit-quality report AND renders the
+comparative Local-Vol surfaces inline. Prefer it over the step tools whenever the user
+asks for fetch + calibrate (+ chart); the reply lists every step and says which one
+stopped the chain, if any. Then chart_smile(ticker, expiry) for one expiry, or the
+get_* tools for detail.
+
+A vs B questions ("LQD-24 vs LQD-16", "mid vs haircut target", "with / without
+calendar enforcement"): compare_settings(a={...}, b={...}) runs both calibrations and
+returns the per-ticker / per-expiry differences in vol bp; the app ends under `keep`.
+
+The step tools, when a single action is wanted: set_universe → fetch_preview /
+fetch_quotes → configure_fit → calibrate (one background job at a time; if it returns
+finished=false call wait_for_calibration) → calibration_report → chart_lv_compare /
+chart_smile. Settings are GLOBAL (not per run); "LQD-24" means n_order=24 (default 16,
+max 24); one calibrate produces BOTH the parametric slices and the Local-Vol surfaces
+when local_vol is on. Charts render inline on hosts that support MCP Apps (Claude
+Desktop, claude.ai); elsewhere use the structured data (png=true adds an image).
 
 Units: rms and errors in vol basis points (1 bp = 0.01 vol point); vols as decimals
 (0.18 = 18 %); k = ln(K/F); x = K/F; t in years. A fit is "stale" when its inputs
@@ -66,6 +78,7 @@ def build_server(
         # so the chart tools must be bound to the Apps instance first.
         apps = tools_charts.build_apps()
         tools_charts.register(api, apps)
+        tools_workflow.register_apps(api, apps)  # run_desk_workflow renders the LV compare
         extensions.append(apps)
     trace_path = trace_path or os.environ.get("VOLFIT_MCP_TRACE") or None
     middleware = [TraceMiddleware(trace_path)] if trace_path else None
@@ -81,6 +94,7 @@ def build_server(
     tools_universe.register(mcp, api)
     tools_calibrate.register(mcp, api)
     tools_views.register(mcp, api)
+    tools_workflow.register(mcp, api)
     _register_resources(mcp, api)
     _register_prompts(mcp)
     return mcp
@@ -141,11 +155,11 @@ def _register_prompts(mcp: MCPServer) -> None:
     def desk_calibration(tickers: str = "EuroStoxx, SPX", model: str = "lqd", n_order: int = 24,
                          fit_mode: str = "mid", local_vol: bool = True) -> str:
         return (
-            f"Fetch quotes on {tickers}, calibrate every lit expiry with model {model.upper()}"
-            f"{f'-{n_order}' if model == 'lqd' else ''} against the {fit_mode} target"
-            f"{' and the Local-Vol surface' if local_vol else ''}. Report the fit quality per ticker "
-            "and per expiry (rms in bp, arbitrage flags, readiness), flag anything stale or "
-            f"unlisted, then {'chart the comparative Local-Vol surfaces' if local_vol else 'chart the worst smile'}."
+            f"Run the desk workflow (run_desk_workflow) on {tickers}: fetch quotes, calibrate every lit "
+            f"expiry with model {model.upper()}{f'-{n_order}' if model == 'lqd' else ''} against the "
+            f"{fit_mode} target{' and the Local-Vol surface' if local_vol else ''}. Report the fit quality "
+            "per ticker and per expiry (rms in bp, arbitrage flags, readiness), flag anything stale or "
+            f"unlisted, {'and show the comparative Local-Vol surfaces' if local_vol else 'then chart the worst smile'}."
         )
 
     @mcp.prompt(name="morning_check", title="Morning check",

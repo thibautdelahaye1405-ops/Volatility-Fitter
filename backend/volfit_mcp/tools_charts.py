@@ -18,7 +18,6 @@ Structured-content contracts (the HTML reads exactly these keys):
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
 from typing import Any, Literal
@@ -29,9 +28,9 @@ from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import CallToolResult, ContentBlock, TextContent, ToolAnnotations
 
-from volfit_mcp import aliases, render_png
+from volfit_mcp import aliases, ops, render_png
 from volfit_mcp.client import VolfitApi
-from volfit_mcp.report import compact_compare, compact_smile, curve, md_table
+from volfit_mcp.report import compact_smile, curve
 
 READ_ONLY = ToolAnnotations(read_only_hint=True)
 FitMode = Literal["mid", "bidask", "haircut"]
@@ -147,47 +146,10 @@ def register(api: VolfitApi, apps: Apps) -> None:
             names = [aliases.resolve(t).ticker for t in tickers]
         else:
             names = list((await api.get("/universe")).get("tickers", []))
-        panels: list[dict[str, Any]] = []
-        skipped: list[dict[str, str]] = []
-        for t in names:
-            body: dict[str, Any] = {"tInterp": t_interp}
-            if fit_mode:
-                body["fitMode"] = fit_mode
-            try:
-                cmp = compact_compare(await api.post(f"/fit/affine/{t}/compare", body), with_grid=True)
-            except Exception as exc:  # one ticker without a fit must not sink the chart
-                skipped.append({"ticker": t, "reason": str(exc)[:300]})
-                continue
-            panels.append({
-                "ticker": cmp["ticker"],
-                "hasAffine": cmp["hasAffine"],
-                "affineStale": cmp["affineStale"],
-                "tNodes": cmp["tNodes"],
-                "xNodes": cmp["xNodes"],
-                "affine": cmp["localVolAffine"],
-                "twin": cmp["localVolTwin"],
-                "diff": cmp["diffLocalVol"],
-                "twinRepairs": cmp["twinRepairs"],
-                "expiries": [
-                    {"expiry": e["expiry"], "t": e["t"],
-                     "affineRmsBp": (e["affine"] or {}).get("rmsBp"),
-                     "twinRmsBp": (e["twin"] or {}).get("rmsBp"),
-                     "parametricRmsBp": (e["parametric"] or {}).get("rmsBp"),
-                     "roundTripBp": e["roundTripBp"]}
-                    for e in cmp["expiries"]
-                ],
-            })
+        panels, skipped = await ops.lv_panels(api, names, fit_mode, t_interp)
         structured = {"kind": "lv_compare", "fitMode": fit_mode, "tInterp": t_interp,
-                      "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                      "tickers": panels, "skipped": skipped}
-        lines = []
-        for p in panels:
-            lines.append(f"{p['ticker']}: affine {'present' if p['hasAffine'] else 'MISSING'}"
-                         f"{' (stale)' if p['affineStale'] else ''}, twin repairs "
-                         f"{'none' if p['twinRepairs'].get('clean') else p['twinRepairs']}")
-            lines.append(md_table(p["expiries"], ["expiry", "t", "affineRmsBp", "twinRmsBp", "parametricRmsBp", "roundTripBp"]))
-        for s in skipped:
-            lines.append(f"{s['ticker']}: skipped — {s['reason']}")
+                      "generatedAt": ops.now_iso(), "tickers": panels, "skipped": skipped}
+        lines = ops.lv_panels_text(panels, skipped)
         if not panels:
             lines.append("Nothing to chart: no ticker has a Local-Vol compare (calibrate with Local-Vol on first).")
         elif not client_supports_apps(ctx):
