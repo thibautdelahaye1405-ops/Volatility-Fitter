@@ -224,9 +224,9 @@ The objective `½‖r(θ)‖²` is minimised subject to box bounds by one of:
 
 The legacy solver. Builds the **dense** `(M_resid × m)` Jacobian each evaluation and
 does a **dense SVD** in the bounded trust-region subproblem. `x_scale='jac'` and 1e-8
-tolerances (Stage 1). Robust for non-smooth objectives (the bid-ask/haircut band
-hinge) and for the free-left-slope var-swap fits. Used today for: band/haircut fits,
-var-swap fits, the banded-march fallback, and as the GN fallback.
+tolerances (Stage 1). Robust for the free-left-slope var-swap fits. Used today for:
+var-swap fits, the robust IRLS re-solves, the banded-march fallback, and as the GN
+fallback — the bid-ask / haircut band objective moved to GN on 2026-09-09 (§5.3).
 
 ### 5.2 GN — matrix-free Gauss-Newton (`affine_gn.py`, the DEFAULT)
 
@@ -264,6 +264,61 @@ eval) × (eval count). Levers attack one factor each; the wins compound.
 ### 6.1 Stage 0 — instrumentation
 `AffineFitDiagnostics` (counts, optimizer counters, wall-time split) on the result,
 never fed back. `solve_affine_dupire(timing=)`. Pure side metadata; golden byte-identical.
+
+### 5.3 The active-set step (2026-09-09) — GN on the band objectives
+
+The projected LM step used to be one lsmr solve followed by a clip onto the variance
+box, with the linear model scored along the CLIPPED step it never solved for. Traced on
+the Bloomberg SPY haircut fit: at iteration 2 the model predicted −3608 while the true
+cost fell by 1419 — rejected; 59 of 119 steps went that way, each a wasted PDE solve.
+The band objectives added a second discontinuity: the hinge rows are zero inside the
+band, so the model was blind to every quote about to cross an edge (SPY weekly bid-ask:
+30–250 crossings per step, predicted +516 vs actual −87). Both are active-set effects
+and `affine_activeset.active_set_step` handles both without an extra PDE solve: the
+step is refined by cheap lsmr re-solves (two passes, warm-started) until its active set
+is self-consistent — clipped components pinned at their bound and the free part
+re-solved; hinge rows re-linearised on the side the linearised prices land on (a quote
+predicted to leave the band gets its signed distance to that edge as residual, one
+predicted to enter a zero row) — and the predicted reduction is read from that same
+piecewise model (the exact hinge on the linearised prices). A trial is accepted when
+the true cost drops; the actual-vs-predicted ratio drives a three-band damping rule
+(÷3 above 0.75, ×2 below 0.25, unchanged between — Nielsen's continuous shrink
+loosened the damping after every decent step and settled the crawl into a
+one-accept-one-reject cycle). A wide multiplicative safety box (vol ×2 per step)
+stops the first cold steps from flinging weakly identified wing vertices to the cap
+(step norms of 10–12 in variance from a 0.04 seed; a tight adaptive box was tried and
+rejected — it clipped dozens of vertices per step and the passes never settled; so was
+a Coleman–Li interior scaling of the columns — slower everywhere and MORE vertices on
+the cap). The band block rides a shared-block operator (`affine_operator.
+LinearizedJacobian.row_scales`): violation and anchor rows are two row scalings of the
+same price sensitivities, applied once per matvec — the dense matvec streamed a 3 MB
+block from memory and was the whole lsmr cost. The stall rule counts a total-cost
+improvement as progress too (a band fit warm-started from a mid surface sits at its
+data minimum from the outset). **The mid target keeps the shipped loop** (§5.2,
+byte-identical): the same active-set loop on the mid target is 2–2.5× faster and
+reaches a lower objective, but on the synthetic chain it lifts the 1-year row's
+far-wing plateau (max local vol 0.31 → 0.42) and that plateau reprices 3.0 bp on the
+refined operator against 1.4 — a change of the shipped mid surface, so it is a
+benchmark-pack adjudication candidate (the `mid` rows below), not a flip. Result on
+the desk fixtures (haircut / 20 nodes / convex wing, cold; `mid` rows = the candidate):
+
+| case | target | TRF wall / evals | GN wall / evals | to-target rms (TRF → GN) | converged rms (TRF → GN) |
+|---|---|---|---|---|---|
+| SPY weekly | haircut | 13.3 s / 48 | 4.4 s / 35 | 8.37 → 8.29 bp | 9.1 → 9.4 bp |
+| SPY weekly | bid-ask | 14.2 s / 55 | 4.6 s / 45 | 6.06 → 6.03 | 6.8 → 6.9 |
+| SPY weekly | mid | 18.6 s / 75 | 7.3 s / 33 | 8.43 → 8.45 | 9.2 → 10.3 |
+| Bloomberg SPY | haircut | 9.0 s / 54 | 3.7 s / 43 | 2.22 → 2.21 | 5.2 → 5.3 |
+| Bloomberg SPY | bid-ask | 10.9 s / 74 | 4.5 s / 68 | 0.55 → 0.56 | 2.6 → 2.3 |
+| Bloomberg SPY | mid | 9.4 s / 57 | 3.3 s / 48 | 2.24 → 2.22 | 5.4 → 4.8 |
+| Bloomberg NVDA | haircut | 5.0 s / 44 | 1.6 s / 32 | 7.12 → 7.10 | 9.5 → 9.0 |
+| Bloomberg NVDA | bid-ask | 5.9 s / 42 | 1.4 s / 30 | 1.03 → 0.95 | 1.7 → 1.5 |
+| Bloomberg NVDA | mid | 5.6 s / 44 | 1.4 s / 29 | 11.89 → 11.85 | 13.7 → 13.7 |
+
+GN's objective is lower than TRF's in most cells (a different local optimum, the
+better one); `trf` stays byte-identical. Locks: `test_affine_gn.py` (the clipped step's
+prediction is exact on a linear problem, the band model reproduces the band residual
+and flips exactly the crossing rows, the shared-block operator matches its dense
+form, GN lands the TRF band cost on the golden case with every quote in band).
 
 ### 6.2 Stage 1 — solver scaling & tolerances
 `x_scale='jac'` + tolerances 1e-12 → 1e-8 on the TRF path. The fit is governed by quote
@@ -401,7 +456,7 @@ once the march is cheap) helps.
 | **Stage 3 — coarse calibration grid** | ❌ reverted | Coarsening the PDE grid biased θ by 0.08–0.47 in variance (up to ~26 vol-pts/node, ≫ tolerance), SPY went nan. The local-vol surface *is* the product output; the publication re-solve can't fix a θ the optimizer biased into the coarse-grid discretisation error. |
 | **Stage 6 — first Numba attempt** | ❌ ~1.2×, rebuilt | A column-OUTER scalar Thomas couldn't beat LAPACK's vectorised multi-RHS solve, and its dense `nu` loop lost to BLAS. The *loop order* was the whole problem — fixed in Stage 6′ (column-inner SIMD), which got 6.5×. |
 | **Stage 7 — Rannacher (CN) time stepping** | ⚠️ ~1.1×, default OFF → **SUPERSEDED by the LV operator arc (2026-09-08, §6.12)** | 2nd-order CN (validated 21× more accurate than implicit at dt=0.02) cut N_t 2.7×, but the **CN sensitivity step is ~2× costlier per step** (an explicit-half operator on the previous sensitivities + dual-level sources), ~cancelling the win, and the N_t-independent assembly+optimizer dilute the rest → ~1.12× net. CN is also **not monotone** (no M-matrix) and broke arbitrage-freedom on a coarse-x grid. The arc drew the conclusion the finding pointed at: a second-order scheme whose sensitivity step keeps the implicit kernel's single source — **BDF2** (L-stable, ε = 0) **on the graded time grid is the default**; the compiled march (`affine_march2`) now covers CN and BDF2, and Rannacher stays a tested opt-in (`timeScheme`) on the same graded grid. |
-| **GN for band/haircut fits** | falls back to TRF | The bid-ask/haircut objective is **non-smooth** (zero gradient inside the band), fragile for GN's smooth LM (it returns the mid surface — a valid but solver-specific in-band solution); TRF's trust region is robust there. |
+| **GN for band/haircut fits** | ✅ SHIPPED 2026-09-09 (§5.3) | The first attempt failed because the projected step was scored along a clipped step it never solved for and the hinge rows were blind to crossings — an active-set problem, not a smoothness one. The active-set step (box pins + hinge re-linearisation, exact piecewise prediction, accept-on-decrease) runs the band objective 2.5–4× faster than TRF at the same target fit. |
 | **`tr_solver='lsmr'` inside trf** | ❌ diverges | Unpreconditioned LSMR inside scipy's trust-region hit the eval cap. The fix was a *purpose-built preconditioned GN* (Stage 5), a different animal. |
 | **Thread / process parallelism** | ❌ GIL / Windows | Intra-fit thread-parallel is GIL-negative (the scipy/PDE loops hold the GIL); process pools are Windows-spawn-hostile and risky for the live backend. A `nogil` Numba march now exists, so across-ticker threads are a viable *future* item. |
 | **Stage 5 — GN, first verdict** | reversed | "Removing the SVD made fits slower" was true *only while the march dominated*. Once the march is 6.5× cheaper, the SVD (52%) becomes the thing to avoid — and GN became the default. A caution about trusting synthetic-only perf claims: the clean rail (zero-residual, in-bounds) hid GN's real-data eval-count cost. |
@@ -439,8 +494,8 @@ cold fits. These are *incremental* (~10–30%), not order-of-magnitude:
 - the future **non-tensor "bowtie" grid** (per-maturity delta point cloud + the note's
   adjoint gradient, O(1) in vertex count) — where m ≳ 1000 and the SVD *genuinely*
   dominates, the originally-imagined Stage-5 regime;
-- a **smoothed band objective** so GN can cover bid-ask/haircut fits too (they keep TRF
-  + its SVD today) — a research item, not incremental.
+- ~~a **smoothed band objective** so GN can cover bid-ask/haircut fits too~~ — done
+  without smoothing: the active-set step of §5.3 (2026-09-09).
 
 The order-of-magnitude wins (compiled march, SVD-avoidance, early-stop) are spent.
 So is the operator-accuracy lever (2026-09-08, §6.12): the time-step count and the

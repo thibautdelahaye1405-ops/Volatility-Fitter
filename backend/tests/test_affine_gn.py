@@ -8,7 +8,18 @@ Three layers of gate:
     (objective + nodal θ within tol) as the dense TRF path on the golden 3×7 case
     and a heavy ~525-vertex case, in no more PDE evaluations;
   * robustness: a bound-binding case stays inside the box with a populated
-    active mask, and a forced GN breakdown falls back to dense TRF cleanly.
+    active mask, and a forced GN breakdown falls back to dense TRF cleanly;
+  * the active-set step (2026-09-09, affine_activeset): on a LINEAR residual
+    with a binding box the step it returns is feasible and its predicted
+    residual is the exact residual at the step (the clipped-step blindness
+    that rejected half the old solver's steps is gone); the band step model
+    reproduces the band objective's residual at the linearised prices and its
+    re-linearisation flips exactly the crossing rows; the shared-block band
+    operator (LinearizedJacobian.row_scales / extra) matches its dense
+    materialisation on Jv, Jᵀw, the column scale and to_dense;
+  * the band objective end-to-end: on the golden case with ±3 % price bands,
+    GN converges (no TRF fallback), lands the TRF cost within tolerance, and
+    every quote ends inside its band.
 """
 
 import numpy as np
@@ -20,6 +31,12 @@ from volfit.models.localvol import (
     VarSwapQuote,
     calibrate_affine,
     solve_affine_dupire,
+)
+from volfit.calib.band import band_violation
+from volfit.models.localvol.affine_activeset import (
+    BandStepModel,
+    LinearStepModel,
+    active_set_step,
 )
 from volfit.models.localvol.affine_gn import LinearizedJacobian
 
@@ -314,3 +331,121 @@ def test_gn_early_stop_cuts_evals_without_fallback():
     # the early-stop fits the quotes about as well as the full GN run (the tail evals
     # it skipped barely move the data fit; the unconstrained wing nodes may drift more)
     assert early.rms_price_error <= 1.3 * full.rms_price_error + 1e-6
+
+
+# =========================================================================
+# 4. The active-set step (2026-09-09) and the band step model
+# =========================================================================
+def test_active_set_step_prediction_exact_on_linear_problem_with_binding_box():
+    """r(p) = A p − b is linear, so the model residual the step reports must
+    equal the true residual at p + Δ — INCLUDING when the box clips half the
+    components (the old projected step scored the clipped step it never solved
+    for and rejected it). The step is feasible and reduces the cost."""
+    rng = np.random.default_rng(21)
+    m, n = 40, 12
+    A = rng.standard_normal((m, n))
+    b = rng.standard_normal(m) * 3.0
+    p0 = np.zeros(n)
+    lo, hi = np.full(n, -0.15), np.full(n, 0.15)  # a tight box: the LS solution is far outside
+    cur = (A @ p0 - b, A)
+    lin = LinearizedJacobian(A)
+    step, r_pred, info = active_set_step(cur, lin, p0, lo, hi, 1e-6, 1e-12, LinearStepModel())
+    assert step is not None and info["passes"] >= 2  # the box bit, the free part was re-solved
+    assert np.all(p0 + step >= lo - 1e-12) and np.all(p0 + step <= hi + 1e-12)
+    assert np.count_nonzero(np.isclose(np.abs(step), 0.15)) >= 1  # something is pinned
+    np.testing.assert_allclose(r_pred, A @ (p0 + step) - b, rtol=1e-10, atol=1e-10)
+    assert 0.5 * float(r_pred @ r_pred) < 0.5 * float(cur[0] @ cur[0])  # a descent step
+
+
+def _band_case():
+    rng = np.random.default_rng(4)
+    n, m = 9, 5
+    jp = rng.standard_normal((n, m))
+    p = 1.0 + 0.1 * rng.standard_normal(n)
+    mid = p + 0.05 * rng.standard_normal(n)
+    lo, hi = mid - 0.03, mid + 0.03
+    lo[2] = hi[2] = mid[2]  # a collapsed band (haircut wider than the half-spread)
+    eta = np.full(n, 0.02)
+    sqrt_anchor = np.sqrt(0.05)
+    res = np.concatenate([band_violation(p, lo, hi) / eta, sqrt_anchor * (p - mid) / eta])
+    scales = (np.where(p > hi, 1.0, 0.0) - np.where(p < lo, 1.0, 0.0)) / eta, np.full(n, sqrt_anchor) / eta
+    lin = LinearizedJacobian(jp, None, row_scales=scales)
+    cur = (res, lin, None, p, None, jp)
+    return BandStepModel(eta=eta, p_lo=lo, p_hi=hi), cur, lin, jp, p, mid, lo, hi, eta, sqrt_anchor
+
+
+def test_band_step_model_predicts_the_band_residual_at_linearised_prices():
+    model, cur, lin, jp, p, mid, lo, hi, eta, sa = _band_case()
+    rng = np.random.default_rng(8)
+    step = 0.02 * rng.standard_normal(jp.shape[1])
+    p_lin = p + jp @ step
+    expect = np.concatenate([band_violation(p_lin, lo, hi) / eta, sa * (p_lin - mid) / eta])
+    np.testing.assert_allclose(model.predict(cur, lin, step), expect, rtol=1e-12, atol=1e-12)
+    # A zero step is the current residual, and its status is the current one.
+    np.testing.assert_allclose(model.predict(cur, lin, np.zeros(jp.shape[1])), cur[0], atol=1e-14)
+    assert np.array_equal(model.status(cur, None), model.status(cur, np.zeros(jp.shape[1])))
+
+
+def test_band_step_model_relinearises_on_the_predicted_side():
+    """A status that moves a quote to the far side of its band gets that
+    quote's SIGNED distance to that edge as residual (negative while it is
+    still inside) and ± its price row as Jacobian; the anchor rows never
+    change; the collapsed row keeps its fixed label."""
+    model, cur, lin, jp, p, mid, lo, hi, eta, sa = _band_case()
+    status = model.status(cur, None)
+    assert status[2] == 1.0  # the collapsed band's fixed label
+    inside = np.flatnonzero(status == 0.0)
+    assert inside.size > 0
+    i = int(inside[0])
+    flipped = status.copy()
+    flipped[i] = 1.0  # predicted to leave through the top edge
+    r_eff, lin_eff = model.linearize(cur, lin, flipped)
+    n = model.n
+    assert r_eff[i] == (p[i] - hi[i]) / eta[i] and r_eff[i] < 0.0
+    np.testing.assert_allclose(r_eff[n:], cur[0][n:])  # anchor rows untouched
+    dense = lin_eff.to_dense()
+    np.testing.assert_allclose(dense[i], jp[i] / eta[i])
+    np.testing.assert_allclose(dense[n:], lin.to_dense()[n:])  # anchor block identical
+    # The unchanged status hands back the current linearisation itself.
+    r_same, lin_same = model.linearize(cur, lin, status)
+    assert r_same is cur[0] and lin_same is lin
+
+
+def test_shared_block_operator_matches_its_dense_materialisation():
+    rng = np.random.default_rng(12)
+    n, m, k = 7, 5, 3
+    jp = rng.standard_normal((n, m))
+    extra = rng.standard_normal((k, m))
+    from scipy import sparse
+    reg = sparse.csr_matrix(rng.standard_normal((4, m)) * (rng.random((4, m)) > 0.5))
+    s1, s2 = rng.standard_normal(n), rng.standard_normal(n)
+    shared = LinearizedJacobian(jp, reg, row_scales=(s1, s2), extra=extra)
+    dense = np.vstack([s1[:, None] * jp, s2[:, None] * jp, extra, reg.toarray()])
+    plain = LinearizedJacobian(dense)
+    assert shared.shape == dense.shape and shared.n_data == 2 * n + k
+    np.testing.assert_allclose(shared.to_dense(), dense)
+    v = rng.standard_normal(m)
+    w = rng.standard_normal(dense.shape[0])
+    np.testing.assert_allclose(shared.apply_jacobian(v), dense @ v, rtol=1e-12)
+    np.testing.assert_allclose(shared.apply_jacobian_transpose(w), dense.T @ w, rtol=1e-12)
+    np.testing.assert_allclose(shared.column_scale(), plain.column_scale(), rtol=1e-12)
+
+
+def test_gn_band_objective_matches_trf_on_golden():
+    """The bid-ask / haircut objective on the GN path (2026-09-09): GN
+    converges on its own, lands the TRF cost, and every quote sits inside
+    its ±3 % price band — the band target is met, not merely approached."""
+    flat, options, _ = _golden_inputs()
+    banded = [
+        OptionQuote(t=o.t, x=o.x, price=o.price, tol=o.tol, price_lo=0.97 * o.price, price_hi=1.03 * o.price)
+        for o in options
+    ]
+    kw = dict(reg_lambda=50.0, bounds=(0.005, 0.20))
+    trf = calibrate_affine(flat, banded, X_GRID, T_GRID, **kw)
+    gn = calibrate_affine(flat, banded, X_GRID, T_GRID, gn=True, **kw)
+    assert gn.message.startswith("matrix-free")  # GN, not the fallback
+    assert gn.cost <= trf.cost * 1.02 + 1e-9
+    lo = np.array([o.price_lo for o in banded])
+    hi = np.array([o.price_hi for o in banded])
+    assert np.all(gn.option_prices >= lo * (1 - 1e-9)) and np.all(gn.option_prices <= hi * (1 + 1e-9))
+

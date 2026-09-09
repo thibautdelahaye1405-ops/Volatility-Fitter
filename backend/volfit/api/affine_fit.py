@@ -172,9 +172,17 @@ _STALL_RTOL = 5e-3
 #: gets a MORE CONSERVATIVE early-stop (larger window, smaller rtol) to keep the
 #: surface close to trf; the inner lsmr is loosened to 1e-6 (the cheap Numba march
 #: makes extra outer evals affordable, and 1e-10 over-solves while 1e-4 misfires).
+#: These govern the shipped MID-target loop (byte-identical since 2026-06-20).
 _GN_STALL_WINDOW = 18
 _GN_STALL_RTOL = 3e-3
 _GN_LSMR_TOL = 1e-6
+#: The bid-ask / haircut targets ride GN's ACTIVE-SET loop (2026-09-09,
+#: affine_activeset), whose trajectory is monotone in cost like trf's — a trial
+#: is accepted when the true cost drops, the model scores the step it takes — so
+#: it shares trf's early-stop window; its inner lsmr runs at 1e-5 (1e-6 spent
+#: ~40 % of the SPY wall in matvecs for no measurable gain on the fixtures).
+_GN_BAND_STALL_WINDOW = 12
+_GN_BAND_LSMR_TOL = 1e-5
 
 
 def _lv_bounds(rows, opts, var_lo_req: float, var_hi_req: float) -> tuple[float, float]:
@@ -1329,27 +1337,29 @@ def _fit(
 
     engine = "numba" if (opts.lvFastKernel and numba_available()) else "banded"
     # Stage 5 (revisited): matrix-free Gauss-Newton avoids trf's dense SVD — now that
-    # the Numba march makes each eval cheap, GN's no-SVD evals win ~1.3-1.65x. Opt-in
-    # (var-swap fits keep trf — GN doesn't carry the free-left-slope column). GN gets a
-    # more conservative early-stop + a looser lsmr (hardened on the benchmark).
-    # GN engages only for the smooth MID objective with the Numba march active (its
-    # win depends on the cheap eval). The bid-ask / haircut band objective is
-    # non-smooth (zero gradient inside the band) — fragile for GN's smooth LM — so those
-    # keep trf's robust trust region, as do var-swap fits and the banded-march fallback.
-    # The robust IRLS re-solves (FitSettings.robustLoss, affine_robust) keep trf too.
+    # the Numba march makes each eval cheap, GN's no-SVD evals win. The DEFAULT
+    # (var-swap fits keep trf — GN doesn't carry the free-left-slope column). GN
+    # engages with the Numba march active (its win depends on the cheap eval) for
+    # the mid AND the bid-ask / haircut targets: since the active-set step
+    # (2026-09-09, affine_activeset) the band hinge is part of the step model, and
+    # a haircut / bid-ask fit runs 2.5–4× faster than trf at the same target fit.
+    # The robust IRLS re-solves (FitSettings.robustLoss, affine_robust) keep trf,
+    # as does the banded-march fallback.
     robust_loss = state.fit_settings().robustLoss
     gn = (
         opts.lvSolver == "gn"
         and not fit_left_a
         and engine == "numba"
-        and request.fitMode == "mid"
         and robust_loss == "off"
     )
     robust = (
         dict(robust_loss=robust_loss, robust_f_scale=state.fit_settings().robustFScale)
         if robust_loss != "off" else None
     )
-    if gn:
+    if gn and request.fitMode != "mid":  # the active-set band loop
+        stall_window = _GN_BAND_STALL_WINDOW if opts.lvEarlyStop else 0
+        stall_rtol, gn_lsmr_tol = _GN_STALL_RTOL, _GN_BAND_LSMR_TOL
+    elif gn:
         stall_window = _GN_STALL_WINDOW if opts.lvEarlyStop else 0
         stall_rtol, gn_lsmr_tol = _GN_STALL_RTOL, _GN_LSMR_TOL
     else:

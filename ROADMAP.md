@@ -1583,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-09a (resume here)
+## STATUS — updated 2026-09-09b (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1687,9 +1687,25 @@ below) — every recorded rider is closed except the ones listed here:
    source_pde`) still steps backward with implicit Euler on the graded time
    grid; the Compare tab's twin keeps its own Rannacher dt/8 dx/4 display
    operator (its floor is unchanged); `affine.py` is 806 lines (the solver
-   loop could move out); under the user's haircut + 20-node options the
+   loop could move out); ~~under the user's haircut + 20-node options the
    dailies fit is TRF-SVD-bound (11.9 s at 359 nodes) — the graded lattice
-   is not the lever there, the solver is.
+   is not the lever there, the solver is~~ **CLOSED 2026-09-09b** (wrap
+   below): the band / haircut targets run the matrix-free GN with its new
+   active-set step — 2.5–4× over TRF on the desk fixtures at the same fit.
+13. LV GN ACTIVE-SET riders (wrap 2026-09-09b below; none are gates): the
+   ACTIVE-SET LOOP ON THE MID TARGET is a benchmark-pack adjudication
+   candidate (`gauss_newton(model=LinearStepModel())` — 2–2.5× faster than
+   the shipped mid loop, a lower objective on every fixture, converged rms
+   mixed within 1.1 bp on the real ones, but the synthetic 1-year row's
+   far-wing plateau reprices 3.0 bp against 1.4 — the shipped mid loop stays
+   byte-identical until the pack rules); the var-swap fits (the free
+   left-slope column, `fit_left_a`) and the robust IRLS re-solves still run
+   TRF — the GN operator would need the extra column and the IRLS weights
+   threaded; float32 matvecs inside lsmr
+   would halve the remaining per-iteration cost (memory-bound gemv) if a
+   larger surface ever needs it; the bench script lives in the scratchpad
+   only — a `lv_benchmark.py --fit-mode` flag would make the desk options
+   (haircut / 20 / convexWing) a one-liner.
 12. QUOTE-WEIGHTING riders (wrap 2026-09-09a below; none are gates): the
    `equal` → `uniform_density` DEFAULT flip is a benchmark-pack adjudication
    (item 1 above — `equal` stays the default by the standing rule); the
@@ -1709,6 +1725,82 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-09b) — LV SOLVER: THE MATRIX-FREE GN RUNS THE BID-ASK / HAIRCUT TARGETS — AN ACTIVE-SET STEP, ACCEPT-ON-DECREASE, A SHARED-BLOCK BAND OPERATOR; 2.5–4× OVER TRF AT THE SAME FIT
+
+User: "Do the LV solver with band and haircut target" (the STATUS item 11
+rider: under the desk's haircut + 20-node options the LV fit was TRF-SVD-
+bound — the band objective was gated to the legacy trust-region solver).
+
+- **The finding.** The gate's stated reason ("non-smooth, fragile for GN's
+  smooth LM") was wrong on both counts. The squared hinge is C¹; what broke
+  GN was its own step: one lsmr solve, THEN a clip onto the variance box,
+  with the linear model scored along the clipped step it never solved for.
+  Traced on the Bloomberg SPY haircut fit: iteration 2 predicted −3608 while
+  the true cost fell by 1419 — rejected; 59 of 119 steps went that way, each
+  a wasted PDE solve. The band objective added a second blind spot: its
+  hinge rows are zero inside the band, so the model ignored every quote
+  about to cross an edge (SPY weekly bid-ask: 30–250 crossings per step,
+  predicted +516 vs actual −87). Two false leads on the way, recorded so
+  they are not re-run: the convex-wing hinge (off → worse, 280 evals), and
+  a tight adaptive trust box (1.5 → 1.01: it clipped dozens of vertices per
+  step, the passes never settled, every rejected step carried a negative
+  prediction — TRF takes the same-sized steps and simply accepts them).
+- **What shipped.** `models/localvol/affine_activeset.py` — `StepModel`
+  (status / linearize / predict), `LinearStepModel` (the smooth objective,
+  used by the tests and the mid-target candidate), `BandStepModel`
+  (violation rows on the predicted side: signed distance to that edge as
+  residual, ± the price row as Jacobian; the collapsed haircut band keeps a
+  fixed label — both sides are the same row), `active_set_step` (two
+  warm-started lsmr passes: clipped components pinned, hinge rows flipped,
+  the predicted residual = the exact hinge on the linearised prices; a wide
+  ×4 variance safety box against the cold first steps' 10–12 step norms);
+  `affine_gn.gauss_newton` — TWO loops in one: `model=None` is the shipped
+  mid loop, byte-identical (projected step, Nielsen, data-only stall);
+  `model=BandStepModel` the active-set loop — accepts a trial when the true
+  cost drops, three-band damping (÷3 above ρ 0.75, ×2 below 0.25, unchanged
+  between — Nielsen's continuous shrink settled the crawl into a one-accept-
+  one-reject cycle), the stall rule counts a total-cost improvement as
+  progress (a band fit warm-started from a mid surface sat at its data
+  minimum and returned the mid surface unchanged); `trace=` diagnostics;
+  `affine_operator.py` — `LinearizedJacobian` moved out (file-size policy;
+  re-exported) with `row_scales` / `extra`: the band block is two row
+  scalings of the same `jp`, applied once per matvec (the dense matvec
+  streamed a 3 MB block and WAS the lsmr cost); `affine_calib` — `evaluate`
+  carries `jp`, the band block joins the sparse-reg GN operator, the band
+  Jacobian is never materialised on that path; `affine_fit` — the fit-mode
+  gate is gone, the band loop gets trf's stall window 12 and lsmr 1e-5 (the
+  mid loop keeps 18 / 1e-6); schema / help doc / What's new / methodology
+  §5.3 + the shelved table + perf roadmap. `lvSolver = "trf"` and the mid
+  GN path stay byte-identical (the mid rows of the numbers below are the
+  ADJUDICATION CANDIDATE, not the shipped path; a Coleman–Li interior
+  column scaling was also tried for the cap-riding and dropped — slower,
+  more vertices on the cap).
+- **Numbers** (cold, haircut / gridXNodes 20 / convexWing; `lv_benchmark`
+  fixtures; TRF → GN): SPY weekly haircut 13.3 s / 48 ev → 4.4 s / 35, rms
+  to target 8.37 → 8.29 bp, converged 9.1 → 9.4; bid-ask 14.2 → 4.6 s, 6.06
+  → 6.03, 6.8 → 6.9; mid 18.6 → 7.3 s, 8.43 → 8.45, 9.2 → 10.3. Bloomberg
+  SPY haircut 9.0 → 3.7 s, 2.22 → 2.21, 5.2 → 5.3; bid-ask 10.9 → 4.5 s,
+  0.55 → 0.56, 2.6 → 2.3; mid 9.4 → 3.3 s, 2.24 → 2.22, 5.4 → 4.8. NVDA
+  haircut 5.0 → 1.6 s, 7.12 → 7.10, 9.5 → 9.0; bid-ask 5.9 → 1.4 s, 1.03 →
+  0.95, 1.7 → 1.5; mid 5.6 → 1.4 s, 11.89 → 11.85, 13.7 → 13.7. GN's
+  objective is LOWER than TRF's in most cells. The shipped mid GN loop on
+  the same fixtures (unchanged): SPY weekly 9.77 bp to target / 14.4
+  converged at 135 evals, Bloomberg SPY 3.28 / 5.0 at 139, NVDA 12.04 / 13.7
+  at 43. Default `lv_benchmark` (mid, unchanged path): SPY 2.4 bp surface /
+  3.8 converged at 43 evals, NVDA 12.3 / 13.7 at 22, both arbitrage-free.
+- **Locks.** `test_affine_gn.py` +5: the active-set step's prediction is
+  exact on a linear problem with a binding box (and feasible, and a
+  descent step), the band model predicts the band residual at the
+  linearised prices, its re-linearisation flips exactly the crossing rows
+  (anchor rows untouched, the collapsed label fixed, the unchanged status
+  hands back the current operator), the shared-block operator matches its
+  dense form (Jv, Jᵀw, column scale, to_dense), GN lands the TRF band cost
+  on the golden ±3 % bands with every quote in band; `test_api_affine`'s
+  band-mode locks pass on GN (they caught the warm-start stall);
+  `test_lv_reprice` / `test_lv_density_penalty` (mid, synthetic) caught the
+  mid-target plateau and hold the shipped mid loop byte-identical.
+- **Riders** → STATUS item 13.
 
 ### 🧭 SESSION WRAP (2026-09-09a) — QUOTE WEIGHTING: THE STRIP DRAWS THE TARGET BESIDE THE WEIGHT, ON THE SMILE'S OWN AXIS; A UNIFORM TARGET SCHEME
 

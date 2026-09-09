@@ -692,14 +692,15 @@ class OptionsSettings(BaseModel):
     lvFastKernel: bool = True
     #: LV calibration solver (Stage 5, revisited). "gn" (the DEFAULT) = the matrix-free
     #: Gauss-Newton (volfit.models.localvol.affine_gn) — it AVOIDS trf's dense SVD
-    #: (~52% of an eval), which pays now that the Numba march makes each eval cheap:
-    #: ~1.3-1.65x faster than trf. "trf" = scipy trust-region (the legacy solver).
-    #: Trade-off accepted at the default: GN converges to a slightly DIFFERENT local
-    #: optimum on stiff real data, so its surface can differ by up to ~0.25 vol-bp
-    #: (often better). GN engages only for the smooth MID fit target with the Numba
-    #: kernel active (``lvFastKernel``); it falls back to trf otherwise — for the
-    #: non-smooth bid-ask/haircut band objective, var-swap fits, or the banded march.
-    #: LV-only (in affine_key).
+    #: (~52% of an eval), which pays now that the Numba march makes each eval cheap.
+    #: "trf" = scipy trust-region (the legacy solver). Since the active-set step
+    #: (2026-09-09) GN covers the mid AND the bid-ask / haircut fit targets — the band
+    #: hinge is part of its active-set step model — and a band fit runs 2.5–4× faster
+    #: than trf on the desk fixtures at the same target fit; the mid target keeps the
+    #: loop shipped 2026-06-20 (~1.3-1.65× over trf, surface within ~0.25 vol-bp).
+    #: It still falls back to trf for var-swap fits, the robust IRLS re-solves and
+    #: the banded march (``lvFastKernel`` off). GN lands a slightly DIFFERENT local
+    #: optimum on stiff real data (often the better one). LV-only (in affine_key).
     lvSolver: Literal["trf", "gn"] = "gn"
     #: Left-wing (x < x_min) LINEAR extrapolation slope as a multiple of the first
     #: cell's slope (between the two lowest vertices) — the deep-put local variance

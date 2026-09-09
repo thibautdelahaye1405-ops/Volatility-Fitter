@@ -172,10 +172,14 @@ at the heavy grid.
   on its own as a correctness improvement.
 
 ### Stage 5 — Matrix-free Gauss–Newton  ✅ REVISITED & SHIPPED as the DEFAULT (2026-06-20) after Stage 6′
-*(Default `lvSolver="gn"`, gated to the smooth MID fit target + Numba march; band/
-haircut/var-swap fits keep trf. The user accepted the ~0.25 bp surface difference for
-the ~1.3–1.65× speed. The write-up below says "opt-in" — that was the initial ship; it
-was promoted to default the same day.)*
+*(Default `lvSolver="gn"` for the mid AND the bid-ask / haircut targets since
+2026-09-09: the mid target on the loop below (byte-identical), the band targets on
+the active-set loop (methodology §5.3: box pins + hinge re-linearisation, exact
+piecewise prediction, accept-on-decrease, the shared-block band operator — 2.5–4×
+over trf on the desk fixtures at the same target fit); var-swap fits, the robust
+re-solves and the banded march keep trf. The write-up below says "opt-in" — that was
+the initial ship; it was promoted to default the same day, and its band gate fell on
+2026-09-09.)*
 **First verdict (non-viable) was REVERSED once the march got cheap.** Originally GN
 lost to TRF because it needs ~1.7× more evals AND its tight lsmr made each eval
 costlier — when the march dominated. But Stage 6′ showed the per-eval split is

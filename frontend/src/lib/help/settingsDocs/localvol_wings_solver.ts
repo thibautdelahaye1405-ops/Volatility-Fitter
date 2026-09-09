@@ -252,16 +252,22 @@ export const LV_WINGS_SOLVER_DOCS: SettingDoc[] = [
     summary: "LV calibration solver: matrix-free Gauss-Newton (default) or scipy trust-region (legacy).",
     details:
       "`gn` avoids TRF's dense SVD — ~52% of an eval once the compiled march made the rest " +
-      "cheap — and runs ~1.3–1.65× faster. It engages only for the smooth Mid fit target " +
-      "with `lvFastKernel` on, and falls back to TRF for the non-smooth Bid-Ask / Haircut " +
-      "band objective, var-swap fits, or the banded march.\n\n" +
-      "Accepted trade-off at the default: GN converges to a slightly different local optimum " +
-      "on stiff real data, up to ~0.25 vol bp (often better). Its first verdict was " +
-      "non-viable; it was reversed once the march became cheap.",
+      "cheap. Since 2026-09-09 it runs every fit target with `lvFastKernel` on: Mid on the loop " +
+      "shipped in June (~1.3–1.65× over TRF), Bid-Ask and Haircut on an active-set loop in which " +
+      "each step is refined so the variance box and the band edges it will meet are part of the " +
+      "step it takes, and a step is accepted whenever the true objective falls. On the desk " +
+      "fixtures (SPY weeklies, Bloomberg SPY and NVDA, haircut / 20 nodes / convex wing) a band " +
+      "Local Vol calibration is 2.5–4× faster than under `trf` at the same target fit. It still " +
+      "falls back to TRF for var-swap fits, the robust re-solves and the banded march.\n\n" +
+      "Accepted trade-off at the default: GN lands a slightly different local optimum on stiff " +
+      "real data (Mid: within ~0.25 vol bp of TRF; band: usually a lower objective than TRF's, " +
+      "converged-operator error within ~1 bp). Its first verdict was non-viable; it was reversed " +
+      "once the march became cheap, and its band gate fell when the step became active-set aware.",
     example:
-      "Pick `trf` with fit target Mid on SPY: the cold fit takes ~1.5× longer and the surface " +
-      "differs by ≤ 0.25 bp. Pick `gn` while the fit target is Bid-Ask and nothing changes — " +
-      "the band objective routes to TRF anyway.",
+      "Pick `trf` with fit target Haircut on a SPY ladder with dailies: the cold Local Vol fit " +
+      "takes ~3× longer and reaches a slightly higher objective. Pick `gn` and switch the fit " +
+      "target between Mid and Haircut: both calibrate on the fast solver, and a Haircut " +
+      "recalibration from the Mid surface relaxes it toward the smoother in-band solution.",
     cacheEffect: "lv-affine-key",
     surfaced: true,
     related: ["lvFastKernel", "lvEarlyStop", "help:guides:localvol"],

@@ -7,6 +7,16 @@ import type { WhatsNewEntry } from "./types";
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-09-09",
+    title: "Local Vol: the fast solver now runs the Bid-Ask and Haircut targets — a haircut calibration is 2.5–4× faster",
+    items: [
+      "The Local Vol calibration's matrix-free solver used to hand the Bid-Ask and Haircut fit targets to the legacy trust-region solver, whose dense factorisation made a haircut fit on a SPY ladder the slowest calibration in the app. Its step is now refined until the variance box and the band edges it will meet are part of the step it takes, and a step is accepted whenever the objective truly falls — so the band targets run on the fast solver too.",
+      "On the desk fixtures (SPY weeklies, Bloomberg SPY and NVDA; haircut, 20 nodes, convex wing) a cold Bid-Ask or Haircut Local Vol fit takes 1.4–4.6 s instead of 5–14 s, at the same or a better fit to the target (band error within 0.03 bp, converged-operator error within 1 bp). Mid fits are unchanged.",
+      "A Haircut or Bid-Ask recalibration that starts from a Mid surface now relaxes it toward the smoother in-band solution instead of returning it unchanged.",
+      "Options ▸ Local Vol ▸ LV solver: `trf` remains available as the legacy solver and is byte-identical to before; `gn` is the default for every fit target.",
+    ],
+  },
+  {
+    date: "2026-09-09",
     title: "Quote weighting: a Uniform target, and a weight strip that shows the target beside the weight — on the smile's own axis",
     items: [
       "Options ▸ Calibration ▸ Quote weighting gained **Uniform**: the flat target. Like the time-value, vega and delta schemes it multiplies its target shape by each quote's strike-density correction, so strikes listed every 5 points weigh like 1/K and the summed weight is uniform in log-strike whatever the exchange lists. **Equal** stays the default and is unchanged: one vote per quote, no correction, the aggregate weight follows the listing grid.",

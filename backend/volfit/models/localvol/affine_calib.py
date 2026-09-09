@@ -36,6 +36,7 @@ from scipy import sparse
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, band_violation, band_violation_sign
+from volfit.models.localvol.affine_activeset import BandStepModel
 from volfit.models.localvol.affine_gn import LinearizedJacobian, gauss_newton
 from volfit.models.localvol.affine_stall import stall_block_size, stall_metric
 from volfit.models.localvol.pde_grids import is_uniform, local_step, third_difference_weights
@@ -770,18 +771,20 @@ def calibrate_affine(
     cache: dict[bytes, tuple] = {}
     m = surface0.n_params
     # Stage 6′/#3: the GN solver consumes a matrix-free operator (dense option block +
-    # SPARSE regularisation block), so for the GN-eligible case (mid objective, no
-    # var-swap, no free left slope) the per-eval Jacobian skips the dense reg vstack
-    # and the lsmr matvec runs on the 3-nnz/row reg sparsely. The constant roughness /
-    # front-tie rows are built as CSR once. (TRF / band / var-swap keep the dense jac;
-    # a GN fall-back to TRF densifies the operator via LinearizedJacobian.to_dense.)
-    # Baskets are dense linear-functional rows (like var-swaps), so they cannot live
-    # in the sparse reg block — they force the dense-Jacobian path (GN still RUNS via
-    # the dense operator, just without the sparse-reg fast path).
+    # SPARSE regularisation block), so for the GN-eligible case (no var-swap, no free
+    # left slope) the per-eval Jacobian skips the dense reg vstack and the lsmr
+    # matvec runs on the 3-nnz/row reg sparsely. The constant roughness / front-tie
+    # rows are built as CSR once. (TRF / var-swap keep the dense jac; a GN fall-back
+    # to TRF densifies the operator via LinearizedJacobian.to_dense.) Baskets are
+    # dense linear-functional rows (like var-swaps), so they cannot live in the
+    # sparse reg block — they force the dense-Jacobian path (GN still RUNS via the
+    # dense operator, just without the sparse-reg fast path). The band objective
+    # (2026-09-09) rides the same operator: its data block is [violation | anchor]
+    # and ``step_model`` tells the solver where the hinge sits (affine_activeset).
     gn_op = (
-        gn and not band_mode and not fit_left_a and not varswaps and not baskets
-        and _GN_SPARSE_REG
+        gn and not fit_left_a and not varswaps and not baskets and _GN_SPARSE_REG
     )
+    step_model = BandStepModel(eta=eta, p_lo=p_lo, p_hi=p_hi) if band_mode else None
     l_csr = sparse.csr_matrix(sqrt_lam * l_rows) if gn_op else None
     front_csr = sparse.csr_matrix(sqrt_front * front_rows) if (gn_op and front_on) else None
     # The hat basis and active-column schedule depend only on the vertex set and
@@ -795,20 +798,26 @@ def calibrate_affine(
             return j
         return np.hstack([j, np.zeros((j.shape[0], 1))])
 
-    def _option_block(p: np.ndarray, jp: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def _option_block(p: np.ndarray, jp: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
         """Option residuals + Jacobian: mid LSQ, or the band objective.
 
         The band block stacks the vega-normalized band violation and the soft
         mid anchor (volfit.calib.band); its subgradient is 0 inside the band.
+        On the GN operator path the band Jacobian is NOT materialised (None):
+        both row blocks are row scalings of ``jp`` and the matrix-free operator
+        applies ``jp`` once (LinearizedJacobian.row_scales).
         """
         if not band_mode:
             return (p - y_mkt) / eta, jp / eta[:, None]
         viol = band_violation(p, p_lo, p_hi) / eta
         anchor = sqrt_anchor * (p - y_mkt) / eta
+        res_b = np.concatenate([viol, anchor])
+        if gn_op:
+            return res_b, None
         sign = band_violation_sign(p, p_lo, p_hi)
         j_viol = (sign / eta)[:, None] * jp
         j_anchor = sqrt_anchor * jp / eta[:, None]
-        return np.concatenate([viol, anchor]), np.vstack([j_viol, j_anchor])
+        return res_b, np.vstack([j_viol, j_anchor])
 
     def evaluate(params: np.ndarray) -> tuple:
         nonlocal n_evals, pde_value_s, pde_sens_s, assembly_s
@@ -861,7 +870,10 @@ def calibrate_affine(
         # the da-column from sens_at (like jz), so it is not _pad_a'd; jac_dens too.
         if gn_op:
             reg_blocks: list = [l_csr]
-            if res_dens.size:  # dense penalty rows join the dense data block
+            if band_mode:  # shared-block operator: jp applied once, scaled twice
+                band_scales = (band_violation_sign(p, p_lo, p_hi) / eta, sqrt_anchor / eta)
+                band_extra = jac_dens if res_dens.size else None
+            elif res_dens.size:  # dense penalty rows join the dense data block
                 jac_opt = np.vstack([jac_opt, jac_dens])
         else:
             jac = np.vstack(
@@ -899,11 +911,16 @@ def calibrate_affine(
                 jac = np.vstack([jac, _pad_a(sqrt_front * front_rows)])
         if gn_op:
             j_reg = sparse.vstack(reg_blocks, format="csr") if len(reg_blocks) > 1 else reg_blocks[0]
-            jac = LinearizedJacobian(jac_opt, j_reg)
+            jac = (
+                LinearizedJacobian(jp, j_reg, row_scales=band_scales, extra=band_extra)
+                if band_mode
+                else LinearizedJacobian(jac_opt, j_reg)
+            )
         if recorder is not None:  # V3.5 item 13: new-best evals = accepted steps
             recorder.observe(theta, res, n_evals)
         cache.clear()  # keep only the latest params (fun + jac pairing)
-        out = (res, jac, sol, p, z)
+        # ``jp`` (the raw price sensitivities) rides along for the band step model.
+        out = (res, jac, sol, p, z, jp)
         cache[key] = out
         assembly_s += perf_counter() - t_asm0
         return out
@@ -945,7 +962,7 @@ def calibrate_affine(
 
     def _stall_result():
         """Synthesize a least_squares-like result at the best-cost iterate."""
-        rb, jb, _, _, _ = evaluate(stall["x"])
+        rb, jb = evaluate(stall["x"])[:2]
         # gn_op evaluates ``jb`` as a matrix-free LinearizedJacobian (no ``.T``); its
         # ``apply_jacobian_transpose`` IS Jᵀr. This path is reached when a GN fit
         # falls back to TRF (stiff names) and TRF then early-stops on the stall.
@@ -991,6 +1008,7 @@ def calibrate_affine(
                 evaluate, p0, lb, ub,
                 max_nfev=max_nfev, gtol=gtol, xtol=xtol, ftol=ftol, lsmr_tol=gn_lsmr_tol,
                 stall_window=stall_window, stall_rtol=stall_rtol, n_opt_rows=_n_data_rows,
+                model=step_model,
             )
             if not result.converged:
                 result = _run_trf()
@@ -998,7 +1016,7 @@ def calibrate_affine(
             result = _run_trf()
     else:
         result = _run_trf()
-    res_final, _, sol, p, z = evaluate(result.x)
+    res_final, _, sol, p, z = evaluate(result.x)[:5]
     total_s = perf_counter() - total_t0
     theta_hat = result.x[:m] if fit_left_a else result.x
     a_hat = float(result.x[m]) if fit_left_a else surface0.left_extrap_a

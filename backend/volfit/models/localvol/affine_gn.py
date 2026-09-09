@@ -1,12 +1,24 @@
 """Matrix-free Gauss-Newton solver for the affine local-vol calibration (Stage 5).
 
-STATUS (current): **SHIPPED as the production DEFAULT** — ``OptionsSettings.lvSolver
-= "gn"`` — gated to the smooth MID fit target with the Numba march active and no
-free-left-slope var-swap path (band/haircut fits, var-swap fits and the banded-march
-fallback run TRF). GN converges to a slightly different local optimum on stiff real
-data (surface within ~0.25 vol-bp of TRF, sometimes better) — the accepted,
-schema-documented trade for ~1.3-1.65x over TRF. Automatic TRF fallback on
-breakdown.
+STATUS (2026-09-09): **SHIPPED as the production DEFAULT** — ``OptionsSettings.lvSolver
+= "gn"`` — for the MID and the BID-ASK / HAIRCUT fit targets alike, with the Numba
+march active and no free-left-slope var-swap path (var-swap fits, the robust IRLS
+re-solves and the banded-march fallback run TRF). Two loops in one function: the
+mid target runs the SHIPPED loop (projected step, Nielsen damping, data-only stall
+— byte-identical since 2026-06-20); the band targets run the ACTIVE-SET loop of
+``affine_activeset`` — box and hinge aware, the model scores the step it actually
+takes, a trial is accepted when the true cost drops — on the shared-block operator
+of ``affine_operator``. On the SPY weekly / Bloomberg SPY / NVDA fixtures under the
+desk options (haircut, 20 nodes, convex wing) a band fit runs 2.5–4× faster than
+TRF at the same or a better target fit (rms to target within 0.03 bp, converged rms
+within 1 bp) — ROADMAP wrap 2026-09-09b. Before that loop the band objective was
+gated to TRF: the old projected step clipped to the box AFTER the solve and scored
+the linear model along the clipped step, so half its steps were rejected on a
+negative predicted reduction while the cost fell, and the hinge rows were blind to
+every quote about to cross a band edge. The same loop on the mid target is a
+benchmark-pack adjudication candidate (2–2.5× faster, a lower objective, the
+1-year far-wing plateau repricing ~1.5 bp worse on the refined operator) — not
+shipped. Automatic TRF fallback on breakdown.
 
 HISTORY (2026-06-20, kept because the lesson generalizes): the FIRST verdict was
 "not viable" — before the compiled march, both solvers ran to the 200-eval cap, the
@@ -34,10 +46,13 @@ inner solve converges in a handful of iterations. (This is the missing ingredien
 behind the earlier ``tr_solver='lsmr'`` failure — that was unpreconditioned lsmr
 inside trf's machinery; see memory/calibration-perf.md.)
 
-Box bounds [v_lo, v_hi] are enforced by **active-set projection**: the trial step
-is clipped to the box and the projected-gradient norm gates convergence
-(preferred over a sigmoid reparameterisation, which worsens conditioning in the
-bound-binding wings — roadmap Stage 5).
+Box bounds [v_lo, v_hi] are enforced by **active-set projection** — since
+2026-09-09 inside the step itself: a component the projection cuts is pinned at
+its bound and the free part re-solved (``affine_activeset.active_set_step``,
+which also flips the band hinge rows to the side the step predicts), so the
+model reduction is read along the step taken; the projected-gradient norm gates
+convergence (preferred over a sigmoid reparameterisation, which worsens
+conditioning in the bound-binding wings — roadmap Stage 5).
 
 The dense Jacobian from one sensitivity-carrying PDE solve is reused as the
 linear-operator oracle (``LinearizedJacobian``), so the GN step is provably
@@ -58,89 +73,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.sparse.linalg import LinearOperator, lsmr
+from scipy.sparse.linalg import lsmr
 
+from volfit.models.localvol.affine_activeset import active_set_step
+from volfit.models.localvol.affine_operator import LinearizedJacobian
 
-@dataclass
-class LinearizedJacobian:
-    """The Jacobian J of one linearisation as a matrix-free linear operator.
-
-    Exposes the products an inexact-Newton step needs without forming JᵀJ or an
-    SVD: ``apply_jacobian(v) = J·v`` (tangent), ``apply_jacobian_transpose(w) = Jᵀ·w``
-    (adjoint / gradient), and ``column_scale`` (the Jacobi preconditioner 1/‖col‖).
-
-    J is stored as a top **dense data block** ``jac`` (the option/var-swap rows,
-    dense in the vertices their expiry touches) optionally stacked over a **sparse
-    regularisation block** ``reg`` (the roughness / convex / front-tie rows, 3-nnz
-    per row). Keeping ``reg`` sparse makes both the matvec (O(nnz) not O(M_reg·n))
-    and the assembly (no dense reg materialisation) cheap — the bulk of the GN
-    per-eval cost after the SVD is gone. ``reg=None`` ⇒ ``jac`` IS the whole matrix
-    (the legacy dense path; the identity tests cover both).
-    """
-
-    jac: np.ndarray  # dense (M_data, n) data block (or the whole matrix if reg None)
-    reg: object = None  # optional sparse (M_reg, n) regularisation block, stacked below
-
-    def __post_init__(self) -> None:
-        # Cache the transposed reg block once: ``self.reg.T`` inside the
-        # adjoint matvec constructed a fresh transposed wrapper on every lsmr
-        # iteration (~6k CSC constructions per cold SPY fit, ~10% of the
-        # solve wall). Same object, same sparse matvec kernel, same floats —
-        # pure constructor-overhead removal.
-        self._reg_T = self.reg.T if self.reg is not None else None
-
-    @property
-    def shape(self) -> tuple[int, int]:
-        m = self.jac.shape[0] + (self.reg.shape[0] if self.reg is not None else 0)
-        return (m, self.jac.shape[1])
-
-    def to_dense(self) -> np.ndarray:
-        """The full dense Jacobian (data over reg) — for a scipy TRF fallback."""
-        if self.reg is None:
-            return self.jac
-        return np.vstack([self.jac, np.asarray(self.reg.todense())])
-
-    def apply_jacobian(self, v: np.ndarray) -> np.ndarray:
-        """Tangent action J·v (directional derivative of the residual in v)."""
-        v = np.asarray(v, dtype=float)
-        dv = self.jac @ v
-        if self.reg is None:
-            return dv
-        return np.concatenate([dv, self.reg @ v])
-
-    def apply_jacobian_transpose(self, w: np.ndarray) -> np.ndarray:
-        """Adjoint action Jᵀ·w (e.g. the gradient Jᵀr of ½‖r‖²)."""
-        w = np.asarray(w, dtype=float)
-        if self.reg is None:
-            return self.jac.T @ w
-        md = self.jac.shape[0]
-        return self.jac.T @ w[:md] + self._reg_T @ w[md:]
-
-    def column_scale(self, floor: float = 1e-12) -> np.ndarray:
-        """Jacobi preconditioner s_j = 1/‖J_·j‖ (equilibrates column norms).
-
-        Columns with a vanishing norm (a vertex no quote/penalty touches) get the
-        floor so the scaled column stays finite; the bound projection keeps such a
-        parameter pinned anyway.
-        """
-        col2 = np.einsum("ij,ij->j", self.jac, self.jac)
-        if self.reg is not None:
-            col2 = col2 + np.asarray(self.reg.power(2).sum(axis=0)).ravel()
-        return 1.0 / np.sqrt(np.maximum(col2, floor))
-
-    def scaled_operator(self, scale: np.ndarray) -> LinearOperator:
-        """``A = J·diag(scale)`` as a SciPy LinearOperator (for the lsmr step).
-
-        lsmr sees only the matvec ``J(scale·y)`` and the rmatvec ``scale·(Jᵀw)`` —
-        no dense factorisation. Solving in y = θ/scale is the preconditioning.
-        """
-        m, n = self.shape
-        s = np.asarray(scale, dtype=float)
-        return LinearOperator(
-            (m, n),
-            matvec=lambda y: self.apply_jacobian(s * y),
-            rmatvec=lambda w: s * self.apply_jacobian_transpose(w),
-        )
+__all__ = ["GNResult", "LinearizedJacobian", "gauss_newton"]
 
 
 @dataclass
@@ -208,6 +146,8 @@ def gauss_newton(
     stall_window: int = 0,
     stall_rtol: float = 5e-3,
     n_opt_rows: int = 0,
+    model=None,
+    trace: list | None = None,
 ) -> GNResult:
     """Projected Levenberg-Marquardt Gauss-Newton with a matrix-free lsmr step.
 
@@ -219,7 +159,21 @@ def gauss_newton(
     Each outer step solves the LM-damped, column-preconditioned linear least
     squares  min_y ‖J·diag(s)·y + r‖² + μ‖y‖²  by lsmr (matrix-free), sets the
     trial step Δ = s·y, projects p+Δ onto the box, and accepts/rejects on the
-    actual-vs-predicted reduction ratio (Nielsen damping update).
+    actual-vs-predicted reduction ratio (Nielsen damping update). That is the
+    SHIPPED loop of the mid target (``model`` None), byte-identical since
+    2026-06-20.
+
+    ``model`` (a ``StepModel``, the band objectives — 2026-09-09) switches to
+    the ACTIVE-SET loop: the step is refined by ``affine_activeset.
+    active_set_step`` (clipped components pinned and the free ones re-solved,
+    the hinge rows re-linearised on the side the step predicts), the model
+    scores the step it actually takes, a trial is ACCEPTED when the true cost
+    decreases, the damping follows a three-band rule (÷3 above ρ 0.75, ×2
+    below 0.25) and a total-cost improvement counts as stall progress. The
+    same loop on the mid target is a benchmark-pack adjudication candidate
+    (ROADMAP wrap 2026-09-09b: 2–2.5× faster, a lower objective, the far-wing
+    plateau of the 1-year row repricing ~1.5 bp worse on the refined
+    operator), so the mid target keeps the shipped loop.
 
     ``lsmr_tol`` is deliberately TIGHT (1e-10): the expensive unit is each outer
     iteration's sensitivity PDE solve, while the inner lsmr does only cheap dense
@@ -242,7 +196,9 @@ def gauss_newton(
     def _as_lin(j):
         return j if isinstance(j, LinearizedJacobian) else LinearizedJacobian(j)
 
-    res, jac = evaluate(p)[:2]
+    active = model is not None  # the band objectives ride the active-set loop
+    cur = evaluate(p)
+    res, jac = cur[:2]
     lin = _as_lin(jac)
     nfev = njev = 1
     cost = 0.5 * float(res @ res)
@@ -257,7 +213,12 @@ def gauss_newton(
         block = r[:n_opt_rows] if n_opt_rows else r
         return float(np.sqrt(np.mean(block * block)))
 
-    stall = {"best": _opt_rms(res), "since": 0, "x": p.copy()}
+    # The active-set loop also counts a TOTAL-COST improvement by ``stall_rtol``
+    # as progress: a band fit warm-started from a mid surface sits at its
+    # data-block minimum from the outset — the band objective's optimum is
+    # SMOOTHER, every descent step raises the anchor misfit — and the data-only
+    # rule stalled it at the start point, returning the mid surface unchanged.
+    stall = {"best": _opt_rms(res), "best_cost": cost, "since": 0, "x": p.copy()}
     # LM damping lives in the COLUMN-EQUILIBRATED space: after preconditioning the
     # scaled Hessian AᵀA has a ~unit diagonal, so a dimensionless O(1e-3) damping is
     # the natural seed (a raw max-diag(JᵀJ) seed would be orders of magnitude too
@@ -275,46 +236,89 @@ def gauss_newton(
         if nfev >= max_nfev:
             break
 
-        scale = lin.column_scale()
-        a_op = lin.scaled_operator(scale)
-        # lsmr solves min ‖A y - b‖² + damp²‖y‖² with A = J·diag(scale), b = -r;
-        # the damping ½μ‖y‖² is Marquardt scaling (∝ diag(JᵀJ)) in real units.
-        sol = lsmr(
-            a_op, -res, damp=np.sqrt(mu),
-            atol=lsmr_tol, btol=lsmr_tol, maxiter=4 * n + 50, conlim=0.0,
-        )
-        step = scale * sol[0]
-        if not np.all(np.isfinite(step)):
-            break  # numerical breakdown -> caller falls back to TRF
+        if active:
+            # The LM-damped lsmr step, projected onto the box and refined until
+            # its box / hinge active set is self-consistent (no PDE solve).
+            actual_step, r_pred, info = active_set_step(cur, lin, p, lo, hi, mu, lsmr_tol, model)
+            if actual_step is None:
+                break  # numerical breakdown -> caller falls back to TRF
+            p_trial = p + actual_step
+        else:
+            scale = lin.column_scale()
+            a_op = lin.scaled_operator(scale)
+            # lsmr solves min ‖A y - b‖² + damp²‖y‖² with A = J·diag(scale), b = -r;
+            # the damping ½μ‖y‖² is Marquardt scaling (∝ diag(JᵀJ)) in real units.
+            sol = lsmr(
+                a_op, -res, damp=np.sqrt(mu),
+                atol=lsmr_tol, btol=lsmr_tol, maxiter=4 * n + 50, conlim=0.0,
+            )
+            step = scale * sol[0]
+            if not np.all(np.isfinite(step)):
+                break  # numerical breakdown -> caller falls back to TRF
+            p_trial = np.clip(p + step, lo, hi)
+            actual_step = p_trial - p
+            info = {}
 
-        p_trial = np.clip(p + step, lo, hi)
-        actual_step = p_trial - p
-        res_t, jac_t = evaluate(p_trial)[:2]
+        cur_t = evaluate(p_trial)
+        res_t, jac_t = cur_t[:2]
         nfev += 1
         cost_t = 0.5 * float(res_t @ res_t)
 
-        # Gauss-Newton model reduction along the PROJECTED step (exact for the
-        # linearised residual r + J·Δ): predicted = cost - ½‖r + J·Δ‖².
-        j_step = lin.apply_jacobian(actual_step)
-        predicted = -float(res @ j_step) - 0.5 * float(j_step @ j_step)
-        actual = cost - cost_t
-        rho = actual / predicted if predicted > 0.0 else -1.0
+        if active:
+            # Model reduction along the step actually taken: the piecewise model's
+            # residual at p + Δ (exact hinge on the linearised prices; linear
+            # elsewhere), so a clipped or edge-crossing step is scored correctly.
+            predicted = cost - 0.5 * float(r_pred @ r_pred)
+            actual = cost - cost_t
+            accepted = cost_t < cost
+            # The ratio drives the damping only: a decreasing step the model did
+            # not foresee (predicted <= 0) is accepted with the damping left as is.
+            rho = actual / predicted if predicted > 0.0 else (0.5 if accepted else -1.0)
+        else:
+            # Gauss-Newton model reduction along the PROJECTED step (exact for the
+            # linearised residual r + J·Δ): predicted = cost - ½‖r + J·Δ‖².
+            j_step = lin.apply_jacobian(actual_step)
+            predicted = -float(res @ j_step) - 0.5 * float(j_step @ j_step)
+            actual = cost - cost_t
+            rho = actual / predicted if predicted > 0.0 else -1.0
+            accepted = rho > 1e-4 and cost_t < cost
+        if trace is not None:  # per-iteration record (diagnostics only)
+            trace.append(dict(
+                nfev=nfev, cost=cost, cost_t=cost_t, predicted=predicted, actual=actual, rho=rho, mu=mu,
+                step=float(np.linalg.norm(actual_step)), accepted=accepted, **info,
+                res=res, res_t=res_t, opt_rms=_opt_rms(res), opt_rms_t=_opt_rms(res_t),
+            ))
 
-        if rho > 1e-4 and cost_t < cost:
+        if accepted:
             step_norm = float(np.linalg.norm(actual_step))
-            p, res, lin = p_trial, res_t, _as_lin(jac_t)  # accept the trial linearisation
+            p, res, lin, cur = p_trial, res_t, _as_lin(jac_t), cur_t  # accept the trial linearisation
             njev += 1
             g = lin.apply_jacobian_transpose(res)
-            # Nielsen: shrink damping by the step quality, reset the rejection ramp.
-            mu *= max(1.0 / 3.0, 1.0 - (2.0 * rho - 1.0) ** 3)
-            nu = 2.0
+            if active:
+                # Three-band trust rule: a well-predicted step earns a lighter
+                # damping, a poorly predicted one a heavier, a middling one leaves
+                # it alone (Nielsen's continuous shrink loosened the damping after
+                # EVERY decent step and settled the crawl into a one-accept-one-
+                # reject cycle on the band fits).
+                if rho > 0.75:
+                    mu /= 3.0
+                elif rho < 0.25:
+                    mu *= 2.0
+            else:
+                # Nielsen: shrink damping by the step quality.
+                mu *= max(1.0 / 3.0, 1.0 - (2.0 * rho - 1.0) ** 3)
+            nu = 2.0  # reset the rejection ramp
             # GN early-stop bookkeeping: only ACCEPTED iterates (legitimate, monotone
             # in total cost) move ``stall["x"]`` — never a noisy rejected lsmr trial —
             # so a too-loose inner solve can't latch the stop onto a fluke point. A
             # genuine option-block improvement resets the counter.
             q = _opt_rms(res)
-            if q < stall["best"] * (1.0 - stall_rtol):
-                stall["best"] = q
+            progress = q < stall["best"] * (1.0 - stall_rtol)
+            if active and cost_t < stall["best_cost"] * (1.0 - stall_rtol):
+                progress = True
+            if progress:
+                stall["best"] = min(stall["best"], q)
+                stall["best_cost"] = cost_t
                 stall["since"] = 0
                 stall["x"] = p.copy()
             else:
@@ -338,7 +342,8 @@ def gauss_newton(
         # rejects) -> return the best accepted iterate; do NOT fall back to TRF.
         if stall_window > 0 and stall["since"] >= stall_window:
             p = stall["x"]
-            res, jac = evaluate(p)[:2]
+            cur = evaluate(p)
+            res, jac = cur[:2]
             g = _as_lin(jac).apply_jacobian_transpose(res)
             cost = 0.5 * float(res @ res)
             status, converged = 4, True
