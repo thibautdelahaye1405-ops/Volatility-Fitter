@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Term structure</title>
+<script>/*__BRIDGE__*/</script>
+<script>
+  window.__plotly = { ready: false, failed: false };
+  window.__plotlyLoaded = function () { window.__plotly.ready = true; if (window.__onPlotly) window.__onPlotly(); };
+  window.__plotlyFailed = function () { window.__plotly.failed = true; if (window.__onPlotly) window.__onPlotly(); };
+</script>
+<script src="https://cdn.plot.ly/plotly-basic-3.1.0.min.js" async onload="window.__plotlyLoaded()" onerror="window.__plotlyFailed()"></script>
+<style>
+  :root { --bg:#ffffff; --fg:#1b1f24; --muted:#6b7280; --line:#e5e7eb; --chip:#f3f4f6; --chipOn:#1f6feb; --chipOnFg:#fff; --warn:#b45309; }
+  html[data-theme="dark"] { --bg:#171717; --fg:#e5e7eb; --muted:#9ca3af; --line:#2f3136; --chip:#26282c; --chipOn:#4c8dff; --chipOnFg:#0b0f14; --warn:#f59e0b; }
+  html, body { margin:0; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); }
+  .bar .title { font-weight:600; margin-right:6px; }
+  .bar .sep { width:1px; height:18px; background:var(--line); margin:0 4px; }
+  .chip { border:1px solid var(--line); background:var(--chip); color:var(--fg); border-radius:999px; padding:3px 10px; cursor:pointer; font-size:12px; }
+  .chip.on { background:var(--chipOn); color:var(--chipOnFg); border-color:var(--chipOn); }
+  .grow { flex:1; }
+  .warn { color:var(--warn); }
+  #plot { width:100%; height:400px; }
+  #status { padding:18px 12px; color:var(--muted); text-align:center; }
+  #status.err { color:var(--warn); }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px; padding:8px 10px; border-top:1px solid var(--line); }
+  .tile { border:1px solid var(--line); border-radius:8px; padding:6px 8px; }
+  .tile .k { color:var(--muted); font-size:11px; }
+  .tile .v { font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="title" id="title">Term structure</span>
+  <span id="flags" class="warn"></span>
+  <span class="sep"></span>
+  <button class="chip on" data-clock="t">Calendar t</button>
+  <button class="chip" data-clock="tau">Event-dilated τ</button>
+  <span class="sep"></span>
+  <button class="chip on" data-view="both">Vol + variance</button>
+  <button class="chip" data-view="vol">Vol</button>
+  <button class="chip" data-view="var">Variance</button>
+  <span class="grow"></span>
+  <button class="chip" id="wb" hidden>Workbench ↗</button>
+</div>
+<div id="status">Connecting to the host…</div>
+<div id="plot" hidden></div>
+<div class="tiles" id="tiles"></div>
+<script>
+(function () {
+  var B = window.VolfitBridge, tm = null, dark = false, initDone = false;
+  var state = { clock: "t", view: "both" };
+  function $(s) { return document.querySelector(s); }
+  function $$(s) { return Array.prototype.slice.call(document.querySelectorAll(s)); }
+  function paper() { return dark ? "#171717" : "#ffffff"; }
+  function fg() { return dark ? "#e5e7eb" : "#1b1f24"; }
+  function grid() { return dark ? "#2f3136" : "#eee"; }
+  function status(text, err) {
+    var el = $("#status"); el.hidden = !text; el.textContent = text || ""; el.className = err ? "err" : "";
+    $("#plot").hidden = !!text; B.sizeChanged(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
+  }
+  window.addEventListener("error", function (ev) { status("Chart error: " + (ev.message || ev), true); });
+  function X(p) { return state.clock === "t" ? p.t : p.tau; }
+  function render() {
+    $$("[data-clock]").forEach(function (b) { b.classList.toggle("on", b.dataset.clock === state.clock); });
+    $$("[data-view]").forEach(function (b) { b.classList.toggle("on", b.dataset.view === state.view); });
+    if (!tm) { status(initDone ? "Waiting for the tool result…" : "Connecting to the host…"); return; }
+    if (window.__plotly.failed) { status("Plotly failed to load — the host blocked the chart library.", true); return; }
+    if (!window.__plotly.ready) { status("Loading the chart library…"); return; }
+    status("");
+    $("#title").textContent = tm.ticker + " term structure";
+    $("#flags").textContent = tm.calendarViolations ? tm.calendarViolations + " calendar violation(s)" : "";
+    $("#wb").hidden = !tm.workbenchUrl;
+    var pts = tm.points, cv = tm.curve, cx = state.clock === "t" ? cv.t : cv.tau, px = pts.map(X), ex = pts.map(function (p) { return p.expiry; });
+    var both = state.view === "both", showVol = state.view !== "var", showVar = state.view !== "vol";
+    var traces = [], layout = { paper_bgcolor: paper(), plot_bgcolor: paper(), font: { color: fg(), size: 11 }, margin: { l: 56, r: 12, t: 24, b: 44 },
+      legend: { orientation: "h", y: 1.12 }, hovermode: "closest", shapes: [], annotations: [] };
+    var xTitle = state.clock === "t" ? "t (calendar years)" : "τ (event-dilated years)";
+    if (showVol) {
+      var ax = both ? { xaxis: "x", yaxis: "y" } : {};
+      traces.push(Object.assign({ type: "scatter", mode: "lines", name: "interpolated ATM", x: cx, y: cv.vol.map(function (v) { return 100 * v; }), line: { color: "#2563eb", width: 2 }, hovertemplate: "%{x:.3f}y · %{y:.2f}%<extra>curve</extra>" }, ax));
+      traces.push(Object.assign({ type: "scatter", mode: "markers", name: "ATM vol", x: px, y: pts.map(function (p) { return 100 * p.atmVol; }), customdata: ex, marker: { color: "#2563eb", size: 8 }, hovertemplate: "%{customdata}<br>ATM %{y:.2f}%<extra></extra>" }, ax));
+      traces.push(Object.assign({ type: "scatter", mode: "markers", name: "var-swap vol (model)", x: px, y: pts.map(function (p) { return 100 * p.varSwapVol; }), customdata: ex, marker: { color: "#f59e0b", size: 8, symbol: "square" }, hovertemplate: "%{customdata}<br>var-swap %{y:.2f}%<extra></extra>" }, ax));
+      var q = pts.filter(function (p) { return p.varSwapQuote != null; });
+      if (q.length) traces.push(Object.assign({ type: "scatter", mode: "markers", name: "var-swap quote", x: q.map(X), y: q.map(function (p) { return 100 * p.varSwapQuote; }), customdata: q.map(function (p) { return p.expiry; }), marker: { color: "#dc2626", size: 9, symbol: "diamond-open" }, hovertemplate: "%{customdata}<br>quote %{y:.2f}%<extra></extra>" }, ax));
+      if (pts.some(function (p) { return p.priorVol != null; })) traces.push(Object.assign({ type: "scatter", mode: "lines+markers", name: "prior", x: px, y: pts.map(function (p) { return p.priorVol == null ? null : 100 * p.priorVol; }), line: { color: "#9333ea", dash: "dot" }, marker: { size: 5, color: "#9333ea" } }, ax));
+    }
+    if (showVar) {
+      var ax2 = both ? { xaxis: "x2", yaxis: "y2" } : {};
+      traces.push(Object.assign({ type: "scatter", mode: "lines", name: "w(t) interpolated", x: cx, y: cv.w, line: { color: "#0ea5e9", width: 2 }, hovertemplate: "%{x:.3f}y · w %{y:.5f}<extra>curve</extra>" }, ax2));
+      var viol = pts.map(function (p, i) { return i > 0 && pts[i].w0 < pts[i - 1].w0; });
+      traces.push(Object.assign({ type: "scatter", mode: "markers", name: "w0 per expiry", x: px, y: pts.map(function (p) { return p.w0; }), customdata: ex,
+        marker: { color: viol.map(function (v) { return v ? "#dc2626" : "#0ea5e9"; }), size: 8 }, hovertemplate: "%{customdata}<br>w0 %{y:.5f}<extra></extra>" }, ax2));
+    }
+    (tm.events || []).forEach(function (e) {
+      var xe = e.time; layout.shapes.push({ type: "line", xref: "x", yref: "paper", x0: xe, x1: xe, y0: 0, y1: 1, line: { color: "#dc2626", width: 1, dash: "dot" } });
+      layout.annotations.push({ x: xe, y: 1, xref: "x", yref: "paper", text: (e.label || "event") + " ×" + e.weight, showarrow: false, yanchor: "bottom", font: { size: 10, color: "#dc2626" } });
+    });
+    (tm.dividends || []).forEach(function (d) {
+      layout.annotations.push({ x: state.clock === "t" ? d.t : d.tau, y: 0, xref: "x", yref: "paper", text: "div " + d.amount, showarrow: false, yanchor: "top", font: { size: 9, color: fg() } });
+    });
+    if (both) {
+      layout.grid = { rows: 1, columns: 2, pattern: "independent" };
+      layout.xaxis = { title: { text: xTitle }, gridcolor: grid() }; layout.yaxis = { title: { text: "vol (%)" }, gridcolor: grid() };
+      layout.xaxis2 = { title: { text: xTitle }, gridcolor: grid() }; layout.yaxis2 = { title: { text: "total variance w" }, gridcolor: grid() };
+    } else {
+      layout.xaxis = { title: { text: xTitle }, gridcolor: grid() }; layout.yaxis = { title: { text: showVol ? "vol (%)" : "total variance w" }, gridcolor: grid() };
+    }
+    var el = $("#plot");
+    Plotly.react(el, traces, layout, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] });
+    el.removeAllListeners && el.removeAllListeners("plotly_click");
+    el.on("plotly_click", function (ev) {
+      var pt = ev.points && ev.points[0]; if (!pt || !pt.customdata) return;
+      B.sendMessage("Show me the " + tm.ticker + " " + pt.customdata + " smile (chart_smile).");
+    });
+    var first = pts[0], last = pts[pts.length - 1];
+    var tiles = [["expiries", pts.length], ["front ATM", (100 * first.atmVol).toFixed(2) + "% (" + first.expiry + ")"], ["back ATM", (100 * last.atmVol).toFixed(2) + "% (" + last.expiry + ")"],
+      ["slope", ((100 * (last.atmVol - first.atmVol)) / Math.max(last.t - first.t, 1e-6)).toFixed(2) + " pts/y"], ["calendar violations", tm.calendarViolations],
+      ["events", (tm.events || []).length], ["worst slice max err", Math.max.apply(null, pts.map(function (p) { return p.maxIvErrorBp || 0; })).toFixed(1) + " bp"]];
+    $("#tiles").innerHTML = tiles.map(function (t) { return '<div class="tile"><div class="k">' + t[0] + '</div><div class="v">' + t[1] + "</div></div>"; }).join("");
+    B.sizeChanged(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
+  }
+  window.__onPlotly = render;
+  $$("[data-clock]").forEach(function (b) { b.onclick = function () { state.clock = b.dataset.clock; render(); }; });
+  $$("[data-view]").forEach(function (b) { b.onclick = function () { state.view = b.dataset.view; render(); }; });
+  $("#wb").onclick = function () { if (tm && tm.workbenchUrl) B.openLink(tm.workbenchUrl + "/?node=" + encodeURIComponent(tm.ticker + "|" + tm.points[0].expiry) + "&activity=parametric"); };
+  B.on("hostContext", function (hc) { dark = hc.theme === "dark"; document.documentElement.setAttribute("data-theme", dark ? "dark" : "light"); initDone = true; render(); });
+  B.on("toolResult", function (res) {
+    tm = res.structuredContent || null;
+    if (!tm && res.content) { try { tm = JSON.parse(res.content[0].text); } catch (e) { tm = null; } }
+    if (tm && tm.kind !== "term") tm = null;
+    if (!tm) { status("The tool result carried no term-structure data" + (res.isError ? " (tool error)." : "."), true); return; }
+    render();
+  });
+  B.init("volfit-term");
+})();
+</script>
+</body>
+</html>

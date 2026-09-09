@@ -43,6 +43,7 @@
   <button class="chip on" data-view="3d">3D</button>
   <button class="chip" data-view="heat">Heatmap</button>
   <span class="grow"></span>
+  <button class="chip" id="wb" hidden>Workbench ↗</button>
   <button class="chip" id="full">Fullscreen</button>
 </div>
 <div id="status">Connecting to the host…</div>
@@ -160,6 +161,7 @@
     if (window.__plotly.failed) { status("Plotly failed to load from https://cdn.plot.ly — the host blocked the chart library (CSP).", true); return; }
     if (!window.__plotly.ready) { status("Loading the chart library…"); return; }
     status("");
+    $("#wb").hidden = !data.workbenchUrl;
     if (!renderMain()) return;
     renderRms();
     $("#meta").textContent = "twin t-interp " + data.tInterp + " · target " + (data.fitMode || "app default") + " · " + data.generatedAt
@@ -170,6 +172,10 @@
 
   $$("[data-layer]").forEach(function (b) { b.onclick = function () { state.layer = b.dataset.layer; render(); }; });
   $$("[data-view]").forEach(function (b) { b.onclick = function () { state.view = b.dataset.view; render(); }; });
+  $("#wb").onclick = function () {
+    var p = panels()[0]; if (!data || !data.workbenchUrl || !p) return;
+    B.openLink(data.workbenchUrl + "/?node=" + encodeURIComponent(p.ticker + "|" + ((p.expiries[0] || {}).expiry || "")) + "&activity=localvol");
+  };
   $("#full").onclick = function () {
     var mode = B.context().displayMode === "fullscreen" ? "inline" : "fullscreen";
     B.requestDisplayMode(mode).then(applyMode, function () {});

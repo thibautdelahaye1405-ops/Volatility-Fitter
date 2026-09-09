@@ -38,6 +38,7 @@ import { CommandsProvider } from "./state/commands";
 import { HelpProvider } from "./state/help";
 import Walkthrough from "./components/help/Walkthrough";
 import { classifyBundle } from "./lib/snapshotFile";
+import { useDeepLink } from "./state/useDeepLink";
 import { snapshotNameOf } from "./lib/snapshotFile";
 import { workspaceNameOf } from "./lib/workspaceFile";
 import { useShellShortcuts } from "./state/useShellShortcuts";
@@ -48,6 +49,7 @@ function Shell() {
   const ws = useWorkspaceFile();
   const snap = useSnapshotFile();
   useShellShortcuts();
+  useDeepLink();  // /?node=TICKER|YYYY-MM-DD&activity=... (the MCP connector's Workbench button)
 
   // Drop a .json anywhere on the shell: a workspace file (A1) or a snapshot
   // file (A2), routed by its schema family.

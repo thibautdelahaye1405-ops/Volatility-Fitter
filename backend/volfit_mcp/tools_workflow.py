@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from volfit_mcp import ops
 from volfit_mcp.client import VolfitApi
 from volfit_mcp.report import md_table, r
-from volfit_mcp.tools_charts import LV_COMPARE_URI, _legacy_meta
+from volfit_mcp.tools_charts import LV_COMPARE_URI, _legacy_meta, workbench_url
 
 MUTATING = ToolAnnotations(read_only_hint=False, destructive_hint=False)
 FitMode = Literal["mid", "bidask", "haircut"]
@@ -142,7 +142,7 @@ def register_apps(api: VolfitApi, apps: Apps) -> None:
             text.insert(0, f"STOPPED at step '{wf['stoppedAt']}': {exc}")
         wf["elapsedSeconds"] = round(monotonic() - t0, 1)
         structured = {"kind": "lv_compare", "fitMode": fit_mode, "tInterp": "smooth", "generatedAt": ops.now_iso(),
-                      "tickers": panels, "skipped": skipped, "workflow": wf}
+                      "tickers": panels, "skipped": skipped, "workflow": wf, "workbenchUrl": workbench_url()}
         head = f"Desk workflow ({wf['elapsedSeconds']} s): " + " → ".join(
             f"{s['step']}{'' if s['ok'] else ' ✗'}" for s in steps)
         return _result("\n".join([head, *text]), structured)

@@ -25,7 +25,7 @@ from volfit.api.app import create_app
 from volfit_mcp import aliases, report
 from volfit_mcp.client import ApiError, VolfitApi
 from volfit_mcp.server import build_server
-from volfit_mcp.tools_charts import LV_COMPARE_URI, SMILE_URI
+from volfit_mcp.tools_charts import LV_COMPARE_URI, SMILE_URI, TERM_URI, VOL_SURFACE_URI
 
 REF_DATE = date(2026, 6, 10)
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -64,6 +64,8 @@ async def _pipeline() -> dict[str, Any]:
         out["compare"] = await c.call_tool("get_lv_compare", {"ticker": "SPY", "include_grid": True})
         out["chart_lv"] = await c.call_tool("chart_lv_compare", {"tickers": ["SPY", "SPX"], "png": True})
         out["chart_smile"] = await c.call_tool("chart_smile", {"ticker": "SPY", "expiry": out["expiry"], "with_lv": True, "png": True})
+        out["chart_surface"] = await c.call_tool("chart_vol_surface", {"ticker": "SPY", "png": True})
+        out["chart_term"] = await c.call_tool("chart_term_structure", {"ticker": "SPY", "png": True})
         out["bad_smile"] = await c.call_tool("get_smile", {"ticker": "SPY", "expiry": "1999-01-01"})
         out["status_resource"] = json.loads((await c.read_resource("volfit://status")).contents[0].text)
         out["schema_resource"] = json.loads((await c.read_resource("volfit://help/settings-schema")).contents[0].text)
@@ -102,6 +104,9 @@ def test_chart_tools_bind_ui_resources(pipe):
     # reference TypeScript app servers (older hosts mount from the legacy one).
     assert pipe["tools"]["chart_lv_compare"].meta == {"ui": {"resourceUri": LV_COMPARE_URI}, "ui/resourceUri": LV_COMPARE_URI}
     assert pipe["tools"]["chart_smile"].meta == {"ui": {"resourceUri": SMILE_URI}, "ui/resourceUri": SMILE_URI}
+    assert pipe["tools"]["chart_vol_surface"].meta["ui"]["resourceUri"] == VOL_SURFACE_URI
+    assert pipe["tools"]["chart_term_structure"].meta["ui"]["resourceUri"] == TERM_URI
+    assert {VOL_SURFACE_URI, TERM_URI} <= set(pipe["resources"])
     for key, uri in (("ui_lv", LV_COMPARE_URI), ("ui_smile", SMILE_URI)):
         res = pipe["resources"][uri]
         assert res.mime_type == "text/html;profile=mcp-app"
@@ -341,3 +346,26 @@ def test_compare_settings_runs_both_and_keeps_a(pipe):
     # The kept run went last: A's settings are in force and nothing is stale.
     assert pipe["settings_after"].structured_content["fit"]["nOrder"] == 8
     assert pipe["status_after"].structured_content["staleNodes"] == 0
+
+
+def test_surface_and_term_chart_tools(pipe):
+    sf = pipe["chart_surface"]
+    assert sf.is_error is False and [b.type for b in sf.content] == ["text", "image"]
+    sc = sf.structured_content
+    assert sc["kind"] == "vol_surface" and sc["ticker"] == "SPY"
+    assert len(sc["vol"]) == len(sc["expiries"]) == len(sc["t"]) == len(sc["atmVol"]) == 4
+    assert len(sc["k"]) <= 71 and all(len(row) == len(sc["k"]) for row in sc["vol"])
+    assert len(sc["crop"]) == 4 and {"u", "lo", "hi"} <= set(sc["crop"][0][0])
+    assert sc["workbenchUrl"] == "http://localhost:5173"
+    assert "ATM term structure" in _text(sf)
+
+    tm = pipe["chart_term"]
+    assert tm.is_error is False and [b.type for b in tm.content] == ["text", "image"]
+    sc = tm.structured_content
+    assert sc["kind"] == "term" and sc["ticker"] == "SPY" and len(sc["points"]) == 4
+    p0 = sc["points"][0]
+    assert {"expiry", "t", "tau", "atmVol", "w0", "varSwapVol", "maxIvErrorBp"} <= set(p0)
+    assert 0.05 < p0["atmVol"] < 1.0 and p0["w0"] > 0
+    assert len(sc["curve"]["t"]) == len(sc["curve"]["w"]) == len(sc["curve"]["vol"]) > 10
+    assert sc["calendarViolations"] == 0 and isinstance(sc["events"], list)
+    assert "term structure" in _text(tm)

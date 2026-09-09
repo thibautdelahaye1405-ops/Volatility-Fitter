@@ -36,6 +36,8 @@ READ_ONLY = ToolAnnotations(read_only_hint=True)
 FitMode = Literal["mid", "bidask", "haircut"]
 LV_COMPARE_URI = "ui://volfit/lv-compare.html"
 SMILE_URI = "ui://volfit/smile.html"
+VOL_SURFACE_URI = "ui://volfit/vol-surface.html"
+TERM_URI = "ui://volfit/term.html"
 #: Plotly is loaded from its CDN inside the sandbox; nothing else is external.
 CSP = ResourceCsp(resource_domains=["https://cdn.plot.ly"])
 
@@ -51,7 +53,9 @@ def _legacy_meta(uri: str) -> dict[str, str]:
 #: Plotly bundle per page: (cache file, CDN URL, the exact tag the page carries).
 _PLOTLY = {
     "lv_compare.html": ("plotly-3.1.0.min.js", "https://cdn.plot.ly/plotly-3.1.0.min.js"),
+    "vol_surface.html": ("plotly-3.1.0.min.js", "https://cdn.plot.ly/plotly-3.1.0.min.js"),
     "smile.html": ("plotly-basic-3.1.0.min.js", "https://cdn.plot.ly/plotly-basic-3.1.0.min.js"),
+    "term.html": ("plotly-basic-3.1.0.min.js", "https://cdn.plot.ly/plotly-basic-3.1.0.min.js"),
 }
 _TAG = '<script src="{url}" async onload="window.__plotlyLoaded()" onerror="window.__plotlyFailed()"></script>'
 _CACHE = Path(os.environ.get("VOLFIT_MCP_CACHE") or Path(__file__).resolve().parent.parent / ".cache")
@@ -112,7 +116,18 @@ def build_apps() -> Apps:
     apps = Apps()
     apps.add_resource(_page_resource(LV_COMPARE_URI, "volfit-lv-compare", "Local Vol compare", "lv_compare.html"))
     apps.add_resource(_page_resource(SMILE_URI, "volfit-smile", "Smile viewer", "smile.html"))
+    apps.add_resource(_page_resource(VOL_SURFACE_URI, "volfit-vol-surface", "Implied-vol surface", "vol_surface.html"))
+    apps.add_resource(_page_resource(TERM_URI, "volfit-term", "Term structure", "term.html"))
     return apps
+
+
+def workbench_url() -> str | None:
+    """Base URL of the React workbench for the pages' "Workbench" links
+    (``VOLFIT_WORKBENCH_URL``, default the Vite dev server; empty = no link).
+    The link opens ``/?node=TICKER|YYYY-MM-DD&activity=...`` (frontend
+    ``useDeepLink``)."""
+    url = os.environ.get("VOLFIT_WORKBENCH_URL", "http://localhost:5173")
+    return url.rstrip("/") or None
 
 
 def _blocks(text: str, png: bytes | None) -> list[ContentBlock]:
@@ -148,7 +163,8 @@ def register(api: VolfitApi, apps: Apps) -> None:
             names = list((await api.get("/universe")).get("tickers", []))
         panels, skipped = await ops.lv_panels(api, names, fit_mode, t_interp)
         structured = {"kind": "lv_compare", "fitMode": fit_mode, "tInterp": t_interp,
-                      "generatedAt": ops.now_iso(), "tickers": panels, "skipped": skipped}
+                      "generatedAt": ops.now_iso(), "tickers": panels, "skipped": skipped,
+                      "workbenchUrl": workbench_url()}
         lines = ops.lv_panels_text(panels, skipped)
         if not panels:
             lines.append("Nothing to chart: no ticker has a Local-Vol compare (calibrate with Local-Vol on first).")
@@ -176,6 +192,7 @@ def register(api: VolfitApi, apps: Apps) -> None:
         sm = await api.get(f"/smiles/{res.ticker}/{expiry}", fit_mode=fit_mode)
         out = compact_smile(sm, max_points=81)
         out["kind"] = "smile"
+        out["workbenchUrl"] = workbench_url()
         lit = await api.get("/universe/lit")
         out["expiries"] = [n["expiry"] for n in lit.get("nodes", []) if n["ticker"] == res.ticker and n.get("lit")]
         out["lv"] = None

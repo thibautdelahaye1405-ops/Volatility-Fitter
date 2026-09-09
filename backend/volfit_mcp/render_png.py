@@ -83,3 +83,49 @@ def smile_png(sm: dict[str, Any]) -> bytes:
     ax.legend(loc="best", fontsize=8)
     fig.tight_layout()
     return _png(fig)
+
+
+def vol_surface_png(sf: dict[str, Any]) -> bytes:
+    """Heatmap of sigma(k, T) with the ATM ridge marked."""
+    plt = _plt()
+    fig, ax = plt.subplots(figsize=(8, 4.4))
+    k, t = sf["k"], sf["t"]
+    z = [[100 * v if v is not None else float("nan") for v in row] for row in sf["vol"]]
+    im = ax.imshow(z, origin="lower", aspect="auto", extent=(k[0], k[-1], t[0], t[-1]), cmap="viridis")
+    fig.colorbar(im, ax=ax, fraction=0.046, label="implied vol (%)")
+    ax.plot([0.0] * len(t), t, "w--", lw=1, label="ATM")
+    for ti, c in zip(t, sf.get("crop") or []):
+        if c:
+            ax.plot([c[0]["lo"], c[0]["hi"]], [ti, ti], "w-", lw=0.8, alpha=0.6)
+    ax.set_title(f"{sf['ticker']} implied-vol surface")
+    ax.set_xlabel("k = ln(K/F)")
+    ax.set_ylabel("T (y)")
+    ax.legend(loc="upper right", fontsize=8)
+    fig.tight_layout()
+    return _png(fig)
+
+
+def term_png(tm: dict[str, Any]) -> bytes:
+    """Two panels: ATM / var-swap vol vs t, total variance vs t (+ events)."""
+    plt = _plt()
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(11, 4))
+    pts, cv = tm["points"], tm["curve"]
+    tt = [p["t"] for p in pts]
+    a1.plot(cv["t"], [100 * v for v in cv["vol"]], "-", color="#2563eb", lw=1.5, label="interpolated")
+    a1.plot(tt, [100 * p["atmVol"] for p in pts], "o", color="#2563eb", ms=4, label="ATM vol")
+    a1.plot(tt, [100 * p["varSwapVol"] for p in pts], "s", color="#f59e0b", ms=4, label="var-swap vol")
+    if any(p.get("priorVol") is not None for p in pts):
+        a1.plot(tt, [100 * (p["priorVol"] or float("nan")) for p in pts], ":", color="#9333ea", label="prior")
+    a2.plot(cv["t"], cv["w"], "-", color="#2563eb", lw=1.5, label="w(t)")
+    a2.plot(tt, [p["w0"] for p in pts], "o", color="#2563eb", ms=4, label="w0 per expiry")
+    for e in tm.get("events") or []:
+        for ax in (a1, a2):
+            ax.axvline(e["time"], color="#dc2626", lw=0.8, alpha=0.6)
+    for ax, ylabel in ((a1, "vol (%)"), (a2, "total variance")):
+        ax.set_xlabel("t (y)")
+        ax.set_ylabel(ylabel)
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=8)
+    fig.suptitle(f"{tm['ticker']} term structure — calendar violations {tm.get('calendarViolations', 0)}")
+    fig.tight_layout()
+    return _png(fig)

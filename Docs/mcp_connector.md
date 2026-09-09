@@ -84,7 +84,7 @@ tenant; Bloomberg stays local-only.
 | Settings | `get_fit_settings`, `configure_fit` | model / LQD order / target / Local-Vol / grid |
 | Run | `calibrate`, `wait_for_calibration`, `calibration_status`, `cancel_calibration` | background job with streamed progress |
 | Numbers | `calibration_report`, `get_smile`, `get_vol_surface`, `get_lv_surface`, `get_lv_compare` | rms in vol bp, arbitrage flags, readiness, grids |
-| Charts | `chart_lv_compare`, `chart_smile` | inline MCP Apps (affine LV vs Dupire twin vs difference, 3D or heatmap, per-expiry rms; smile vs bands with prev/next expiry) |
+| Charts | `chart_lv_compare`, `chart_smile`, `chart_vol_surface`, `chart_term_structure` | inline MCP Apps: affine LV vs Dupire twin vs difference (3D / heatmap, per-expiry rms); smile vs bands with prev/next expiry; the implied-vol surface (3D / heatmap, k / K/F / strike axis, quoted-range crop, ATM ridge); the term structure (ATM + var-swap vol and total variance, calendar or event-dilated clock, events, dividends, calendar violations). Every card has a **Workbench** button that opens the node in the app (`/?node=TICKER|YYYY-MM-DD&activity=...`, `VOLFIT_WORKBENCH_URL`, default the Vite dev server) |
 
 Resources: `volfit://status`, `volfit://settings`, `volfit://help/settings-schema`,
 `volfit://help/docs` (+ `/{id}`), `volfit://aliases`. Prompts: `desk_calibration`,
@@ -112,6 +112,7 @@ decimals, `k = ln(K/F)`, `x = K/F`, `t` in years.
 * The chart pages carry a status line for every failure state ("Connecting
   to the host", "Loading the chart library", "the host blocked the chart
   library", "no chart data") instead of a blank card.
+* `VOLFIT_WORKBENCH_URL` (default `http://localhost:5173`): base of the cards' Workbench links; empty hides the button.
 * `VOLFIT_MCP_PLOTLY=inline|cdn` (default inline): the pages embed a Plotly
   bundle cached once under `backend\.cache` — self-contained like the
   reference app servers, so a sandbox that ignores the declared CSP still

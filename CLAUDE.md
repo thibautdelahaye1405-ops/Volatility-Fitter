@@ -130,7 +130,9 @@ Key commands (Windows, repo root):
             run_desk_workflow (one call: universe→fetch→settings→calibrate→report + the LV
             compare chart) and compare_settings (A vs B calibrations, bp differences);
             step tools (set_universe / fetch_quotes / configure_fit / calibrate /
-            calibration_report / get_* / chart_lv_compare / chart_smile); shared steps in
+            calibration_report / get_* / chart_lv_compare / chart_smile / chart_vol_surface /
+            chart_term_structure); every card's Workbench button deep-links the app
+            (`/?node=TICKER|YYYY-MM-DD&activity=...`, frontend src/state/useDeepLink.ts); shared steps in
             volfit_mcp\ops.py; inline chart apps (MCP Apps, Plotly inlined, volfit_mcp\ui).
             After changing connector code: QUIT Claude Desktop from the tray (the window
             close keeps the old server alive). Tests: tests\test_mcp_connector.py + test_mcp_stdio.py

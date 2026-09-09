@@ -41,6 +41,7 @@
   <button class="chip" data-axis="strike">Strike</button>
   <button class="chip" id="prev">◀ prev expiry</button>
   <button class="chip" id="next">next expiry ▶</button>
+  <button class="chip" id="wb" hidden>Workbench ↗</button>
 </div>
 <div id="status">Connecting to the host…</div>
 <div id="plot" hidden></div>
@@ -66,6 +67,7 @@
     if (window.__plotly.failed) { status("Plotly failed to load from https://cdn.plot.ly — the host blocked the chart library (CSP).", true); return; }
     if (!window.__plotly.ready) { status("Loading the chart library…"); return; }
     status("");
+    $("#wb").hidden = !sm.workbenchUrl;
     $$("[data-axis]").forEach(function (b) { b.classList.toggle("on", b.dataset.axis === axis); });
     $("#title").textContent = sm.ticker + " " + sm.expiry + " · " + (sm.model || "") + " · T " + sm.T + "y · F " + sm.forward;
     $("#flags").textContent = (sm.stale ? "stale " : "") + (sm.hasFit ? "" : "not fitted ") + (sm.degraded ? sm.degraded : "");
@@ -108,6 +110,7 @@
   }
   $$("[data-axis]").forEach(function (b) { b.onclick = function () { axis = b.dataset.axis; render(); }; });
   $("#prev").onclick = function () { step(-1); };
+  $("#wb").onclick = function () { if (sm && sm.workbenchUrl) B.openLink(sm.workbenchUrl + "/?node=" + encodeURIComponent(sm.ticker + "|" + sm.expiry) + "&activity=parametric"); };
   $("#next").onclick = function () { step(1); };
   B.on("hostContext", function (hc) { dark = hc.theme === "dark"; document.documentElement.setAttribute("data-theme", dark ? "dark" : "light"); initDone = true; render(); });
   B.on("toolResult", function (res) {

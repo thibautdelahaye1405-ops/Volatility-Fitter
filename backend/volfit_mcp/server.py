@@ -22,6 +22,7 @@ from volfit_mcp import (
     aliases,
     tools_calibrate,
     tools_charts,
+    tools_charts_surface,
     tools_universe,
     tools_views,
     tools_workflow,
@@ -42,8 +43,10 @@ Cboe, Massive; Yahoo has no EuroStoxx options), fetches quotes, applies the sett
 calibrates with streamed progress, returns the fit-quality report AND renders the
 comparative Local-Vol surfaces inline. Prefer it over the step tools whenever the user
 asks for fetch + calibrate (+ chart); the reply lists every step and says which one
-stopped the chain, if any. Then chart_smile(ticker, expiry) for one expiry, or the
-get_* tools for detail.
+stopped the chain, if any. Then chart_smile(ticker, expiry) for one expiry,
+chart_vol_surface(ticker) for the whole implied-vol surface, chart_term_structure(ticker)
+for ATM / var-swap vol and total variance vs maturity (event-dilated clock, calendar
+violations), or the get_* tools for the numbers.
 
 A vs B questions ("LQD-24 vs LQD-16", "mid vs haircut target", "with / without
 calendar enforcement"): compare_settings(a={...}, b={...}) runs both calibrations and
@@ -78,6 +81,7 @@ def build_server(
         # so the chart tools must be bound to the Apps instance first.
         apps = tools_charts.build_apps()
         tools_charts.register(api, apps)
+        tools_charts_surface.register(api, apps)
         tools_workflow.register_apps(api, apps)  # run_desk_workflow renders the LV compare
         extensions.append(apps)
     trace_path = trace_path or os.environ.get("VOLFIT_MCP_TRACE") or None

@@ -6,6 +6,8 @@
 // script drives the app's own controls, screenshotting each state:
 //   lv-compare: 3D affine, heatmap twin, difference, dark theme, rms-bar click
 //   smile:      light, strike axis, dark, next-expiry (tools/call round trip)
+//   surface:    3D + ATM ridge, heatmap full wings, strike axis, Workbench link
+//   term:       vol + variance, event clock, point click -> chat message, dark
 // No server needed: the app HTML is rendered by the Python package (Plotly
 // inlined from backend/.cache, else the CDN). Screenshots in .smoke/mcp-*.png. Prereqs:
 // ../.venv (mcp installed), Edge, puppeteer-core (npm i --no-save puppeteer-core).
@@ -26,11 +28,13 @@ mkdirSync(OUT, { recursive: true });
 const pages = JSON.parse(execFileSync(PY, ["-c", `
 import json
 from volfit_mcp.tools_charts import _html
-print(json.dumps({"lv": _html("lv_compare.html"), "smile": _html("smile.html")}))
+print(json.dumps({"lv": _html("lv_compare.html"), "smile": _html("smile.html"), "surface": _html("vol_surface.html"), "term": _html("term.html")}))
 `], { encoding: "utf-8", cwd: winPath(new URL("../../backend/", import.meta.url)), maxBuffer: 64 * 1024 * 1024 }));  // the pages inline Plotly (~6 MB)
 const fixtures = {
   lv: JSON.parse(readFileSync(FIX + "mcp_lv_compare.json", "utf-8")),
   smile: JSON.parse(readFileSync(FIX + "mcp_smile.json", "utf-8")),
+  surface: JSON.parse(readFileSync(FIX + "mcp_vol_surface.json", "utf-8")),
+  term: JSON.parse(readFileSync(FIX + "mcp_term.json", "utf-8")),
 };
 
 // 2. The host harness: one sandboxed iframe (srcdoc) + the protocol.
@@ -136,6 +140,37 @@ try {
   check("smile: title updated after round trip", title2 !== title, title2);
   await page.evaluate(() => window.__setTheme("dark")); await sleep(500);
   await shot(page, "smile-dark");
+  check("smile: Workbench button shown", await frame.$eval("#wb", (el) => !el.hidden));
+  await page.close();
+
+  // ---- Implied-vol surface
+  ({ page, frame } = await openApp(browser, "surface", "light"));
+  check("surface: 3D surface + ATM ridge", await frame.evaluate(() => !!document.querySelector("#plot .gl-container canvas")));
+  await shot(page, "surface-3d");
+  await frame.click("[data-view=heat]"); await frame.click("[data-crop=full]"); await sleep(600);
+  check("surface: heatmap full wings", await frame.evaluate(() => !!document.querySelector("#plot .heatmaplayer")));
+  await shot(page, "surface-heat");
+  await frame.click("[data-axis=strike]"); await frame.click('[data-view="3d"]'); await sleep(700);
+  check("surface: strike axis in 3D", (await frame.$eval("[data-axis=strike]", (el) => el.className)).includes("on"));
+  await frame.click("#wb"); await sleep(200);
+  check("surface: Workbench -> ui/open-link", (await msgs(page, "ui/open-link")) > 0);
+  await page.close();
+
+  // ---- Term structure
+  ({ page, frame } = await openApp(browser, "term", "light"));
+  const termTraces = await frame.evaluate(() => document.querySelectorAll("#plot .scatterlayer .trace").length);
+  check("term: vol + variance traces", termTraces >= 5, `traces=${termTraces}`);
+  const termTiles = await frame.$$eval(".tile", (els) => els.length);
+  check("term: tiles", termTiles >= 6, `tiles=${termTiles}`);
+  await shot(page, "term-both");
+  await frame.click("[data-clock=tau]"); await frame.click("[data-view=var]"); await sleep(500);
+  check("term: variance-only on the event clock", (await frame.$eval("[data-view=var]", (el) => el.className)).includes("on"));
+  await shot(page, "term-variance-tau");
+  const pts = await frame.$$("#plot .scatterlayer .points path");
+  if (pts.length) { await pts[0].click(); await sleep(300); }
+  check("term: point click -> ui/message", (await msgs(page, "ui/message")) > 0, `points=${pts.length}`);
+  await page.evaluate(() => window.__setTheme("dark")); await sleep(400);
+  await shot(page, "term-dark");
   await page.close();
 } finally {
   await browser.close();

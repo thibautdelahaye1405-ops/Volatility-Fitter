@@ -1626,8 +1626,15 @@ below) — every recorded rider is closed except the ones listed here:
    `compare_settings` = two calibrations under two partial settings with
    per-ticker / per-expiry bp differences (the `keep` run goes last so the
    app ends calibrated under it); shared steps in `volfit_mcp/ops.py`;
-   locked by 3 new tests (20 total). Next in the plan: two more chart apps
-   (3D IV surface, term structure) + "open in workbench" links; EuroStoxx
+   locked by 3 new tests (20 total). TWO MORE CHART APPS SHIPPED 2026-09-09f:
+   `chart_vol_surface` (sigma(k, T) 3D / heatmap, k / K/F / strike axis,
+   quoted-range crop from the display crops, ATM ridge, click -> smile) and
+   `chart_term_structure` (ATM + var-swap vol and total variance w(t),
+   calendar vs event-dilated clock, events / dividends / calendar
+   violations, click -> smile); every card carries a Workbench button
+   (`ui/open-link` -> `/?node=TICKER|YYYY-MM-DD&activity=...`, consumed
+   once by the new frontend `useDeepLink` hook in the Shell — 4 vitest
+   locks); 21 backend locks, 25 headless-host checks. Next: EuroStoxx
    with the Terminal; MCPB bundle for one-click install; a Help Center page; tool-call time
    budgets in chat hosts are undocumented (calibrate waits ≤ wait_seconds
    then hands back a resumable status).

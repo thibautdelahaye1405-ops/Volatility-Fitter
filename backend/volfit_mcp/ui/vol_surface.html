@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Implied-vol surface</title>
+<script>/*__BRIDGE__*/</script>
+<script>
+  window.__plotly = { ready: false, failed: false };
+  window.__plotlyLoaded = function () { window.__plotly.ready = true; if (window.__onPlotly) window.__onPlotly(); };
+  window.__plotlyFailed = function () { window.__plotly.failed = true; if (window.__onPlotly) window.__onPlotly(); };
+</script>
+<script src="https://cdn.plot.ly/plotly-3.1.0.min.js" async onload="window.__plotlyLoaded()" onerror="window.__plotlyFailed()"></script>
+<style>
+  :root { --bg:#ffffff; --fg:#1b1f24; --muted:#6b7280; --line:#e5e7eb; --chip:#f3f4f6; --chipOn:#1f6feb; --chipOnFg:#fff; --warn:#b45309; }
+  html[data-theme="dark"] { --bg:#171717; --fg:#e5e7eb; --muted:#9ca3af; --line:#2f3136; --chip:#26282c; --chipOn:#4c8dff; --chipOnFg:#0b0f14; --warn:#f59e0b; }
+  html, body { margin:0; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); }
+  .bar .title { font-weight:600; margin-right:6px; }
+  .bar .sep { width:1px; height:18px; background:var(--line); margin:0 4px; }
+  .chip { border:1px solid var(--line); background:var(--chip); color:var(--fg); border-radius:999px; padding:3px 10px; cursor:pointer; font-size:12px; }
+  .chip.on { background:var(--chipOn); color:var(--chipOnFg); border-color:var(--chipOn); }
+  .grow { flex:1; }
+  #plot { width:100%; height:480px; }
+  .foot { display:flex; gap:10px; align-items:center; padding:6px 10px; color:var(--muted); font-size:11.5px; border-top:1px solid var(--line); }
+  #status { padding:18px 12px; color:var(--muted); text-align:center; }
+  #status.err { color:var(--warn); }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="title" id="title">Implied-vol surface</span>
+  <button class="chip on" data-axis="k">k = ln(K/F)</button>
+  <button class="chip" data-axis="kf">K/F</button>
+  <button class="chip" data-axis="strike">Strike</button>
+  <span class="sep"></span>
+  <button class="chip on" data-view="3d">3D</button>
+  <button class="chip" data-view="heat">Heatmap</button>
+  <span class="sep"></span>
+  <button class="chip on" data-crop="quoted">Quoted range</button>
+  <button class="chip" data-crop="full">Full wings</button>
+  <span class="grow"></span>
+  <button class="chip" id="wb" hidden>Workbench ↗</button>
+  <button class="chip" id="full">Fullscreen</button>
+</div>
+<div id="status">Connecting to the host…</div>
+<div id="plot" hidden></div>
+<div class="foot"><span id="meta"></span><span class="grow"></span><span>click the surface → open that expiry's smile</span></div>
+<script>
+(function () {
+  var B = window.VolfitBridge, data = null, dark = false, initDone = false;
+  var state = { axis: "k", view: "3d", crop: "quoted" };
+  function $(s) { return document.querySelector(s); }
+  function $$(s) { return Array.prototype.slice.call(document.querySelectorAll(s)); }
+  function paper() { return dark ? "#171717" : "#ffffff"; }
+  function fg() { return dark ? "#e5e7eb" : "#1b1f24"; }
+  function status(text, err) {
+    var el = $("#status"); el.hidden = !text; el.textContent = text || ""; el.className = err ? "err" : "";
+    $("#plot").hidden = !!text; B.sizeChanged(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
+  }
+  window.addEventListener("error", function (ev) { status("Chart error: " + (ev.message || ev), true); });
+  function xOf(k, i) { return state.axis === "k" ? k : state.axis === "kf" ? Math.exp(k) : data.forward[i] * Math.exp(k); }
+  function axisTitle() { return state.axis === "k" ? "k = ln(K/F)" : state.axis === "kf" ? "K/F" : "strike"; }
+  function masked() {  // z (%) with the wings beyond the quoted crop blanked
+    return data.vol.map(function (row, i) {
+      var c = (data.crop[i] || [])[0];
+      return row.map(function (v, j) {
+        if (v == null) return null;
+        if (state.crop === "quoted" && c && (data.k[j] < c.lo || data.k[j] > c.hi)) return null;
+        return 100 * v;
+      });
+    });
+  }
+  function render() {
+    $$("[data-axis]").forEach(function (b) { b.classList.toggle("on", b.dataset.axis === state.axis); });
+    $$("[data-view]").forEach(function (b) { b.classList.toggle("on", b.dataset.view === state.view); });
+    $$("[data-crop]").forEach(function (b) { b.classList.toggle("on", b.dataset.crop === state.crop); });
+    if (!data) { status(initDone ? "Waiting for the tool result…" : "Connecting to the host…"); return; }
+    if (window.__plotly.failed) { status("Plotly failed to load — the host blocked the chart library.", true); return; }
+    if (!window.__plotly.ready) { status("Loading the chart library…"); return; }
+    status("");
+    $("#title").textContent = data.ticker + " implied-vol surface";
+    $("#wb").hidden = !data.workbenchUrl;
+    var z = masked(), traces = [], layout = { paper_bgcolor: paper(), plot_bgcolor: paper(), font: { color: fg(), size: 11 },
+      margin: { l: 44, r: 10, t: 10, b: 40 }, showlegend: false };
+    var hover = axisTitle() + " %{x:.4g}<br>T %{y:.3f}y<br>%{z:.2f}%<extra>%{customdata}</extra>";
+    var cd = data.t.map(function (_, i) { return data.k.map(function () { return data.expiries[i]; }); });
+    if (state.view === "3d") {
+      var x = data.t.map(function (_, i) { return data.k.map(function (k) { return xOf(k, i); }); });
+      traces.push({ type: "surface", x: x, y: data.t, z: z, customdata: cd, colorscale: "Viridis", colorbar: { thickness: 10, len: 0.7, title: { text: "vol %" } },
+        contours: { z: { show: true, usecolormap: true, width: 1 } }, hovertemplate: hover, connectgaps: false });
+      traces.push({ type: "scatter3d", mode: "lines+markers", x: data.t.map(function (_, i) { return xOf(0, i); }), y: data.t,
+        z: data.atmVol.map(function (v) { return 100 * v; }), line: { color: "#f59e0b", width: 4 }, marker: { size: 3, color: "#f59e0b" },
+        hovertemplate: "ATM %{z:.2f}% at T %{y:.3f}y<extra>ATM</extra>", customdata: data.expiries });
+      layout.scene = { xaxis: { title: { text: axisTitle() } }, yaxis: { title: { text: "T (y)" } }, zaxis: { title: { text: "implied vol %" } },
+        camera: { eye: { x: 1.7, y: -1.5, z: 0.8 } }, bgcolor: paper() };
+    } else {
+      var kx = data.k.map(function (k) { return xOf(k, 0); });  // per-row strikes need 3D; the heatmap shows k or K/F
+      traces.push({ type: "heatmap", x: kx, y: data.t, z: z, customdata: cd, colorscale: "Viridis", colorbar: { thickness: 10, title: { text: "vol %" } },
+        hovertemplate: hover, hoverongaps: false });
+      traces.push({ type: "scatter", mode: "lines", x: data.t.map(function (_, i) { return xOf(0, i); }), y: data.t, line: { color: "#f59e0b", dash: "dash" }, hoverinfo: "skip" });
+      layout.xaxis = { title: { text: state.axis === "strike" ? "K/F (strike axis needs 3D)" : axisTitle() } };
+      layout.yaxis = { title: { text: "T (y)" } };
+    }
+    var el = $("#plot");
+    Plotly.react(el, traces, layout, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] });
+    el.removeAllListeners && el.removeAllListeners("plotly_click");
+    el.on("plotly_click", function (ev) {
+      var pt = ev.points && ev.points[0]; if (!pt) return;
+      var i = data.t.indexOf(pt.y); var exp = i >= 0 ? data.expiries[i] : (Array.isArray(pt.customdata) ? pt.customdata[0] : pt.customdata);
+      if (exp) B.sendMessage("Show me the " + data.ticker + " " + exp + " smile (chart_smile).");
+    });
+    $("#meta").textContent = data.expiries.length + " expiries · " + data.k.length + " strikes · ATM " + data.atmVol.map(function (v) { return (100 * v).toFixed(1) + "%"; }).join(" / ")
+      + " · target " + (data.fitMode || "app default");
+    B.sizeChanged(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
+  }
+  window.__onPlotly = render;
+  $$("[data-axis]").forEach(function (b) { b.onclick = function () { state.axis = b.dataset.axis; render(); }; });
+  $$("[data-view]").forEach(function (b) { b.onclick = function () { state.view = b.dataset.view; render(); }; });
+  $$("[data-crop]").forEach(function (b) { b.onclick = function () { state.crop = b.dataset.crop; render(); }; });
+  $("#wb").onclick = function () { if (data && data.workbenchUrl) B.openLink(data.workbenchUrl + "/?node=" + encodeURIComponent(data.ticker + "|" + data.expiries[0]) + "&activity=parametric"); };
+  $("#full").onclick = function () {
+    var mode = B.context().displayMode === "fullscreen" ? "inline" : "fullscreen";
+    B.requestDisplayMode(mode).then(function () { $("#plot").style.height = B.context().displayMode === "fullscreen" ? "calc(100vh - 110px)" : "480px"; render(); }, function () {});
+  };
+  B.on("hostContext", function (hc) { dark = hc.theme === "dark"; document.documentElement.setAttribute("data-theme", dark ? "dark" : "light"); initDone = true; render(); });
+  B.on("toolResult", function (res) {
+    data = res.structuredContent || null;
+    if (!data && res.content) { try { data = JSON.parse(res.content[0].text); } catch (e) { data = null; } }
+    if (data && data.kind !== "vol_surface") data = null;
+    if (!data) { status("The tool result carried no surface data" + (res.isError ? " (tool error)." : "."), true); return; }
+    render();
+  });
+  B.init("volfit-vol-surface");
+})();
+</script>
+</body>
+</html>
