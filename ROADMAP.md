@@ -1583,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-09j (resume here)
+## STATUS — updated 2026-09-09k (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1697,11 +1697,18 @@ below) — every recorded rider is closed except the ones listed here:
    redesign (rides index-root onboarding — the capture twins keep the
    first-listed root per date). Everything else recorded before 2026-08-28
    is SHIPPED (wraps 2026-08-27c/d + 2026-08-28a below).
-3. Findings recorded 2026-08-28a for a decision: under an ACTIVE filter the
+3. ~~Findings recorded 2026-08-28a for a decision: under an ACTIVE filter the
    LV prior path nests the hybrid tail anchor inside the operators branch
    (LV gets no tail anchor unless `wingOperatorsUnderActiveFilter` is on —
-   left byte-identical); `restorePersisted` never restored tabs since C3
-   (FIXED in 3086d3a — tabs now reload after a refresh, worth a manual look).
+   left byte-identical)~~ **DECIDED + SHIPPED 2026-09-09k** (wrap below): the
+   LV path builds the deep-tail anchor whenever the plan asks for it, as the
+   parametric path does — byte-identical with the filter off; `restorePersisted`
+   never restored tabs since C3 (FIXED in 3086d3a — tabs now reload after a
+   refresh, worth a manual look). The two invasive riders of item 2 were
+   RECORDED, not built (user 2026-09-09: "record both, go to item 6"); M3
+   remote (bearer key + URL secret + allowed hosts + run script + tunnel
+   recipe; OAuth server as the follow-on) was laid out and DEFERRED the same
+   day.
 4. HELP CENTER riders (wrap 2026-08-31c below; none are gates): surface the
    API-only Options fields in the dialog (gridXMinPerExpiry,
    filterAdaptiveSigma, filterClock, filterSessionShare,
@@ -1821,6 +1828,33 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-09k) — LV PRIOR PATH: THE DEEP-TAIL ANCHOR SURVIVES AN ACTIVE FILTER (THE 2026-08-28a DECISION, TAKEN)
+
+Item 6 of the confirm-per-item pass. The user ruled "align LV with
+parametric".
+
+- **The nesting.** `affine_fit._prior_lv_targets` built the hybrid deep-tail
+  strike anchor INSIDE its `if plan.operators or plan.factors or
+  plan.wing_operators:` branch. Under an active observation filter the
+  auto-exclusion (Note 15 §6.3) turns those three off, so the branch — and
+  the anchor with it — was skipped unless `wingOperatorsUnderActiveFilter`
+  re-opened it through the wing rows. The parametric `service.prior_targets`
+  never had that dependency: its anchor rides `plan.tail_anchor` alone.
+- **The change.** The anchor step now runs after the branch whenever
+  `plan.tail_anchor` is set (hybrid; and every calibration-prior mode under
+  an active filter). Filter off → the branch runs and the rows are the same
+  objects as before (byte-identical; the default `observationFilterMode` is
+  "off"). Active filter + a calibration prior → the LV surface gains the
+  same deep-tail rows the parametric fit has, wing flag on or off.
+- **Locks.** tests/test_prior_anchor.py
+  `test_affine_prior_lv_tail_anchor_survives_an_active_filter`: filter-off
+  reference rows; active + hybrid / quote_operator / smile_factor with the
+  flag off → no baskets, the tail rows equal the reference (t, x, price,
+  tol); the carve-out on → wing baskets beside the same rows; graph_only →
+  nothing. Prior, filter, LV-prior, affine-basket and affine-API suites: 64
+  green. The `priorTailAnchorStrengthPct` SettingDoc sentence now states the
+  rule instead of the caveat.
 
 ### 🧭 SESSION WRAP (2026-09-09j) — BLOOMBERG: ONE OPTION ROOT PER EXPIRY DATE (THE SX5E 2-DAY SLICE WAS TWO SERIES, NOT A FORWARD)
 

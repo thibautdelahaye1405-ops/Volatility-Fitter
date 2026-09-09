@@ -266,6 +266,53 @@ def test_affine_prior_lv_targets_route_by_mode():
     assert affine_fit._prior_lv_targets(state, TICKER, rows) == ([], [], [])
 
 
+def test_affine_prior_lv_tail_anchor_survives_an_active_filter():
+    """Decision 2026-09-09k: under an ACTIVE observation filter the LV path keeps
+    the deep-tail strike anchor for every calibration-prior mode — as the
+    parametric path does — whether or not ``wingOperatorsUnderActiveFilter``
+    is on. It used to be nested inside the operators branch, which the
+    auto-exclusion skips, so LV got no tail anchor at all with the flag off."""
+    from volfit.api import affine_fit
+    from volfit.api.prior_mode import resolve_prior_mode
+
+    state = AppState(REF_DATE)
+    state.set_options(state.options().model_copy(update={"autoLoadPrior": True}))
+    priors.save_all(state)
+    priors.fetch_all(state)
+    rows = affine_fit._gather(state, TICKER, "mid")
+
+    def _set(**extra):
+        state.set_options(state.options().model_copy(update=extra))
+
+    # Reference: the filter OFF — hybrid builds baskets AND the tail anchor.
+    _set(priorPersistenceMode="hybrid", observationFilterMode="off", priorOperatorBandwidth=0.03)
+    o_off, b_off, _ = affine_fit._prior_lv_targets(state, TICKER, rows)
+    assert len(o_off) > 0  # the deep-tail anchor rows
+
+    # ACTIVE filter, wing flag off (the default): body operators are auto-excluded,
+    # the tail anchor SURVIVES — the same rows as with the filter off.
+    for mode in ("hybrid", "quote_operator", "smile_factor"):
+        _set(priorPersistenceMode=mode, observationFilterMode="active",
+             wingOperatorsUnderActiveFilter=False)
+        plan = resolve_prior_mode(state.options())
+        assert plan.tail_anchor and not plan.operators and not plan.wing_operators
+        o, b, _ = affine_fit._prior_lv_targets(state, TICKER, rows)
+        assert b == [], mode  # nothing from the excluded operators / factors
+        assert [(q.t, q.x, q.price, q.tol) for q in o] == \
+            [(q.t, q.x, q.price, q.tol) for q in o_off], mode
+
+    # The carve-out ON: the wing rows come back beside the SAME tail anchor.
+    _set(priorPersistenceMode="hybrid", observationFilterMode="active",
+         wingOperatorsUnderActiveFilter=True)
+    o, b, _ = affine_fit._prior_lv_targets(state, TICKER, rows)
+    assert isinstance(b, list)
+    assert [(q.t, q.x, q.price) for q in o] == [(q.t, q.x, q.price) for q in o_off]
+
+    # A mode that never had a calibration prior gets nothing, filter or not.
+    _set(priorPersistenceMode="graph_only", observationFilterMode="active")
+    assert affine_fit._prior_lv_targets(state, TICKER, rows) == ([], [], [])
+
+
 def test_fetched_prior_busts_the_fit_cache():
     """A fetch bumps the active-prior version so calibrate re-anchors instead of
     serving a stale cached fit (autoLoadPrior on)."""

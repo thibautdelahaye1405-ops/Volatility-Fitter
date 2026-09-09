@@ -72,8 +72,8 @@ export const PRIOR_TAIL_DOCS: SettingDoc[] = [
       "tail. It is smaller than the operator budget (20% vs 50%) because it only holds the " +
       "region the operators leave flat.\n\n" +
       "Under an `active` observation filter this anchor is what survives of persistence " +
-      "(the filter carries the body); on the LV path it is nested inside the operators " +
-      "branch, so LV gets no tail anchor there unless `wingOperatorsUnderActiveFilter` is on.",
+      "(the filter carries the body) — on the parametric smile and, since 2026-09-09, on the " +
+      "Local Vol surface alike, whether or not `wingOperatorsUnderActiveFilter` is on.",
     example:
       "Raise it to 100% on a name with no quotes below 10Δ: the 2Δ/5Δ put wing pins to the " +
       "transported prior nearly exactly. At 0 the wing is the model's own Lee-bounded " +

@@ -1220,7 +1220,9 @@ def _prior_lv_targets(state: AppState, ticker: str, rows):
     ``quote_operator`` -> signed-basket operator targets (keep the RR/BF coupling);
     ``smile_factor`` -> signed-basket factor targets (level/skew/curvature);
     ``hybrid`` -> operator baskets PLUS a residual deep-tail strike anchor where no
-    operator reaches; ``off`` / ``overlay`` / ``graph_only`` -> none. The MODE is the
+    operator reaches (under an ACTIVE observation filter that anchor is what
+    survives of persistence for every calibration-prior mode, exactly as on the
+    parametric path); ``off`` / ``overlay`` / ``graph_only`` -> none. The MODE is the
     single source of truth (Phase 8 retired the ``autoLoadPrior`` master), mirroring
     ``service.prior_targets`` so the LV surface and the parametric smile agree."""
     opts = state.options()
@@ -1230,6 +1232,8 @@ def _prior_lv_targets(state: AppState, ticker: str, rows):
     if plan.strike_anchor:
         prior_opts, prior_vs = _prior_anchor_quotes(state, ticker, rows)
         return prior_opts, [], prior_vs
+    baskets: list = []
+    vs_quotes: list = []
     if plan.operators or plan.factors or plan.wing_operators:
         active = state.active_prior(ticker)
         if active is None:
@@ -1248,8 +1252,6 @@ def _prior_lv_targets(state: AppState, ticker: str, rows):
             })
         regime = state.dynamics_regime()
         scheme = state.fit_settings().weightScheme
-        baskets: list = []
-        vs_quotes: list = []
         for iso, tau, k, w, prepared, _band in rows:
             node = prior_transport.prior_node(active, iso)
             if node is None:
@@ -1259,15 +1261,21 @@ def _prior_lv_targets(state: AppState, ticker: str, rows):
             b, v = build(moved.implied_w, node.tau, tau, k, qw, op_opts)
             baskets.extend(b)
             vs_quotes.extend(v)
-        # hybrid: add the residual deep-tail strike anchor (operators carry the rest).
-        extra_opts: list = []
-        if plan.tail_anchor:
-            tail_deltas = hybrid_tail_deltas(opts.priorOperatorSet, opts.priorAnchorDeltas)
-            extra_opts, _tail_vs = _prior_anchor_quotes(
-                state, ticker, rows, deltas=tail_deltas, weight_pct=opts.priorTailAnchorStrengthPct
-            )
-        return extra_opts, baskets, vs_quotes
-    return [], [], []
+    # The residual deep-tail strike anchor: hybrid's complement of the operators,
+    # and under an ACTIVE observation filter what survives of persistence for
+    # every calibration-prior mode (Note 15 §6.3). Built whenever the plan asks
+    # for it, INDEPENDENT of the operators branch above — as service.prior_targets
+    # does for the parametric smile. Until 2026-09-09k it was nested inside that
+    # branch, so an active filter with wingOperatorsUnderActiveFilter off (the
+    # default) left the LV surface with no tail anchor at all. Byte-identical
+    # with the filter off (the branch runs and the rows are the same).
+    extra_opts: list = []
+    if plan.tail_anchor:
+        tail_deltas = hybrid_tail_deltas(opts.priorOperatorSet, opts.priorAnchorDeltas)
+        extra_opts, _tail_vs = _prior_anchor_quotes(
+            state, ticker, rows, deltas=tail_deltas, weight_pct=opts.priorTailAnchorStrengthPct
+        )
+    return extra_opts, baskets, vs_quotes
 
 
 def _fit(
