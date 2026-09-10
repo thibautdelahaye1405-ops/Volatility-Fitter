@@ -1,6 +1,6 @@
 // Fetches the Local Vol lens's Compare tab payload (LV Dupire-twin arc, D3):
 //
-//   POST /fit/affine/{ticker}/compare  body { fitMode, tInterp, tails: "model" }
+//   POST /fit/affine/{ticker}/compare  body { fitMode, tInterp, tails }
 //
 // The backend (volfit.api.lv_compare) reads the parametric surface's Dupire
 // twin off the affine vertex lattice, marches it through the LV fit's own
@@ -31,6 +31,8 @@ import type { QuoteBand, SmilePoint } from "./useAffine";
 export const SOFT_REFRESH_MIN_MS = 2000;
 
 /** The t-interpolation chip: monotone PCHIP in τ vs the market's staircase. */
+import type { LvTailTarget } from "../lib/lvCompare";
+
 export type LvTInterp = "smooth" | "buckets";
 
 /** One surface's fit-target score (one expiry, or pooled). `rmsError` is the
@@ -182,6 +184,7 @@ export function useLvCompare(
   reloadKey: number = 0,
   fitMode: string = "mid",
   tInterp: LvTInterp = "smooth",
+  tails: LvTailTarget = "model",
 ): UseLvCompareResult {
   const [data, setData] = useState<LvCompareResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -194,9 +197,9 @@ export function useLvCompare(
   const timer = useRef<number | undefined>(undefined);
   const lastLanded = useRef(0);
   const justHard = useRef(false);
-  const args = useRef({ ticker, fitMode, tInterp });
-  args.current = { ticker, fitMode, tInterp };
-  const hardKey = enabled && ticker !== "" ? `${ticker}|${fitMode}|${tInterp}` : "";
+  const args = useRef({ ticker, fitMode, tInterp, tails });
+  args.current = { ticker, fitMode, tInterp, tails };
+  const hardKey = enabled && ticker !== "" ? `${ticker}|${fitMode}|${tInterp}|${tails}` : "";
 
   // The runner: the latest closure lives in a ref so a trailing refetch
   // scheduled from a landed promise always reads the current arguments.
@@ -211,7 +214,7 @@ export function useLvCompare(
     else fns.current.start(soft);
   };
   fns.current.start = (soft: boolean) => {
-    const { ticker: tk, fitMode: fm, tInterp: ti } = args.current;
+    const { ticker: tk, fitMode: fm, tInterp: ti, tails: ta } = args.current;
     const controller = new AbortController();
     inflight.current = controller;
     if (soft) setUpdating(true);
@@ -231,7 +234,7 @@ export function useLvCompare(
     };
     api
       .post<LvCompareResponse>(`/fit/affine/${tk}/compare`, {
-        body: { fitMode: fm, tInterp: ti, tails: "model" },
+        body: { fitMode: fm, tInterp: ti, tails: ta },
         signal: controller.signal,
         timeoutMs: 300_000,
       })

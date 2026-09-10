@@ -211,12 +211,17 @@ class LvCompareRequest(AffineFitRequest):
     ``tInterp`` picks the t-interpolation of the parametric total-variance
     surface before it is differentiated (``smooth`` = monotone PCHIP in τ,
     ``buckets`` = the market's constant-forward-variance staircase);
-    ``tails`` names what the surface is beyond the quoted range — v1 ships the
-    displayed model's own wings only (the Literal is the 422 gate; the
-    Match-LQD / Quoted-range / Affine-wings riders extend it)."""
+    ``tails`` names what the twin is beyond each expiry's QUOTED range
+    (models.localvol.dupire_surface.WING_TARGETS): ``model`` — the displayed
+    model's own analytic wings, differentiated everywhere inside the display
+    guard (v1); ``hull`` — differentiated inside the quoted range only, the
+    local variance held flat beyond it; ``affine`` — the twin inside the
+    quoted range, the calibrated affine sheet outside it (422 without an LV
+    sheet on the same lattice). The Literal is the 422 gate; the Match-LQD
+    target stays a rider."""
 
     tInterp: Literal["smooth", "buckets"] = "smooth"
-    tails: Literal["model"] = "model"
+    tails: Literal["model", "hull", "affine"] = "model"
 
 
 class DupireCountersOut(BaseModel):

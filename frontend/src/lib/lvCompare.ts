@@ -39,9 +39,23 @@ export const LV_TAIL_OPTIONS: { id: LvTailTarget; label: string; title: string; 
       "An exponential-class wing gives a local variance growing without bound in |k| — the affine sheet is Gaussian-class there, so the wings are where the two structurally differ",
     available: true,
   },
+  {
+    id: "hull",
+    label: "Quoted range",
+    title:
+      "Differentiate inside each expiry's quoted range only and hold the local variance flat beyond it — " +
+      "the twin reads the market where there are quotes and adds no wing of its own",
+    available: true,
+  },
+  {
+    id: "affine",
+    label: "Affine wings",
+    title:
+      "The twin inside each expiry's quoted range, the calibrated affine sheet outside it — " +
+      "needs a Local Vol sheet on the same lattice (Calibrate first)",
+    available: true,
+  },
   { id: "matchLqd", label: "Match LQD", title: "Rider — the overlay refit with the Compare tail-match rows so its wings sit on LQD's", available: false },
-  { id: "hull", label: "Quoted range", title: "Rider — differentiate inside each expiry's quoted hull only, flat local vol beyond", available: false },
-  { id: "affine", label: "Affine wings", title: "Rider — the twin inside the hull, the calibrated affine sheet outside", available: false },
 ];
 
 /** What the card draws: the two σ²_loc sheets side by side, the signed

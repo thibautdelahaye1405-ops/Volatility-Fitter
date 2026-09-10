@@ -225,12 +225,41 @@ def _twin_record(
     # where the twin's wings leave the box the affine sheet lives in.
     var_hi_twin = float(affine_fit._LV_VAR_CEILING)
 
+    # The ANCHOR sheet: the calibration cache entry behind the displayed
+    # pointer, before the spot transport relabels its lattice — the twin is
+    # built from the anchor parametric records, so this is the like-for-like.
+    # Looked up here because the "affine" tail target reads it.
+    ptr = state.get_affine_ptr(ticker)
+    anchor = affine_fit._cache(state).get(ptr) if ptr is not None else None
+    if anchor is not None and not anchor.hasFit:
+        anchor = None
+    lattice_ok = anchor is not None and _lattice_matches(anchor, t_nodes, x_nodes)
+    # The tail target (LvCompareRequest.tails, dupire_surface.WING_TARGETS):
+    # each expiry's QUOTED k-range bounds the differentiation under "hull" /
+    # "affine"; "affine" reads the anchor sheet (nodal variance = localVol²,
+    # the same lattice) outside it — without a matching sheet it is a 422.
+    quoted = (
+        np.array([float(np.min(k)) for _, _, k, _, _, _ in rows]),
+        np.array([float(np.max(k)) for _, _, k, _, _, _ in rows]),
+    )
+    wing_surface = None
+    if request.tails == "affine":
+        if not lattice_ok:
+            raise ValueError(
+                "Affine wings need a Local Vol sheet calibrated on the same lattice — Calibrate first"
+            )
+        wing_surface = AffineVarianceSurface(
+            t_nodes=t_nodes, x_nodes=x_nodes, theta=np.asarray(anchor.localVol, dtype=float) ** 2
+        )
+    wing_kw = dict(wings=request.tails, quoted=quoted, wing_surface=wing_surface)
+
     # 3. the twin on the vertices
     slices = [displayed_slice(rec) for rec in records]
     w_surface = build_w_surface(request.tInterp, ts, slices)
     twin = extract_twin(
         w_surface, ts, x_nodes, t_nodes, t_interp=request.tInterp,
         var_lo=var_lo, var_hi=var_hi_twin, k_lo=K_DISPLAY_LO, k_hi=K_DISPLAY_HI, report_hi=var_hi,
+        **wing_kw,
     )
     surface = AffineVarianceSurface(t_nodes=t_nodes, x_nodes=x_nodes, theta=twin.theta)
 
@@ -251,7 +280,7 @@ def _twin_record(
     x_fine, t_fine = refined_grids(x_grid, t_grid, TWIN_DX_FACTOR, TWIN_DT_FACTOR)
     smooth = DupireTwinSurface(
         w_surface, ts, t_interp=request.tInterp, var_lo=var_lo, var_hi=var_hi_twin,
-        k_lo=K_DISPLAY_LO, k_hi=K_DISPLAY_HI, report_hi=var_hi,
+        k_lo=K_DISPLAY_LO, k_hi=K_DISPLAY_HI, report_hi=var_hi, **wing_kw,
     )
 
     def march(surf, x, payoff: str = "call"):
@@ -276,15 +305,8 @@ def _twin_record(
 
     if affine is None:  # the displayed LV payload (settles the pointer; stale flag)
         affine = affine_fit.affine_payload(state, ticker, _affine_request(request))
-    # The ANCHOR sheet: the calibration cache entry behind the displayed
-    # pointer, before the spot transport relabels its lattice — the twin is
-    # built from the anchor parametric records, so this is the like-for-like.
-    ptr = state.get_affine_ptr(ticker)
-    anchor = affine_fit._cache(state).get(ptr) if ptr is not None else None
-    if anchor is not None and not anchor.hasFit:
-        anchor = None
+    # The anchor sheet (looked up above, before the twin build) per expiry.
     affine_by_iso = {s.expiry: s for s in anchor.smiles} if anchor is not None else {}
-    lattice_ok = anchor is not None and _lattice_matches(anchor, t_nodes, x_nodes)
 
     # 5. per-expiry smiles and scores
     weight_scheme = state.fit_settings().weightScheme

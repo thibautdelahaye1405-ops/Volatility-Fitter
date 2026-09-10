@@ -29,8 +29,11 @@ from volfit.models.localvol.dupire_surface import (
     DK_DEFAULT,
     T_INTERPS,
     WSurface,
+    _check_wings,
     _default_dt,
     _w_t,
+    wing_levels,
+    wing_mask,
 )
 
 #: The twin's DISPLAY operator: the calibration lattice refined by these
@@ -67,11 +70,19 @@ class DupireTwinSurface:
         dk: float = DK_DEFAULT,
         dt: float | None = None,
         report_hi: float | None = None,
+        wings: str = "model",
+        quoted: tuple[np.ndarray, np.ndarray] | None = None,
+        wing_surface=None,
     ) -> None:
         if t_interp not in T_INTERPS:
             raise ValueError(f"t_interp must be one of {T_INTERPS}, got {t_interp!r}")
         if not (0.0 < var_lo < var_hi):
             raise ValueError("need 0 < var_lo < var_hi")
+        _check_wings(wings, quoted, wing_surface)
+        # The tail target (dupire_surface.WING_TARGETS): "hull" / "affine" bound
+        # the differentiation by each expiry's quoted range; "affine" reads the
+        # calibrated sheet (duck-typed ``variance(x, t)``) outside it.
+        self.wings, self.quoted, self.wing_surface = wings, quoted, wing_surface
         self.w = w_surface
         self.ts = np.asarray(ts, dtype=float)
         self.edges = np.concatenate([[0.0], self.ts])
@@ -106,6 +117,9 @@ class DupireTwinSurface:
             inside &= k_all <= float(self.k_hi)
         if not inside.any():
             raise ValueError("no strike inside the differentiation guard")
+        if self.wings != "model":  # the level's quoted range bounds the differentiation
+            level = int(wing_levels(self.ts, np.array([t]))[0])
+            inside = wing_mask(k_all, inside, self.quoted, level)
         k = k_all[inside]
         w0 = np.asarray(self.w(k, t_eval), dtype=float)
         wp = np.asarray(self.w(k + self.dk, t_eval), dtype=float)
@@ -122,7 +136,13 @@ class DupireTwinSurface:
         self.n_floored += int(np.sum(var < self.var_lo))
         self.n_capped += int(np.sum(var > self.report_hi))
         row = np.clip(var, self.var_lo, self.var_hi)
-        return np.interp(k_all, k, row)  # flat beyond the guard (np.interp clamps)
+        out = np.interp(k_all, k, row)  # flat beyond the guard / the hull (np.interp clamps)
+        if self.wings == "affine":  # the calibrated sheet outside the quoted range
+            outside = (x > 0.0) & ~inside
+            if outside.any():
+                sheet = np.asarray(self.wing_surface.variance(x[outside], t), dtype=float)
+                out[outside] = np.clip(sheet, self.var_lo, self.var_hi)
+        return out
 
     @property
     def clean(self) -> bool:

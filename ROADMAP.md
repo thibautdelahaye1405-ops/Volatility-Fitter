@@ -1583,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10e (resume here)
+## STATUS — updated 2026-09-10f (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1805,11 +1805,18 @@ below) — every recorded rider is closed except the ones listed here:
    Dupire twin drawn smooth beside the affine sheet, difference, smiles +
    scores, anchored at the calibration spot), every 3D surface's (k, T)
    crop with the centred zoom, the help corpora. Riders (none gates, listed
-   in the wrap): the three tail-target chips, transport the twin with the
-   spot, θ_ref = twin / the smooth seed (benchmark-pack), analytic LQD
-   k-derivatives, an operator floor with the twin's wings, the hat-basis
-   precompute, the cue card's Calibrate button, LocalVolViewer's split, the
-   Massive weekly fixture through `lv_benchmark.build_state`. ~~FOR THE LV
+   in the wrap): ~~the three tail-target chips~~ TWO SHIPPED 2026-09-10f
+   (wrap below: `tails = model | hull | affine` on the wire, the Quoted-range
+   and Affine-wings chips live; Match LQD stays the muted rider), transport
+   the twin with the spot, θ_ref = twin / the smooth seed (benchmark-pack),
+   analytic LQD k-derivatives, an operator floor with the twin's wings, the
+   hat-basis precompute, the cue card's Calibrate button (the 404 cue's
+   button already opens the Calibrate flow — verify on a live look),
+   ~~LocalVolViewer's split~~ DONE 2026-09-10f (474 → 358 lines, two hooks
+   under `views/localvol/`), ~~the Massive weekly fixture through
+   `lv_benchmark.build_state`~~ ALREADY WORKS (`--fixture
+   tests/fixtures/lv_weekly_massive.json`: SPY 10.9 bp, recorded
+   2026-09-10f). ~~FOR THE LV
    FIT: the fix-#3 front gate (nine implicit steps on a one-month front) is a
    benchmark-pack adjudication.~~ **CLOSED 2026-09-08c** (LV OPERATOR ARC,
    wrap below): the default march is BDF2 on a time grid graded from the
@@ -1875,6 +1882,53 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-10f) — DUPIRE-TWIN RIDERS: THE QUOTED-RANGE AND AFFINE-WINGS TAIL TARGETS, THE LOCAL VOL VIEWER SPLIT
+
+Item 12 of the confirm-per-item pass ("tail targets + viewer split"); the
+viewer split by a forked sub-agent, the tail targets by the lead. The
+numerics riders (analytic LQD k-derivatives, the operator floor with the
+twin's wings, the hat-basis precompute, transport with the spot, θ_ref =
+twin) stay recorded; Match LQD stays the muted rider chip.
+
+- **The wire.** `LvCompareRequest.tails: Literal["model", "hull", "affine"]`
+  (`dupire_surface.WING_TARGETS`): `model` = the displayed model's own
+  analytic wings differentiated everywhere inside the display guard (v1,
+  byte-identical); `hull` = differentiate inside each expiry's QUOTED
+  k-range only, the local variance held flat beyond it (the `np.interp`
+  clamp that already held the guard); `affine` = the twin inside the
+  quoted range, the calibrated affine sheet (nodal variance = the anchor
+  payload's `localVol²`, same lattice) outside it — a 422 "Affine wings
+  need a Local Vol sheet calibrated on the same lattice — Calibrate first"
+  without one. The level of a time is the listed expiry whose interval
+  holds it (`wing_levels`); the quoted range per expiry comes from the
+  prepared rows' k. Both the vertex extraction (`extract_twin`) and the
+  smooth surface the marches evaluate (`DupireTwinSurface`) take the same
+  three kwargs, so sheets, smiles and scores agree on the target; the
+  compare cache key already carried `tails`. The anchor lookup moved
+  BEFORE the twin build (the affine target reads it).
+- **Locks.** `test_dupire_surface.test_tail_targets_hull_and_affine` (hull
+  = model inside each level's range, flat at the edges beyond; affine =
+  model inside, the sheet's constant outside; the smooth surface equals the
+  vertex extraction under both; the vocabulary / range / sheet gates);
+  `test_api_lv_compare.test_hull_and_affine_tail_targets` (hull 200, ATM
+  column equal to the model twin on every row, the shortest row flat at
+  both ends where the model's is not; affine 200 with the shortest row's
+  outer cells equal to `localVolAffine`, else the 422; `matchLqd` 422);
+  backend 26 green across the twin, compare and Local Vol API suites.
+- **The chips.** `LV_TAIL_OPTIONS`: Model wings · Quoted range · Affine
+  wings live (titles say what each is), Match LQD muted "rider";
+  `LvCompareChips` takes `tails` / `onTailsChange` (lit = teal, the spinner
+  on the lit one during a hard build); `useLvCompare` gains the `tails`
+  argument (hard key + body); the viewer's per-tab memory gains `lvTails`
+  (default model). Guide: the Compare tab's "Tails chips" bullet rewritten
+  for the three targets. Frontend 36 tests across the Local Vol, compare-lib
+  and help files; `tsc` clean.
+- **The viewer split (fork).** `LocalVolViewer.tsx` 474 → 358 lines:
+  `views/localvol/useLocalVolViewState.ts` (50: the per-tab remembered
+  state + setters, now incl. `lvTails`) and `useLocalVolOverlays.ts` (123:
+  the IV-surface / LV-mesh / stacked-IV / calendar-marker / stacked-density
+  memos and the x transforms) — pure moves, hook order stable.
 
 ### 🧭 SESSION WRAP (2026-09-10e) — GRAPH + WEIGHTING RIDERS: A RESIZABLE RELATIONS DRAWER, THE QUALITY "WGT" COLUMN, THE WEIGHT STRIP'S CROSSHAIR BADGE
 

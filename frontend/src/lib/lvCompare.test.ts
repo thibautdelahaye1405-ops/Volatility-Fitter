@@ -13,10 +13,10 @@ describe("chip vocabularies", () => {
   it("offers smooth (first, the default) and buckets", () => {
     expect(LV_T_INTERP_OPTIONS.map((o) => o.id)).toEqual(["smooth", "buckets"]);
   });
-  it("ships exactly one available tail target in v1 — the model's own wings — and lists the riders", () => {
+  it("ships three tail targets — model wings first (the default), quoted range, affine wings — and lists Match LQD as the rider", () => {
     const available = LV_TAIL_OPTIONS.filter((o) => o.available).map((o) => o.id);
-    expect(available).toEqual(["model"]);
-    expect(LV_TAIL_OPTIONS.filter((o) => !o.available).map((o) => o.id)).toEqual(["matchLqd", "hull", "affine"]);
+    expect(available).toEqual(["model", "hull", "affine"]);
+    expect(LV_TAIL_OPTIONS.filter((o) => !o.available).map((o) => o.id)).toEqual(["matchLqd"]);
   });
   it("has the three display modes", () => {
     expect(LV_COMPARE_MODES.map((m) => m.id)).toEqual(["sheets", "diff", "smiles"]);

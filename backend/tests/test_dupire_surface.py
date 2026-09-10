@@ -335,3 +335,56 @@ def test_twin_surface_matches_the_vertex_extraction_and_memoizes():
     np.testing.assert_array_equal(flat.variance(X_NODES, 0.3), np.full(X_NODES.size, 0.04))
     with pytest.raises(ValueError):
         FlatSurface(0.0)
+
+
+# --------------------------------------------------------------------------
+# 10. Tail targets (2026-09-10): hull holds flat beyond the quoted range,
+#     affine reads the calibrated sheet there; the model target is untouched.
+# --------------------------------------------------------------------------
+
+
+def test_tail_targets_hull_and_affine():
+    from volfit.models.localvol.dupire_surface import WING_TARGETS, wing_levels
+    from volfit.models.localvol.dupire_twin import DupireTwinSurface, FlatSurface
+
+    w = build_w_surface("smooth", TS, LADDER)
+    model = extract_twin(w, TS, X_NODES, T_NODES, t_interp="smooth", **BOX)
+    # A quoted range per expiry narrower than the vertex range, widening with maturity.
+    lo = np.array([-0.15, -0.2, -0.25, -0.3, -0.35])
+    hi = np.array([0.10, 0.15, 0.20, 0.25, 0.30])
+    quoted = (lo, hi)
+    k = np.log(X_NODES[1:])
+
+    hull = extract_twin(w, TS, X_NODES, T_NODES, t_interp="smooth", wings="hull", quoted=quoted, **BOX)
+    levels = wing_levels(TS, T_NODES)
+    for i in range(T_NODES.size):
+        inside = (k >= lo[levels[i]]) & (k <= hi[levels[i]])
+        np.testing.assert_allclose(hull.theta[i, 1:][inside], model.theta[i, 1:][inside], rtol=1e-12)
+        below, above = k < lo[levels[i]], k > hi[levels[i]]
+        edge_lo = hull.theta[i, 1:][inside][0]
+        edge_hi = hull.theta[i, 1:][inside][-1]
+        assert np.allclose(hull.theta[i, 1:][below], edge_lo) and np.allclose(hull.theta[i, 1:][above], edge_hi)
+    assert not np.allclose(hull.theta, model.theta)
+
+    sheet = FlatSurface(0.0123)
+    aff = extract_twin(w, TS, X_NODES, T_NODES, t_interp="smooth", wings="affine", quoted=quoted, wing_surface=sheet, **BOX)
+    for i in range(T_NODES.size):
+        inside = (k >= lo[levels[i]]) & (k <= hi[levels[i]])
+        np.testing.assert_allclose(aff.theta[i, 1:][inside], model.theta[i, 1:][inside], rtol=1e-12)
+        np.testing.assert_allclose(aff.theta[i, 1:][~inside], 0.0123, rtol=1e-12)
+
+    # The smooth surface agrees with the vertex extraction under both targets.
+    for wings, ref in (("hull", hull), ("affine", aff)):
+        smooth = DupireTwinSurface(w, TS, t_interp="smooth", wings=wings, quoted=quoted,
+                                   wing_surface=sheet if wings == "affine" else None, **BOX)
+        for i, t_row in enumerate(ref.t_rows):
+            np.testing.assert_allclose(smooth.variance(X_NODES, float(t_row)), ref.theta[i], rtol=1e-10, atol=1e-12)
+
+    # Gates: the vocabulary, the quoted range, the sheet.
+    assert WING_TARGETS == ("model", "hull", "affine")
+    with pytest.raises(ValueError):
+        extract_twin(w, TS, X_NODES, T_NODES, t_interp="smooth", wings="hull", **BOX)
+    with pytest.raises(ValueError):
+        extract_twin(w, TS, X_NODES, T_NODES, t_interp="smooth", wings="affine", quoted=quoted, **BOX)
+    with pytest.raises(ValueError):
+        extract_twin(w, TS, X_NODES, T_NODES, t_interp="smooth", wings="matchLqd", quoted=quoted, **BOX)

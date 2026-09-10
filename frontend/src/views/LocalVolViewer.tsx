@@ -23,47 +23,38 @@
 // unit selector: AxisModeSelect, or AxisUnitSelect for the 3D LV mesh);
 // LocalVolAside (Spot move · Variance swap · Fit diagnostics). View state goes
 // through useLensViewMemory (per tab with Layout ▸ "Remember view per tab").
-import { useMemo, useState } from "react";
+// Split 2026-09-10 (the 400-line policy): the per-tab view state lives in
+// localvol/useLocalVolViewState, the client-side derived views (IV surface,
+// LV mesh, stacked variance + marker, densities) in localvol/useLocalVolOverlays.
+import { useState } from "react";
 import LocalVolHeatmap from "../components/LocalVolHeatmap";
 import LocalVolSmile from "../components/LocalVolSmile";
 import LocalVolTable from "../components/LocalVolTable";
 import type { AffineTableData } from "../components/LocalVolTable";
 import SurfaceMesh from "../components/SurfaceMesh";
-import type { SurfaceMeshData } from "../components/SurfaceMesh";
-import OverlayCurvesChart, { maturityColor } from "../components/OverlayCurvesChart";
-import type { OverlayMarker, OverlaySeries } from "../components/OverlayCurvesChart";
+import OverlayCurvesChart from "../components/OverlayCurvesChart";
 import TermChart from "../components/TermChart";
 import LocalVolToolbar, {
   AXIS_MODE_VIEWS, LV_AXIS_OPTIONS, PER_EXPIRY, fmtBp0,
 } from "../components/localvol/LocalVolToolbar";
-import type { LvAxis, LvRender, LvView } from "../components/localvol/LocalVolToolbar";
 import LocalVolAside from "../components/localvol/LocalVolAside";
 import LvCompareChips from "../components/localvol/LvCompareChips";
 import LvCompareView from "../components/localvol/LvCompareView";
-import { lvMeshFormatX, lvMeshXTransform } from "../components/localvol/lvMeshAxis";
-import type { LvCompareMode } from "../lib/lvCompare";
 import { useLvCompare } from "../state/useLvCompare";
-import type { LvTInterp } from "../state/useLvCompare";
 import AxisModeSelect, { AxisUnitSelect } from "../components/charts/AxisModeSelect";
-import { lvCalendarMarker } from "../lib/stackedVariance";
-import { cropPoints, cropRangeAt } from "../lib/stackCrop";
-import { useStackCrop } from "../state/useStackCrop";
 import { useSmileSession } from "../state/smileSession";
 import { useOptionalWorkbench } from "../state/workbench";
 import { useNodeScope } from "../state/nodeScope";
-import { useLensViewMemory } from "../state/useLensViewMemory";
 import { useAffine } from "../state/useAffine";
 import { useAffineView } from "../state/useAffineView";
 import { useEvents } from "../state/useTerm";
-import type { ClockMode, TermResponse } from "../state/useTerm";
+import type { TermResponse } from "../state/useTerm";
 import { useExpiryFormat } from "../state/expiryFormat";
-import { buildIvSurface, smileAxisContext } from "../lib/affineSurface";
 import { formatExpiry } from "../lib/expiryFormat";
-import { axisModeLabel, axisTickLabel, axisTransform } from "../lib/axisModes";
-import type { AxisMode } from "../lib/axisModes";
-import { readSmileAutoScale, writeSmileAutoScale } from "../lib/autoScaleY";
-import type { AutoScaleToggles } from "../lib/autoScaleY";
+import { axisModeLabel, axisTickLabel } from "../lib/axisModes";
 import { buttonClass, cardClass, chartMessageClass } from "../lib/ui";
+import { useLocalVolOverlays } from "./localvol/useLocalVolOverlays";
+import { useLocalVolViewState } from "./localvol/useLocalVolViewState";
 
 const chartMessage = (text: string) => <div className={chartMessageClass}>{text}</div>;
 
@@ -83,33 +74,13 @@ export default function LocalVolViewer() {
   // one reloadKey so density / term / table refetch alongside the surface.
   const lvReloadKey = varSwapNonce + spotVersion;
   const { format } = useExpiryFormat();
-  // View state: sub-view · strike-axis mode · LV-surface render (3D mesh or
-  // heatmap) · x-axis scale of the 3D LV mesh · maturity clock (Term sub-tab)
-  // · the Y center / Y fit chips of the 2-D charts (seeded from the same
-  // persisted preference as the Parametric lens — lib/autoScaleY).
-  // The Compare tab adds its two chips (t-interpolation of the twin, the
-  // display mode) — remembered per tab like the rest (older memories lack
-  // them and fall back to the defaults).
-  const [vs, patchView] = useLensViewMemory<{
-    view: LvView; axisMode: AxisMode; lvRender: LvRender; lvAxis: LvAxis; axisClock: ClockMode;
-    autoScaleY: AutoScaleToggles; lvTInterp: LvTInterp; lvCompareMode: LvCompareMode;
-  }>("localvol", () => ({
-    view: "smile", axisMode: "logmoneyness", lvRender: "mesh", lvAxis: "moneyness", axisClock: "real",
-    autoScaleY: readSmileAutoScale(), lvTInterp: "smooth", lvCompareMode: "sheets",
-  }));
-  const { view, axisMode, lvRender, lvAxis, axisClock, autoScaleY } = vs;
-  const lvTInterp: LvTInterp = vs.lvTInterp ?? "smooth";
-  const lvCompareMode: LvCompareMode = vs.lvCompareMode ?? "sheets";
-  const setView = (view: LvView) => patchView({ view });
-  const setAxisMode = (axisMode: AxisMode) => patchView({ axisMode });
-  const toggleAutoScale = (key: keyof AutoScaleToggles) => {
-    const next = { ...autoScaleY, [key]: !autoScaleY[key] };
-    writeSmileAutoScale(next);
-    patchView({ autoScaleY: next });
-  };
-  const setLvRender = (lvRender: LvRender) => patchView({ lvRender });
-  const setLvAxis = (lvAxis: LvAxis) => patchView({ lvAxis });
-  const setAxisClock = (axisClock: ClockMode) => patchView({ axisClock });
+  // View state (per tab, remembered): sub-view · strike-axis mode · LV-surface
+  // render · 3D-mesh x scale · maturity clock · Y chips · the Compare tab's two
+  // chips, with their setters — localvol/useLocalVolViewState.
+  const {
+    view, axisMode, lvRender, lvAxis, axisClock, autoScaleY, lvTInterp, lvTails, lvCompareMode,
+    patchView, setView, setAxisMode, toggleAutoScale, setLvRender, setLvAxis, setAxisClock,
+  } = useLocalVolViewState();
   // Shared per-ticker event calendar (edited in Parametric Term) for LV's Term.
   const events = useEvents(ticker);
 
@@ -135,103 +106,16 @@ export default function LocalVolViewer() {
   );
   // The Dupire twin beside the affine sheet (LV Dupire-twin arc): its own
   // endpoint, only while the Compare tab is up; a chip change refetches.
-  const compare = useLvCompare(ticker, view === "compare", lvReloadKey, fitMode, lvTInterp);
+  const compare = useLvCompare(ticker, view === "compare", lvReloadKey, fitMode, lvTInterp, lvTails);
 
   const smile = data?.smiles[expiryIdx];
 
-  // Reconstructed IV surface: every expiry's smile resampled onto a shared
-  // log-moneyness grid (intersection range, no extrapolation) → 3D σ_IV mesh.
-  const ivSurface = useMemo(() => (data ? buildIvSurface(data.smiles) : null), [data]);
-
-  // Nodal LV surface as a 3D mesh in LOCAL VARIANCE σ²_loc (what the pricing
-  // PDE consumes): rows = vertex maturities t, columns = vertex strikes x = K/F.
-  const lvMesh = useMemo<SurfaceMeshData | null>(() => {
-    if (!data || data.tNodes.length < 2 || data.xNodes.length < 2) return null;
-    return {
-      expiries: data.tNodes.map((t) => t.toFixed(2)),
-      t: data.tNodes,
-      k: data.xNodes,
-      vol: data.localVol.map((row) => row.map((v) => v * v)),
-    };
-  }, [data]);
-
-  // Display-x transform + corner-label formatter for the 3D LV mesh (grid
-  // x = K/F, per t-row; localvol/lvMeshAxis). Memoized for SurfaceMesh's memo.
-  const lvXTransform = useMemo(() => lvMeshXTransform(lvAxis, data), [lvAxis, data]);
-  const lvFormatX = lvMeshFormatX(lvAxis, lvXTransform !== undefined);
-
-  // Stacked IV: every reconstructed expiry's total variance w(k) = σ(k)²·τ on
-  // shared axes (mirrors the Parametric workspace). σ is quoted in the event-
-  // variance clock τ, so this is the price total variance — non-crossing across
-  // expiries ⟺ no calendar arbitrage in the local-vol surface. Each expiry
-  // re-coordinates k by its own forward / smile for the chosen axis mode.
-  // Opt-in display crop (Options ▸ stackCrop): each expiry's curve only inside
-  // its realistic k-range at the chosen tail probability (lib/stackCrop),
-  // read off the payload's crop table; the quote markers are untouched.
-  const crop = useStackCrop(spotVersion);
-  const stackedIv = useMemo<OverlaySeries[] | null>(() => {
-    if (!data || data.smiles.length === 0) return null;
-    const n = data.smiles.length;
-    return data.smiles.map((s, i) => {
-      const tau = s.tau && s.tau > 0 ? s.tau : s.t;
-      const ctx = smileAxisContext(s);
-      // Prefer the untruncated modelExt (shared display grid, V3.3 item 3) so
-      // short expiries are no longer stubs — same pattern as densityExt below.
-      const full = s.modelExt && s.modelExt.length > 1 ? s.modelExt : s.model;
-      const pts = crop.enabled
-        ? cropPoints(full, (p) => p.k, cropRangeAt(s.cropRanges, crop.eps))
-        : full;
-      return {
-        label: formatExpiry(s.expiry, s.t, format),
-        t: s.t,
-        xs: pts.map((p) =>
-          axisMode === "logmoneyness" ? p.k : axisTransform(axisMode, p.k, ctx),
-        ),
-        ys: pts.map((p) => p.vol * p.vol * tau),
-        color: maturityColor(n > 1 ? i / (n - 1) : 0),
-      };
-    });
-  }, [data, format, axisMode, crop]);
-
-  // Worst calendar crossing on the PDE lattice (V3.3 item 10): a circle at
-  // (k*, curve midpoint) on the stacked-IV axes; empty when arb-free.
-  const lvCalMarkers = useMemo<OverlayMarker[]>(() => {
-    if (!data) return [];
-    const m = lvCalendarMarker(data.smiles, data.calendarWorstPair, data.calendarWorstK);
-    if (m === null) return [];
-    const far = data.smiles[(data.calendarWorstPair ?? 0) + 1];
-    const x =
-      axisMode === "logmoneyness" || !far
-        ? m.k
-        : axisTransform(axisMode, m.k, smileAxisContext(far));
-    return [{ x, y: m.y, label: m.label }];
-  }, [data, axisMode]);
-
-  // Densities: every reconstructed expiry's risk-neutral pdf (Breeden-
-  // Litzenberger, carried on each smile) overlaid on shared axes — mirrors the
-  // Parametric "Densities" view. All curves staying ≥ 0 ⟺ no butterfly arbitrage.
-  const stackedDensities = useMemo<OverlaySeries[] | null>(() => {
-    if (!data || data.smiles.length === 0) return null;
-    const n = data.smiles.length;
-    // Prefer the left-extended density (reaches k_min = -1.4) over the
-    // central-mass PDE density, so the overlay spans the full smile range.
-    // Since 2026-09-03 both are the model's own lattice density (densityExt on
-    // the converged operator) — no implied-vol Breeden-Litzenberger rebuild.
-    const series = data.smiles
-      .map((s, i) => ({ d: s.densityExt ?? s.density, s, i }))
-      .filter(({ d }) => d && d.x.length > 0)
-      .map(({ d, s, i }) => {
-        const ctx = smileAxisContext(s);
-        return {
-          label: formatExpiry(s.expiry, s.t, format),
-          t: s.t,
-          xs: d!.x.map((k) => (axisMode === "logmoneyness" ? k : axisTransform(axisMode, k, ctx))),
-          ys: d!.density,
-          color: maturityColor(n > 1 ? i / (n - 1) : 0),
-        };
-      });
-    return series.length > 0 ? series : null;
-  }, [data, format, axisMode]);
+  // Derived views built client-side from the cached fit — the reconstructed
+  // IV surface, the nodal LV mesh (+ its display-x transform), the stacked
+  // total variance with its calendar marker, the stacked densities —
+  // localvol/useLocalVolOverlays (the display crop rides spotVersion inside).
+  const { ivSurface, lvMesh, lvXTransform, lvFormatX, stackedIv, lvCalMarkers, stackedDensities } =
+    useLocalVolOverlays(data, { lvAxis, axisMode, format, spotVersion });
 
   // Offline card AFTER every hook: an early return between hooks changes the
   // hook count when the session flips live→mock after mount (React #300 — the
@@ -414,6 +298,8 @@ export default function LocalVolViewer() {
               <LvCompareChips
                 tInterp={lvTInterp}
                 onTInterpChange={(v) => patchView({ lvTInterp: v })}
+                tails={lvTails}
+                onTailsChange={(v) => patchView({ lvTails: v })}
                 mode={lvCompareMode}
                 onModeChange={(m) => patchView({ lvCompareMode: m })}
                 data={compare.data}

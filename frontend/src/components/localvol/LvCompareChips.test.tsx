@@ -8,17 +8,19 @@ import { lvCompareFixture } from "../../lib/lvCompare.fixture";
 
 afterEach(cleanup);
 
-function renderChips(data = lvCompareFixture(), loading = false) {
+function renderChips(data = lvCompareFixture(), loading = false, tails: "model" | "hull" | "affine" = "model") {
   const onTInterpChange = vi.fn();
+  const onTailsChange = vi.fn();
   const onModeChange = vi.fn();
   render(
     <LvCompareChips
       tInterp="smooth" onTInterpChange={onTInterpChange}
+      tails={tails} onTailsChange={onTailsChange}
       mode="sheets" onModeChange={onModeChange}
       data={data} loading={loading}
     />,
   );
-  return { onTInterpChange, onModeChange };
+  return { onTInterpChange, onTailsChange, onModeChange };
 }
 
 const pressed = (name: RegExp) => screen.getByRole("button", { name }).getAttribute("aria-pressed");
@@ -34,7 +36,7 @@ describe("LvCompareChips", () => {
 
   it("lit chips use the Compare grammar (slate for time, teal for tails) and spin only on a hard build", () => {
     const { container } = render(
-      <LvCompareChips tInterp="smooth" onTInterpChange={() => {}} mode="sheets" onModeChange={() => {}} data={lvCompareFixture()} loading={false} />,
+      <LvCompareChips tInterp="smooth" onTInterpChange={() => {}} tails="model" onTailsChange={() => {}} mode="sheets" onModeChange={() => {}} data={lvCompareFixture()} loading={false} />,
     );
     const smooth = screen.getByRole("button", { name: /^Smooth/ });
     expect(smooth.className).toContain("text-slate-100");
@@ -43,23 +45,30 @@ describe("LvCompareChips", () => {
     expect(container.querySelector(".animate-spin")).toBeNull();
     cleanup();
     const spinning = render(
-      <LvCompareChips tInterp="smooth" onTInterpChange={() => {}} mode="sheets" onModeChange={() => {}} data={lvCompareFixture()} loading />,
+      <LvCompareChips tInterp="smooth" onTInterpChange={() => {}} tails="model" onTailsChange={() => {}} mode="sheets" onModeChange={() => {}} data={lvCompareFixture()} loading />,
     );
     expect(spinning.container.querySelector(".animate-spin")).not.toBeNull();
   });
 
-  it("pins the v1 tail target lit and disabled, the riders muted and disabled", () => {
-    renderChips();
+  it("lights the tail target, switches on click, and keeps Match LQD a muted rider", () => {
+    const { onTailsChange } = renderChips();
     const model = screen.getByRole("button", { name: /Model wings/ }) as HTMLButtonElement;
-    expect(model.disabled).toBe(true);
+    expect(model.disabled).toBe(false);
     expect(model.getAttribute("aria-pressed")).toBe("true");
-    expect(model.textContent).toContain("v1");
-    for (const name of [/Match LQD/, /Quoted range/, /Affine wings/]) {
+    for (const [name, id] of [[/Quoted range/, "hull"], [/Affine wings/, "affine"]] as const) {
       const b = screen.getByRole("button", { name }) as HTMLButtonElement;
-      expect(b.disabled).toBe(true);
+      expect(b.disabled).toBe(false);
       expect(b.getAttribute("aria-pressed")).toBe("false");
-      expect(b.textContent).toContain("rider");
+      fireEvent.click(b);
+      expect(onTailsChange).toHaveBeenCalledWith(id);
     }
+    const rider = screen.getByRole("button", { name: /Match LQD/ }) as HTMLButtonElement;
+    expect(rider.disabled).toBe(true);
+    expect(rider.textContent).toContain("rider");
+    cleanup();
+    renderChips(lvCompareFixture(), true, "hull");
+    expect(pressed(/Quoted range/)).toBe("true");
+    expect(pressed(/Model wings/)).toBe("false");
   });
 
   it("offers the three display modes and reports a pick", () => {

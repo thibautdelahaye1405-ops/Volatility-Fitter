@@ -150,9 +150,54 @@ def test_buckets_chip_is_another_sheet_on_the_same_lattice(compare, client):
     assert len(buckets["smiles"]) == len(compare["smiles"])
 
 
+def test_hull_and_affine_tail_targets(compare, client):
+    """The two tail targets of 2026-09-10 (dupire_surface.WING_TARGETS):
+    ``hull`` differentiates inside each expiry's quoted range only and holds
+    the local variance flat beyond it — so the ATM column (inside every quoted
+    range) equals the model twin's while the far wings differ; ``affine`` reads
+    the calibrated sheet outside the quoted range (its cells equal the sheet's
+    nodal variance there) and is a 422 without a sheet on the same lattice."""
+    model = np.asarray(compare["localVolTwin"], dtype=float)
+    x = np.asarray(compare["xNodes"], dtype=float)
+    i_atm = int(np.argmin(np.abs(x - 1.0)))
+
+    hull = client.post("/fit/affine/ALPHA/compare", json={"tails": "hull"})
+    assert hull.status_code == 200, hull.text
+    hull = hull.json()
+    assert hull["tails"] == "hull" and hull["tInterp"] == "smooth"
+    twin_h = np.asarray(hull["localVolTwin"], dtype=float)
+    assert twin_h.shape == model.shape
+    np.testing.assert_allclose(twin_h[:, i_atm], model[:, i_atm], rtol=1e-12)
+    assert not np.allclose(twin_h, model)  # the wings are held flat, the model's are not
+    # Beyond the quoted range a hull row is constant. The vertex lattice spans
+    # the LONGEST expiry's quoted band, so the shortest expiry's row (the first,
+    # its band the narrowest) is flat at both ends; longer rows may still be
+    # quoted at the outermost node.
+    assert np.allclose(twin_h[0, -1], twin_h[0, -2]) and np.allclose(twin_h[0, 1], twin_h[0, 2])
+    assert not np.allclose(model[0, -1], model[0, -2])  # the model's wing is not flat there
+
+    affine = client.post("/fit/affine/ALPHA/compare", json={"tails": "affine"})
+    if compare["hasAffine"] and compare["affineLatticeMatches"]:
+        assert affine.status_code == 200, affine.text
+        body = affine.json()
+        assert body["tails"] == "affine"
+        twin_a = np.asarray(body["localVolTwin"], dtype=float)
+        sheet = np.asarray(body["localVolAffine"], dtype=float)
+        np.testing.assert_allclose(twin_a[:, i_atm], model[:, i_atm], rtol=1e-12)
+        # The shortest expiry's outermost cells lie outside its quoted range:
+        # they read the sheet — local vol for local vol (the sheet lives inside
+        # the fit's box, which the twin's ceiling contains: no clip).
+        np.testing.assert_allclose(twin_a[0, -1], sheet[0, -1], rtol=1e-9)
+        np.testing.assert_allclose(twin_a[0, 1], sheet[0, 1], rtol=1e-9)
+    else:
+        assert affine.status_code == 422
+        assert "Affine wings" in affine.json()["detail"]
+    assert client.post("/fit/affine/ALPHA/compare", json={"tails": "matchLqd"}).status_code == 422
+
+
 def test_gates_and_cache(client, compare):
     assert client.post("/fit/affine/NOPE/compare", json={}).status_code == 404
-    assert client.post("/fit/affine/ALPHA/compare", json={"tails": "hull"}).status_code == 422
+    assert client.post("/fit/affine/ALPHA/compare", json={"tails": "kernel"}).status_code == 422
     assert client.post("/fit/affine/ALPHA/compare", json={"tInterp": "cubic"}).status_code == 422
     state = client.app.state.volfit
     cache = getattr(state, "_lv_compare_cache")

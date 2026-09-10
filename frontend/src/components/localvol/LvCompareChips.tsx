@@ -13,12 +13,16 @@ import { badgeClass } from "../../lib/ui";
 import {
   LV_COMPARE_MODES, LV_TAIL_OPTIONS, LV_T_INTERP_OPTIONS, formatBp, repairDetail, repairSummary,
 } from "../../lib/lvCompare";
-import type { LvCompareMode } from "../../lib/lvCompare";
+import type { LvCompareMode, LvTailTarget } from "../../lib/lvCompare";
 import type { LvCompareResponse, LvTInterp } from "../../state/useLvCompare";
 
 export interface LvCompareChipsProps {
   tInterp: LvTInterp;
   onTInterpChange: (v: LvTInterp) => void;
+  /** The tail target (2026-09-10: Model wings · Quoted range · Affine wings
+   *  are live; Match LQD stays a muted rider). */
+  tails: LvTailTarget;
+  onTailsChange: (v: LvTailTarget) => void;
   mode: LvCompareMode;
   onModeChange: (m: LvCompareMode) => void;
   /** The last payload (score strip); null before the first lands. */
@@ -41,7 +45,7 @@ const SPINNER = "h-2.5 w-2.5 animate-spin rounded-full border border-slate-500 b
 const DIVIDER = <span className="mx-0.5 h-3 w-px bg-slate-800" aria-hidden />;
 
 export default function LvCompareChips({
-  tInterp, onTInterpChange, mode, onModeChange, data, loading,
+  tInterp, onTInterpChange, tails, onTailsChange, mode, onModeChange, data, loading,
 }: LvCompareChipsProps) {
   const twin = data?.twinScore;
   const affine = data?.affineScore ?? null;
@@ -70,20 +74,23 @@ export default function LvCompareChips({
       <span className={GROUP_LABEL} title="What the parametric surface is beyond the quoted range before it is differentiated">
         tails
       </span>
-      {LV_TAIL_OPTIONS.map((o) => (
-        <button
-          key={o.id}
-          aria-pressed={o.available}
-          disabled
-          title={o.title}
-          className={[CHIP_BASE, o.available ? `cursor-default ${CHIP_TAIL_ON}` : CHIP_MUTED].join(" ")}
-        >
-          {o.label}
-          {o.available
-            ? <span className="text-[9px] uppercase text-slate-500">v1</span>
-            : <span className="text-[9px] uppercase text-slate-600">rider</span>}
-        </button>
-      ))}
+      {LV_TAIL_OPTIONS.map((o) => {
+        const on = o.available && o.id === tails;
+        return (
+          <button
+            key={o.id}
+            aria-pressed={on}
+            disabled={!o.available}
+            onClick={() => o.available && onTailsChange(o.id)}
+            title={o.title}
+            className={[CHIP_BASE, !o.available ? CHIP_MUTED : on ? CHIP_TAIL_ON : CHIP_OFF].join(" ")}
+          >
+            {o.label}
+            {!o.available && <span className="text-[9px] uppercase text-slate-600">rider</span>}
+            {on && loading && <span className={SPINNER} />}
+          </button>
+        );
+      })}
       {DIVIDER}
       <SegmentedControl options={LV_COMPARE_MODES} value={mode} onChange={onModeChange} size="xs" />
 

@@ -259,6 +259,43 @@ def _w_t(
     return (w(k, t + dt) - w(k, t - dt)) / (2.0 * dt)
 
 
+#: The Compare tab's tail targets (LvCompareRequest.tails): what the twin is
+#: beyond each expiry's QUOTED range. "model" differentiates the parametric
+#: surface everywhere inside the display guard (its own analytic wings);
+#: "hull" differentiates inside the quoted range only and holds the local
+#: variance flat beyond it; "affine" holds the twin inside the quoted range
+#: and reads the calibrated affine sheet outside it (2026-09-10).
+WING_TARGETS = ("model", "hull", "affine")
+
+
+def wing_levels(ts: np.ndarray, t: np.ndarray) -> np.ndarray:
+    """The listed-expiry level of each time: the expiry whose interval holds
+    ``t`` (``t`` at or before the first expiry reads the first level, beyond
+    the last keeps the last)."""
+    ts = np.asarray(ts, dtype=float)
+    return np.minimum(np.searchsorted(ts, np.asarray(t, dtype=float), side="left"), ts.size - 1)
+
+
+def wing_mask(
+    k_all: np.ndarray, guard: np.ndarray, quoted: tuple[np.ndarray, np.ndarray], level: int,
+) -> np.ndarray:
+    """The guard narrowed to the level's quoted range ``[k_lo[level], k_hi[level]]``."""
+    lo, hi = quoted
+    mask = guard & (k_all >= float(lo[level])) & (k_all <= float(hi[level]))
+    if not mask.any():
+        raise ValueError("no vertex inside the quoted range")
+    return mask
+
+
+def _check_wings(wings: str, quoted, wing_surface) -> None:
+    if wings not in WING_TARGETS:
+        raise ValueError(f"tails must be one of {WING_TARGETS}, got {wings!r}")
+    if wings != "model" and quoted is None:
+        raise ValueError("the hull / affine tail targets need the quoted range per expiry")
+    if wings == "affine" and wing_surface is None:
+        raise ValueError("Affine wings need a Local Vol sheet calibrated on the same lattice — Calibrate first")
+
+
 def extract_twin(
     w_surface: WSurface,
     ts: np.ndarray,
@@ -273,6 +310,9 @@ def extract_twin(
     dk: float = DK_DEFAULT,
     dt: float | None = None,
     report_hi: float | None = None,
+    wings: str = "model",
+    quoted: tuple[np.ndarray, np.ndarray] | None = None,
+    wing_surface=None,
 ) -> TwinExtraction:
     """Dupire local variance of ``w_surface`` on the vertices ``(t_nodes, x_nodes)``.
 
@@ -291,11 +331,13 @@ def extract_twin(
     if not (0.0 < var_lo < var_hi):
         raise ValueError("need 0 < var_lo < var_hi")
     cap_report = float(var_hi if report_hi is None else report_hi)
+    _check_wings(wings, quoted, wing_surface)
     ts = np.asarray(ts, dtype=float)
     x = np.asarray(x_nodes, dtype=float)
     t = np.asarray(t_nodes, dtype=float)
     step = float(dt) if dt is not None else _default_dt(ts)
     edges = np.concatenate([[0.0], ts])
+    levels = wing_levels(ts, t) if wings != "model" else None  # expiry level per row
 
     with np.errstate(divide="ignore"):
         k_all = np.where(x > 0.0, np.log(np.where(x > 0.0, x, 1.0)), -np.inf)
@@ -320,19 +362,26 @@ def extract_twin(
 
     for i, ti in enumerate(t_rows):
         ti = float(ti)
-        w0 = np.asarray(w_surface(k, ti), dtype=float)
-        wp = np.asarray(w_surface(k + dk, ti), dtype=float)
-        wm = np.asarray(w_surface(k - dk, ti), dtype=float)
+        # The row's differentiated set: the guard, narrowed to the level's
+        # quoted range under the hull / affine tail targets.
+        if levels is None:
+            k_row, idx_row = k, idx
+        else:
+            m_row = wing_mask(k_all, diff_mask, quoted, int(levels[i]))
+            k_row, idx_row = k_all[m_row], np.flatnonzero(m_row)
+        w0 = np.asarray(w_surface(k_row, ti), dtype=float)
+        wp = np.asarray(w_surface(k_row + dk, ti), dtype=float)
+        wm = np.asarray(w_surface(k_row - dk, ti), dtype=float)
         wk = (wp - wm) / (2.0 * dk)
         wkk = (wp - 2.0 * w0 + wm) / (dk * dk)
-        wt = np.asarray(_w_t(w_surface, k, ti, step, t_interp, edges), dtype=float)
+        wt = np.asarray(_w_t(w_surface, k_row, ti, step, t_interp, edges), dtype=float)
 
-        var = dupire_local_variance(k, w0, wk, wkk, wt)
-        raw[i, idx] = var
+        var = dupire_local_variance(k_row, w0, wk, wkk, wt)
+        raw[i, idx_row] = var
         bad = ~np.isfinite(var)
         butterfly[i] = int(bad.sum())
         if bad.any():
-            var = _fill_nearest(var, k)
+            var = _fill_nearest(var, k_row)
         calendar[i] = int(np.sum(var <= 0.0))
         floored[i] = int(np.sum(var < var_lo))
         capped[i] = int(np.sum(var > cap_report))
@@ -341,7 +390,14 @@ def extract_twin(
         # (np.interp clamps at the ends, affine in between is never used
         # because the differentiated set is contiguous in practice — and if
         # it is not, the affine bridge is still a positive value in the box).
-        theta[i] = np.interp(k_all, k, row)
+        # Under "hull" that flat hold IS the tail target; under "affine" the
+        # vertices outside the quoted range read the calibrated sheet instead.
+        theta[i] = np.interp(k_all, k_row, row)
+        if wings == "affine":
+            outside = (x > 0.0) & ~np.isin(np.arange(n_x), idx_row)
+            if outside.any():
+                sheet = np.asarray(wing_surface.variance(x[outside], float(t[i])), dtype=float)
+                theta[i, outside] = np.clip(sheet, var_lo, var_hi)
 
     return TwinExtraction(
         theta=theta,
