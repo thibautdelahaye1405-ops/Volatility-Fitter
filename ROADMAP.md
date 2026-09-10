@@ -237,7 +237,7 @@ half-life/update-rule/D6 sweeps; §16.3 adoption gate) then Phase 6
 
 ---
 
-## SERIES ARC — adopted 2026-09-10 (D1–D12 RATIFIED by the user the same day; spec + phases in Docs/series_replay_roadmap.md; S0 SHIPPED 2026-09-10i)
+## SERIES ARC — adopted 2026-09-10 (D1–D12 RATIFIED by the user the same day; spec + phases in Docs/series_replay_roadmap.md) — ✅ ARC COMPLETE 2026-09-10p (S0–S7 all shipped the same day; per-phase wraps below)
 
 **S0 — contract SHIPPED 2026-09-10i.** `api/schemas_series.py` (the wire +
 storage shapes: SeriesClock / SeriesLadder / LaneSpec — patches validated
@@ -555,9 +555,36 @@ green: Adopt lights the + Prior cell on the live smile, export → delete →
 import keeps the six frames and the three lanes' evidence. Riders: the
 export is one JSON (a 390-frame series is tens of MB — a compressed
 variant when it bites); a series-only deep link still needs `node=`.
-NEXT: S7 (perf rails, the certification case `series_replay_determinism`,
-the delete-cascade lock, the shared de-Am prep across lanes, the Help
-Center polish + walkthrough step, CLAUDE.md, the arc wrap).
+
+**S7 — hardening SHIPPED 2026-09-10p — ARC COMPLETE.** Rails
+(`tests/test_series_perf.py`, `-m perf`, budgets ~3× the dev box): the
+filmstrip over the DESIGN POINT (390 frames × 3 lanes × 2 expiries filled
+straight into the store in one transaction, 46 ms) 90 ms (budget 300), the
+evidence 120 ms (400), a warm frame payload 2.9 ms (50), the runner over 20
+synthetic frames × one free lane 1.05 s = 53 ms per frame (5 s). The
+certification case **`series_replay_determinism`** (`backtest/
+certification.py`, `model_stress`): `tests/test_series_determinism.py`
+(two fresh runs of the same series over the same campaign store are
+byte-identical on every (lane, frame, expiry) — params, cost, rms, ATM —
+free, prior AND overlay-filter lanes, carries included; a stored series
+whose fits are dropped by the new `SeriesStore.reset_fits` and re-run
+reproduces them) + the S3 locks + the S6 round trip. `SeriesStore.save_fits`
+= one commit per (lane, frame) in the runner (was one per fit). The
+walkthrough keeps its RATIFIED twelve steps (its Lenses step already names
+Series on Alt+6 — a lock forbids a thirteenth); the guide's stage and
+connector paragraphs are current. NOT done, recorded: the shared de-Am
+prep across lanes — measured 115 ms of a free lane's 340 ms frame (34 %)
+and of the prior lane's 1,000 ms (11 %); the prepared cache is keyed per
+state (fit / options / data versions), so sharing needs a cross-state key
+on the prep-affecting fields — a rider, not a blind copy. The arc's riders
+in one place: the active filter's MAP block at intraday cadence (the
+observation-filter arc's), the prior lane's calendar-repair grind (a 44 s
+outlier), free-lane frame parallelism, the shared prep, a compressed
+series file, the term chart over 400 lines, the difference sheet outside
+the shared crop, the Lanes chart not scrubbing on click, `term` / `0dte`
+ladders cropping after the fetch, a Bloomberg daily series untested live,
+a series-only deep link, retry of failed (lane, frame) rows on request,
+multi-ticker series (D2's seam).
 
 User ask (2026-09-10): "harvest, store and replay a time-series of smiles /
 surface for a given ticker and a given period and frequency: choose a
@@ -1963,9 +1990,22 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10o (resume here)
+## STATUS — updated 2026-09-10p (resume here)
 
-### ▶ CURRENT ARC: the SERIES ARC (adopted 2026-09-10, D1–D12 RATIFIED) —
+### ✅ SERIES ARC COMPLETE 2026-09-10p — S0–S7 shipped in one day (the arc
+header above the LV operator arc carries every phase's wrap, the measured
+numbers, the two findings and the rider list). What the desk has: a
+**Series** lens on Alt+6 — New series… (historical through Massive's NBBO
+history, live one frame per tick, or imported from captures / campaign
+stores / fixtures), lanes as temporal chains on detached states, the
+transport bar + filmstrip, the Smile · Frames · Surface · Term · Lanes
+stages, series files, Adopt as prior, the connector's series tools + the
+Series frame chart app, the `series_replay_determinism` certification
+case and four perf rails. "Continue the series arc" now means the RIDER
+list in the S7 wrap (pick deliberately); the standing NEXT list below is
+the desk's again.
+
+### ▶ PREVIOUS ARC RECORD: the SERIES ARC (adopted 2026-09-10, D1–D12 RATIFIED) —
 harvest / store / replay a time-series of smiles and surfaces for one
 ticker under several model lanes. Spec, survey, data model, API, decisions
 and phases S0–S7: **Docs/series_replay_roadmap.md**; the arc header (with

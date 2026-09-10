@@ -329,6 +329,21 @@ CASES: tuple[CertCase, ...] = (
         "files are refused with a diagnostic and leave the state untouched.",
         ("tests/test_snapshot_files.py",),
     ),
+    CertCase(
+        "series_replay_determinism", "Series replay: every lane fit reproducible",
+        "model_stress", "SERIES ARC S7 (2026-09-10)",
+        "A harvested series — one ticker's chains through time, calibrated under "
+        "several model lanes on detached states with each lane's prior and "
+        "filter state carried frame to frame — must be REPLAYABLE: a fresh run "
+        "of the same series reproduces every stored fit byte-identically, a "
+        "stored series re-run after its fits are dropped reproduces them, a "
+        "free lane's fit equals the desk's own Calibrate on that chain, a "
+        "pause + resume stores exactly the fits of an uninterrupted run, and "
+        "export -> delete -> import keeps everything the store holds. The "
+        "locks below run on the synthetic source (no market data needed).",
+        ("tests/test_series_determinism.py", "tests/test_series_lanes.py",
+         "tests/test_series_files.py::test_export_delete_import_round_trips_byte_identically"),
+    ),
 )
 
 

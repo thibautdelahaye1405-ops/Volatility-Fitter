@@ -115,6 +115,10 @@ class SeriesJobs:
                 self._checkpoint(series_id, doc.progress.model_copy(update={"status": "queued"}))
                 return "queued"
             self._running = series_id
+            # Checkpoint BEFORE the thread runs: a status read right after
+            # start never says "draft" (the runner flips it to harvesting at
+            # its first checkpoint — a race a busy box once lost).
+            self._checkpoint(series_id, doc.progress.model_copy(update={"status": "queued"}))
         self._launch(series_id)
         return "started"
 

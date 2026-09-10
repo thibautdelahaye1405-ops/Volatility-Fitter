@@ -587,6 +587,27 @@ command line, ROADMAP wrap.
 
 ---
 
+### Arc wrap (2026-09-10p — S0–S7 shipped)
+
+Everything in §8 shipped the same day the decisions were ratified, with
+these deviations from the plan, all recorded in the as-built notes: the
+live runner waits in its own thread (no scheduler hook); lanes run
+sequentially in the job thread; the intraday clock is on for sub-day
+series; the evidence is a backend route; the filter ring maps steps to
+frames by order; the difference surface reuses the LV compare's heatmap;
+the term lanes sit on the calendar clock; the walkthrough keeps its
+ratified twelve steps; the shared de-Am prep stayed a rider (measured
+11–34 % of a frame). The rails as measured: free lane 391 ms per frame
+on the 0DTE store (28 s for 60 frames), hybrid-prior lane 1,266 ms
+(160 s), filmstrip 90 ms and evidence 120 ms at the 390 × 3 design point,
+a warm frame 3 ms. Two findings belong to other arcs: the ACTIVE
+filter's MAP block is not usable at intraday cadence on short rungs
+(NaN fits, minutes per frame — creation warns, the overlay filter keeps
+the ring evidence), and the prior lane's calendar repair grinds on a few
+frames (a 44 s outlier). The exit readout (§8 S5) stands: on the
+replay-day SPY series the hybrid prior damps the one-day rung's ATM path
+18.4 → 17.5 bp per frame for +0.5 bp of rms.
+
 ## 9. Standing constraints (from the ratified rulings)
 
 - **Anchoring axis (2026-09-07)** — no variant calibrations in Options;

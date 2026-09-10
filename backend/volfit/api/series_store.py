@@ -261,6 +261,28 @@ class SeriesStore:
         )
         self.conn.commit()
 
+    def save_fits(self, series_id: str, fits) -> None:
+        """Upsert several fits in ONE transaction (a lane's frame lands as one
+        commit — the runner's checkpoint; a 390-frame fill in the rails)."""
+        for fit in fits:
+            self.conn.execute(
+                "INSERT INTO series_fits (series_id, lane_id, idx, expiry, model, params_json, "
+                "display_json, diagnostics_json, metrics_json, fit_ms, status, error) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(series_id, lane_id, idx, expiry) DO UPDATE SET model = excluded.model, "
+                "params_json = excluded.params_json, display_json = excluded.display_json, "
+                "diagnostics_json = excluded.diagnostics_json, metrics_json = excluded.metrics_json, "
+                "fit_ms = excluded.fit_ms, status = excluded.status, error = excluded.error",
+                (
+                    series_id, fit.laneId, fit.idx, fit.expiry or "", fit.model,
+                    json.dumps(fit.params),
+                    json.dumps(fit.display) if fit.display is not None else None,
+                    json.dumps(fit.diagnostics), json.dumps(fit.metrics), fit.fitMs,
+                    fit.status, fit.error,
+                ),
+            )
+        self.conn.commit()
+
     def fits(self, series_id: str, idx: int | None = None,
              lane_id: str | None = None) -> list[LaneFitDoc]:
         sql = ("SELECT lane_id, idx, expiry, model, params_json, display_json, "
@@ -284,6 +306,25 @@ class SeriesStore:
             for lane, i, expiry, model, params, display, diag, metrics, fit_ms, status, error
             in self.conn.execute(sql, args)
         ]
+
+    def reset_fits(self, series_id: str) -> int:
+        """Drop every stored fit and every lane carry of a series and rewind
+        its progress counters — a re-run then calibrates every frame again
+        (the determinism check; a future "Recalibrate lanes" verb). Returns
+        the number of fit rows dropped."""
+        n = int(self.conn.execute(
+            "SELECT COUNT(*) FROM series_fits WHERE series_id = ?", (series_id,)
+        ).fetchone()[0])
+        self.conn.execute("DELETE FROM series_fits WHERE series_id = ?", (series_id,))
+        self.conn.execute("UPDATE series_lanes SET filter_json = NULL WHERE series_id = ?",
+                          (series_id,))
+        doc = self.get(series_id)
+        if doc is not None:
+            self.set_progress(series_id, doc.progress.model_copy(update={
+                "status": "draft", "fitsDone": 0, "fitsTotal": 0, "current": None, "error": None,
+            }))
+        self.conn.commit()
+        return n
 
     def count_fits(self, series_id: str, status: str | None = None) -> int:
         sql = "SELECT COUNT(*) FROM series_fits WHERE series_id = ?"

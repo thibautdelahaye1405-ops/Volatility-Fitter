@@ -295,8 +295,7 @@ def run_lanes(jobs, doc: SeriesDoc) -> None:
             frame_fits[lane.id] = {f.expiry: f for f in fits if f.expiry}
             with VolStore(state.store_path) as store:
                 series = SeriesStore(store)
-                for fit in fits:
-                    series.save_fit(series_id, fit)
+                series.save_fits(series_id, fits)  # one commit per (lane, frame)
                 series.set_lane_filter(series_id, lane.id, carry.to_doc())
                 progress = progress.model_copy(update={
                     "fitsDone": series.count_fits(series_id), "current": label,
