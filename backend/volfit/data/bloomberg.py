@@ -421,7 +421,15 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         blp = self._blp_module()
         security = self._security(ticker)
         asset_class = security.rsplit(" ", 1)[-1]  # "Index" / "Equity": completes a bare CHAIN_TICKERS row
-        parsed = _parse_chain_frame(blp.bds(security, "OPT_CHAIN"), asset_class)
+        try:
+            parsed = _parse_chain_frame(blp.bds(security, "OPT_CHAIN"), asset_class)
+        except Exception as exc:
+            # The chain listing is an on-demand request too: an account-side
+            # refusal here (LIMIT / workflow review, 2026-09-10 — every ticker
+            # of a restored universe wore a yellow pill while the light stayed
+            # green) must reach the Data Source light like a quote refusal.
+            self._record(exc)
+            raise
         for series in self.chain_series:
             overrides = {
                 "CHAIN_POINTS_OVRD": str(CHAIN_POINTS),
@@ -444,6 +452,7 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         parsed = selection.contracts
         self._roots_cache[key] = selection.roots
         self._chain_cache[key] = (now, parsed)
+        self._record(None)  # a listing that answered clears a remembered refusal
         return parsed
 
     def _probe_open_interest(self, securities: list[str]) -> dict[str, int]:

@@ -1583,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10b (resume here)
+## STATUS — updated 2026-09-10c (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1748,16 +1748,26 @@ below) — every recorded rider is closed except the ones listed here:
    the Bloomberg chain recipe is now LIVE-VERIFIED (wrap 2026-09-02e: OPT_CHAIN
    + CHAIN_TICKERS per series with `CHAIN_EXP_DT_OVRD=ALL`; SPY 32 rungs, SX5E
    31) — a Terminal-session look at a CALIBRATION on those weeklies is the
-   remaining rider; a LIVE check of the
-   Massive per-contract NBBO history on the user's key (`/v3/quotes/{O:…}`:
-   the entitlement / rate-limit gate is remembered for the SESSION — restart
-   :8000 to retry after an upgrade; `VOLFIT_MASSIVE_HIST_NBBO=0` pins the
-   marks path); `expiries.classify_expiry` (Fri-only weekly) vs the picker's
-   Mon/Wed/Fri "Dailies" bucket stays divergent by choice; per-ticker
-   sources SHIPPED (wrap 2026-09-02h — a live Bloomberg + Cboe look at a
-   pinned name streaming beside request-path ones is the rider); a
-   Bloomberg-session look at the yellow "no data" pill on a non-US name;
-   captures made before
+   remaining rider (BLOCKED 2026-09-10: the Terminal answers every
+   reference request `category=LIMIT / WORKFLOW_REVIEW_NEEDED` — the
+   account-side gate, [[bloomberg-xbbg-workflow-gate]] — after the heavy
+   2026-09-09 pulls; retry once cleared); ~~a LIVE check of the
+   Massive per-contract NBBO history on the user's key~~ **LIVE-VERIFIED
+   2026-09-10c** (wrap below: SPY pinned to Massive, as-of EOD 2026-09-08,
+   fetch 13.8 s, `quoteKind = quotes` — real two-sided NBBO history, the
+   marks fallback never engaged; the gate is remembered for the SESSION —
+   restart :8000 to retry after an upgrade; `VOLFIT_MASSIVE_HIST_NBBO=0`
+   pins the marks path); `expiries.classify_expiry` (Fri-only weekly) vs
+   the picker's Mon/Wed/Fri "Dailies" bucket stays divergent by choice;
+   per-ticker sources SHIPPED (wrap 2026-09-02h — a live Bloomberg + Cboe
+   look at a pinned name streaming beside request-path ones is the rider,
+   blocked by the same gate today); ~~a Bloomberg-session look at the yellow
+   "no data" pill on a non-US name~~ SEEN 2026-09-10c: the restored SX5E /
+   DAX / SIE GY universe wore three yellow pills with the LIMIT reason — and
+   exposed a blind spot, FIXED the same day: a refusal raised by the chain
+   LISTING never reached the Data Source light (green "real-time" beside the
+   pills); `_chain` now records it like a quote refusal
+   (tests/test_bloomberg_status.py); captures made before
    store schema v10 are unattributed and no longer offered by the picker
    (they still replay from a saved selection).
 8. ~~LV WALL-TIME rider (wrap 2026-09-03c below): a wide ladder with a
@@ -1853,6 +1863,40 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-10c) — MARKET-DATA RIDERS: MASSIVE NBBO HISTORY LIVE-VERIFIED, THE BLOOMBERG GATE REACHES THE LIGHT, TWO TERMINAL LOOKS BLOCKED
+
+Item 9 of the confirm-per-item pass. The user: "Bloomberg terminal is open
+now. Go ahead (start the app yourself)". `.\restart.ps1 -Bloomberg` from
+the tool shell (the PowerShell tool; the bash → powershell route hangs on
+the detached children's pipe).
+
+- **The Terminal is gated.** Every ReferenceDataRequest — a single PX_LAST
+  on SPY, an OPT_CHAIN on SIE GY — answers `category=LIMIT; code=-4002;
+  subcategory=WORKFLOW_REVIEW_NEEDED; message=Workflow review needed`: the
+  account-side gate of the memory note, after the 2026-09-09 pulls (SX5E
+  7.8k + SPX 20k contracts quoted several times + the chain probes). Nothing
+  code-side; the weeklies CALIBRATION look and the pinned-name STREAMING
+  look stay riders until Bloomberg clears the review.
+- **The pill worked, the light did not.** The restored universe (SX5E INDEX
+  / DAX INDEX / SIE GY EQUITY) wore three yellow "no data" pills carrying
+  the LIMIT reason (`/universe.errors`) while the Data Source light stayed
+  green "real-time (Terminal)": `_record` was called from the quote path
+  only, and the universe load fails in the chain LISTING. FIXED:
+  `BloombergProvider._chain` records a refused OPT_CHAIN (and clears the
+  refusal when a listing answers). Lock tests/test_bloomberg_status.py
+  (a connected blp refusing bds → `available_expiries` raises AND
+  `feed_status` = red "workflow review needed"; answering again clears it);
+  Bloomberg suites 54 green. LIVE after the restart: the light reads
+  "workflow review needed".
+- **Massive per-contract NBBO history: real quotes.** SPY added pinned to
+  `massive` (8 expiries listed), as-of EOD 2026-09-08 (`POST /asof
+  {mode: eod}`), `POST /fetch/snapshot` 13.8 s, `GET /smiles/SPY/2026-10-16`
+  → `quoteKind = "quotes"`, 124 quotes, spot 762.4, stamp 2026-09-08 20:00
+  — the two-sided history path, not the marks fallback; the source detail
+  never reported a gate. State restored afterwards (as-of live, SPY removed).
+- Left on the user's app: the persisted universe as it was (the three
+  non-US names, all gated today).
 
 ### 🧭 SESSION WRAP (2026-09-10b) — BENCHMARK READOUT: THE `_lvop` SWEEP IS NOT AN ADJUDICATION (THREE DEFECTS, RECORDED)
 
