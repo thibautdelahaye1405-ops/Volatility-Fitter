@@ -1583,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10a (resume here)
+## STATUS — updated 2026-09-10b (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1683,8 +1683,28 @@ below) — every recorded rider is closed except the ones listed here:
    — fallback = a python-type bundle with server/lib if Desktop rejects uv);
    tool-call time budgets in chat hosts are undocumented (calibrate waits ≤
    wait_seconds then hands back a resumable status).
-1. USER-WINDOW runs (Next-up item 0 under WHERE THINGS STAND): benchmark-pack
-   regression, MCS adjudication (decides the `mcsChart` flip — the dial is
+1. USER-WINDOW runs (Next-up item 0 under WHERE THINGS STAND). **The
+   2026-09-09 `_lvop` benchmark sweep is NOT an adjudication** (readout
+   2026-09-10b, wrap below — the user chose to record, not fix, 2026-09-10):
+   (i) `run_benchmark_pack.ps1` never passes the ratified `--eta 10
+   --cross-mult 25`, so the sweep ran eta 1 / cross-mult 1 and its
+   liquid-split skill reads 0 everywhere (July `_topofix_eta10` /
+   `_idiofloor_eta10`: +7.2…+14.2 bp on the same 21,258 nodes); (ii) 39 of
+   483 spike fixtures merge TWO option roots per expiry (all 19 XOM days —
+   an adjusted series beside the standard one; 20 SPX days — SPX + SPXW on
+   the monthlies): the daily `backtest.capture` lacks the intraday twins'
+   one-root-per-date policy and the fixture rows carry no root; XOM's fits
+   are absurd in BOTH sweeps and dominate the pooled spike rms; (iii) on six
+   spike days (07-30, 08-05, 08-07, 08-13, 08-14, 08-16) every full-LOO node
+   but one XOM node scores NaN (1,481 of 4,298 rows; none in July) — the
+   current XOM fit poisons the joint field solve and the scorer keeps NaN
+   rows instead of quarantining the node. Clean shared nodes: spike skill
+   +7.6 bp (July) vs +2.0 (now); full-LOO ζ std 0.6 → 0.2 everywhere —
+   measurable only after (i)–(iii). Fix list when picked: script knobs by
+   default; OCC-root one-root-per-date in the daily capture + a replay-side
+   duplicate guard + a collision scan; non-finite-node quarantine in
+   graph_loo with a 2024-08-05 lock; then re-sweep spike (~3.5 h). Then:
+   benchmark-pack regression, MCS adjudication (decides the `mcsChart` flip — the dial is
    in the UI), certification refresh (`calendar_active_set_exchange` now
    also runs test_tail_order_gate.py), the V3.8 replay-day campaign (SPX is
    discoverable intraday: `--roots 'SPX=SPX,SPXW'` / `scenarios.INDEX_BASKET`),
@@ -1833,6 +1853,45 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-10b) — BENCHMARK READOUT: THE `_lvop` SWEEP IS NOT AN ADJUDICATION (THREE DEFECTS, RECORDED)
+
+Item 8 of the confirm-per-item pass: the overnight pack (`_lvop`, 30 parts,
+08:42 → 20:36 on 2026-09-09) compared with the July sweeps through
+`backtest.benchmark_compare` (rows intersected on their natural key). The
+user chose to RECORD the findings and continue the roadmap; the fix list is
+in STATUS item 1.
+
+- **Knobs.** The sweep's rows are stamped eta 1.0 / indexWeight 2.0; the
+  July liquid-split baselines (`_topofix_eta10` 07-09, `_idiofloor_eta10`
+  07-10) are stamped eta 10 / indexWeight 50 = `--eta 10 --cross-mult 25`,
+  the ratified configuration (R0 wrap). `run_benchmark_pack.ps1` builds its
+  argument list without them. Consequence on the 21,258 shared liquid-split
+  nodes: ATM skill 7.24 → 0.01 (high_oct R=0), 14.15 → 0.02 (spike R=0),
+  0.67 → 0.00 (low_jul) — graph rms equals base rms, the field never moved.
+- **Fixtures.** A scan of every spike fixture for duplicate (expiry, strike,
+  side) keys: 39 of 483 — XOM on all 19 days (134 quotes on 2024-09-20
+  where the neighbours hold 52–98; a 115 C at 150.65/155.0 beside 4.5/4.6,
+  a 110 C at 155/159.5: an adjusted series), SPX on 20 days (3,458 duplicate
+  keys per day on the monthlies = SPX + SPXW). `backtest.roots`' one-root-
+  per-date policy exists for the INTRADAY twins only; the daily capture that
+  wrote these fixtures has no such step and `OptionQuote` carries no root.
+  XOM's base rms: 887–3,041 bp in July, 473–5,270 now — pathological in both.
+- **NaN days.** Overnight spike full-LOO R=0: 1,481 of 4,298 rows have NaN
+  sd / ζ / residuals, all on six days, 248 of 249 nodes each; the surviving
+  node is always an XOM 09-20 or 12-20 with sd 0.14–0.22 (vs 0.03 typical).
+  July had zero NaNs. `summarize_by` drops non-finite rows, so the report
+  silently scored 2,817 nodes as 4,298.
+- **What survives the noise.** Shared full-LOO nodes, XOM out, NaNs out:
+  spike ATM skill +7.6 bp (July) vs +2.0 (now); high_oct 2.15 → 1.07; ζ std
+  0.6–1.3 → 0.2–0.35 on full-LOO everywhere (bands 3–4× too wide; liquid-
+  split ζ unchanged at ~0.9–1.0). These are the candidate regressions to
+  measure once the three defects are fixed — the July 9 untagged baseline
+  predates the idio band floor (07-10), so part of the ζ move is expected.
+- Artifacts: `backtest/results/benchmark/benchmark_report_lvop.html` +
+  `benchmark_pack_lvop.json`; the intersected comparison JSON lived in the
+  session scratchpad only (regenerable: `benchmark_compare.compare(["",
+  "_lvop"])` / `(["_idiofloor_eta10", "_lvop"])`).
 
 ### 🧭 SESSION WRAP (2026-09-10a) — OPTIONS DIALOG: THE FIVE API-ONLY FIELDS ARE SURFACED (HELP CENTER RIDERS CLOSED)
 
