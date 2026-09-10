@@ -1583,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10f (resume here)
+## STATUS — updated 2026-09-10g (resume here)
 
 ### ▶ NEXT: the 2026-09-09/10 confirm-per-item pass (wraps 2026-09-09i →
 2026-09-10f below) worked this list top to bottom — SHIPPED: the connector's
@@ -1714,10 +1714,34 @@ except the ones listed here:
    current XOM fit poisons the joint field solve and the scorer keeps NaN
    rows instead of quarantining the node. Clean shared nodes: spike skill
    +7.6 bp (July) vs +2.0 (now); full-LOO ζ std 0.6 → 0.2 everywhere —
-   measurable only after (i)–(iii). Fix list when picked: script knobs by
-   default; OCC-root one-root-per-date in the daily capture + a replay-side
-   duplicate guard + a collision scan; non-finite-node quarantine in
-   graph_loo with a 2024-08-05 lock; then re-sweep spike (~3.5 h). Then:
+   measurable only after (i)–(iii). **THE THREE FIXES SHIPPED 2026-09-10g**
+   (user: "go ahead with the benchmark integrity fixes"; wrap below):
+   `run_benchmark_pack.ps1 -Eta 10 -CrossMult 25` by default (+ `-Tag`,
+   `-DryRun`); `backtest.fixture_hygiene` keeps ONE option series per
+   (expiry, strike, side) at replay (parity with the fixture's own forward
+   decides, a uniformity vote per side, off-series strikes go too; XOM
+   2024-08-05 09-20: 134 → 71 quotes; 69,093 quotes dropped over the 39
+   fixtures; `VOLFIT_FIXTURE_DEDUPE=0` replays raw; `-m backtest.fixture_scan`
+   lists collisions) and `capture_roots` gives the DAILY capture the twins'
+   OCC-root policy for future captures; `graph_loo` quarantines a node whose
+   handles / precision / prior are non-finite or whose ATM vol leaves
+   [1 %, 400 %] (re-solve once, else the day fails loudly), never writes a
+   NaN row, and the part files + the HTML report count the quarantined.
+   Acceptance on the worst overnight day (2024-08-02 → 08-05, full-LOO R=0):
+   under the OVERNIGHT knobs 249 rows, 0 NaN, 0 quarantined, XOM base rms
+   2,938 → 572 bp — the duplicate series WAS the poison; the quarantine is
+   the safety net. NEXT (user's window): the clean sweep
+   `.\backend\backtest\run_benchmark_pack.ps1 -Tag _clean` (all regimes,
+   ~12 h; `-Regime spike_aug2024` ≈ 3.5 h), which becomes the pack baseline
+   going forward — the July parts were scored on DIRTY fixtures, so a
+   comparison against them is confounded on the XOM / SPX rows (compare on
+   the shared non-XOM/SPX nodes, or take `_clean` as the new baseline and
+   A/B the flips against it under the same fixtures). NB the LV default
+   flips (bdf2 + graded lattice, densitySmoothWeight, GN on mid, right-edge
+   pad) never enter the graph-LOO pack — they are `-m backtest.run_compute
+   --lv` + `analyze` items; the pack adjudicates the weighting flip
+   (`equal` → `uniform_density`, a FitSettings change) and the Layered graph
+   default (`--mode layered_dynamic_harmonic`). Then:
    benchmark-pack regression, MCS adjudication (decides the `mcsChart` flip — the dial is
    in the UI), certification refresh (`calendar_active_set_exchange` now
    also runs test_tail_order_gate.py), the V3.8 replay-day campaign (SPX is
@@ -1896,6 +1920,85 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-10g) — BENCHMARK INTEGRITY: THE RATIFIED KNOBS BY DEFAULT, ONE OPTION SERIES PER SLICE AT REPLAY, A LOO THAT QUARANTINES INSTEAD OF NaN-ING A DAY
+
+User: "Go ahead with the benchmark integrity fixes" (the three defects of the
+2026-09-10b readout). Two pieces by forked sub-agents (fixture hygiene, the
+LOO quarantine), the script by the lead; acceptance on the real data.
+
+- **The script.** `run_benchmark_pack.ps1`: `-Eta 10 -CrossMult 25` are the
+  DEFAULTS (the R0-ratified knobs the July `_topofix_eta10` /
+  `_idiofloor_eta10` sweeps ran; a bare `benchmark_pack run` is eta 1 /
+  cross-mult 1 and not an adjudication), `-Tag` names the sweep's parts and
+  report, `-DryRun` prints both python argument lists. Header comment says
+  why.
+- **Fixture hygiene (fork).** `backtest/fixture_hygiene.py` (302):
+  `dedupe_quotes(quotes, forwards, spot)` keeps ONE series per (expiry,
+  strike, side) — only duplicated groups are touched (every other quote is
+  the same object in the original order); put-call parity with the
+  fixture's own F / D decides each group (decisive when the margin beats
+  the bid-ask width and a tenth of the price), else two-sided beats
+  one-sided, then implied-variance distance to the expiry's uncontested
+  median, then the cheaper quote; a uniformity vote per side over the
+  ambiguous groups (a mid rank names a series only within a side: an
+  adjusted series is dearer on calls, cheaper on puts; a PM twin dearer on
+  both), and a settlement-twin classifier (`TWIN_RATIO` 1.25: SPX reads
+  1.02, XOM ~30) that casts one expiry-wide vote, the cheaper series on a
+  tie (the parent); then off-series single strikes out of monotone order
+  with the decided series go too (XOM's adjusted 160 C, 400 P). A pure
+  "one-sided loses" rule was WRONG on the real data (the genuine deep-OTM
+  standard contract is the one-sided quote) — hence parity first.
+  `replay.load_fixture` applies it (`Fixture.hygiene` = the per-expiry
+  report; `VOLFIT_FIXTURE_DEDUPE=0` replays raw); `-m backtest.fixture_scan
+  [--regime] [--asset]` lists collisions read-only. Scan on spike: 39 of 483
+  fixtures (SPX 20, XOM 19), 69,093 quotes dropped; XOM 2024-08-05 1068 →
+  746, its 09-20 expiry 134 → 71 (30 duplicate keys, 15 one-sided, 33
+  off-series strikes); SPX 2024-08-07 9196 → 5738, every monthly one
+  series. `capture_roots.py` (97) + `capture.py`: the DAILY capture now
+  filters contracts by parsed OCC root (`XOM1` under XOM dropped) and
+  resolves same-date collisions with the twins' `resolve_expiry_roots`
+  (flat-file path: one chain per root, merged under the rule), writing
+  `meta.roots / expiryRoots / rootCollisions / droppedRoots` only when
+  something happened; fixtures on disk are never rewritten. Locks
+  `tests/test_fixture_hygiene.py` (8: XOM-like and SPX-like synthetic
+  chains, untouched expiries byte-identical, the env switch, the report on
+  the Fixture, the real XOM 09-20 count).
+- **LOO quarantine (fork).** `graph_loo.py` (637): `ATM_VOL_SANE = (1 %,
+  400 %)`; `screen_solution` names every calibrated node whose handles,
+  observation precision (non-finite or ≤ 0) or transported prior are
+  non-finite, or whose calibrated / prior ATM vol leaves the band, with a
+  reason; `solve_screened` solves, screens, re-solves ONCE with the names in
+  `hold_out` (they stay calibrated for accounting, feed nothing, are never
+  scored, stay withheld from every holdout solve), and raises naming the day
+  if the field is still non-finite — the run loop skips that day loudly;
+  `_score_node` returns None on a non-finite sd / ζ / residual, so no NaN
+  row is ever written; a clean day solves exactly once, rows byte-identical
+  (locked). `benchmark_pack` writes the `quarantine` list beside `rows` in
+  each part, `load_quarantine` reads it, the HTML says "N quarantined on M
+  day(s) — withheld from the solve, never scored (reason × n)", the JSON
+  carries `nQuarantined` / `quarantinedByRegime`. Locks
+  `tests/test_graph_loo_quarantine.py` (5) + `test_benchmark_pack` adapted;
+  the touched backtest suites 69 green together.
+- **Acceptance on the worst overnight day** (pair 2024-08-02 → 08-05,
+  full-LOO R=0, 249 nodes, clean fixtures, ~335 s a run):
+  overnight knobs (eta 1 / cross-mult 1) → 0 NaN rows, 0 quarantined, XOM
+  base rms 572 bp (2,938 in the overnight sweep, 3,041 in July), pooled
+  skill +4.5 bp (ex-XOM +4.5), ζ std 0.33, sd median 0.029; ratified knobs
+  (eta 10 / cross-mult 25) → 0 NaN, 0 quarantined, skill +18.0 bp (XOM
+  +12.1, ex-XOM +18.2), ζ std 0.33, sd median 0.024. So the duplicate
+  series WAS the poison (the fork's pre-hygiene run under the ratified
+  knobs read +9.0 pooled / +17.1 ex-XOM with XOM at 13,382 bp), and the
+  quarantine stayed a safety net. The full-LOO ζ std ≈ 0.33 under both
+  knob sets is the post-idio-floor band width (the July-9 untagged parts
+  predate the floor and read 0.95) — the standing "ζ band repair" rider,
+  not this arc's.
+- Recorded in STATUS item 1: the July parts are DIRTY-fixture scores, so a
+  July comparison is confounded on the XOM / SPX rows; the user's `_clean`
+  sweep is the baseline going forward; the LV flips are `run_compute --lv`
+  items, the pack adjudicates the weighting flip and the Layered default.
+  Observed, out of scope: `volfit/models/lqd/basis.py:96` overflows in
+  `exp` on that day (XOM's fit) — a RuntimeWarning, not an error.
 
 ### 🧭 SESSION WRAP (2026-09-10f) — DUPIRE-TWIN RIDERS: THE QUOTED-RANGE AND AFFINE-WINGS TAIL TARGETS, THE LOCAL VOL VIEWER SPLIT
 

@@ -26,6 +26,7 @@ from datetime import date, datetime, time as time_of_day
 from volfit.data.forwards import implied_forwards
 from volfit.data.types import ChainSnapshot, OptionQuote
 
+from backtest.capture_roots import apply_root_policy, merge_root_chains
 from backtest.quotes_store import QuotesFlatFileStore
 from backtest.rest_quotes import RestQuotesClient
 from backtest.universe import (
@@ -77,8 +78,12 @@ def _quote_dict(q: OptionQuote) -> dict:
     }
 
 
-def _build_fixture(asset: AssetSpec, as_of: date, chain: ChainSnapshot) -> dict | None:
-    """Select expiries, resolve forwards, assemble the fixture payload (or None)."""
+def _build_fixture(
+    asset: AssetSpec, as_of: date, chain: ChainSnapshot, meta: dict | None = None
+) -> dict | None:
+    """Select expiries, resolve forwards, assemble the fixture payload (or None).
+    ``meta`` (capture_roots: the root policy's record) is written only when it
+    carries something, so single-root fixtures keep their exact key set."""
     expiries = select_expiries(chain.expiries(), as_of)
     if not expiries:
         return None
@@ -89,7 +94,7 @@ def _build_fixture(asset: AssetSpec, as_of: date, chain: ChainSnapshot) -> dict 
     usable = [e for e in expiries if e in fwds]
     if not usable:
         return None
-    return {
+    payload = {
         "asset": asset.ticker,
         "as_of": as_of.isoformat(),
         "snapshot_ts_utc": chain.timestamp.isoformat(),
@@ -110,6 +115,9 @@ def _build_fixture(asset: AssetSpec, as_of: date, chain: ChainSnapshot) -> dict 
         },
         "quotes": [_quote_dict(q) for q in kept if q.expiry in set(usable)],
     }
+    if meta:
+        payload["meta"] = meta
+    return payload
 
 
 # --- nightly window ----------------------------------------------------------
@@ -159,8 +167,11 @@ def capture_day(fetch, assets: tuple[AssetSpec, ...], regime: str, as_of: date) 
         if os.path.exists(path):
             n_skipped += 1
             continue
-        chain = fetch(asset, as_of)
-        fixture = _build_fixture(asset, as_of, chain) if chain is not None else None
+        got = fetch(asset, as_of)
+        # A fetch may hand back (chain, meta) — the root policy's record
+        # (capture_roots) — or the bare chain (legacy / test closures).
+        chain, meta = got if isinstance(got, tuple) else (got, {})
+        fixture = _build_fixture(asset, as_of, chain, meta) if chain is not None else None
         if fixture is None:
             n_empty += 1
             continue
@@ -188,11 +199,25 @@ def _flatfile_fetch(assets: tuple[AssetSpec, ...]):
         raise SystemExit("flat-file creds missing — dot-source restart.local.ps1 first.")
 
     def fetch(asset: AssetSpec, as_of: date):
-        return store.chain_at(
-            asset.ticker, None, snapshot_utc(as_of),
-            option_roots=list(asset.option_roots), cache_roots=scan_roots,
-            exercise_style=asset.exercise_style,
-        )
+        roots = tuple(asset.option_roots)
+        if len(roots) == 1:  # the plain single-root capture, byte-identical
+            return store.chain_at(
+                asset.ticker, None, snapshot_utc(as_of),
+                option_roots=list(roots), cache_roots=scan_roots,
+                exercise_style=asset.exercise_style,
+            )
+        # A multi-root index (SPX + SPXW): one chain per root off the same
+        # cached scan, merged under the same-date rule (capture_roots).
+        chains = {
+            r: store.chain_at(
+                asset.ticker, None, snapshot_utc(as_of),
+                option_roots=[r], cache_roots=scan_roots,
+                exercise_style=asset.exercise_style,
+            )
+            for r in roots
+        }
+        chain, meta = merge_root_chains(asset.ticker, chains, roots)
+        return None if chain is None else (chain, meta)
 
     return fetch
 
@@ -203,11 +228,16 @@ def _rest_fetch():
 
     def fetch(asset: AssetSpec, as_of: date):
         by_expiry = client.enumerate_contracts(list(asset.option_roots), as_of)
+        # The root policy (capture_roots): drop contracts on another OCC root
+        # (an adjusted series such as XOM1 under XOM) and keep one root per
+        # expiry date (SPX before SPXW on a shared monthly).
+        by_expiry, meta = apply_root_policy(by_expiry, asset.option_roots)
         selected = select_expiries(sorted(by_expiry), as_of)
         sub = {e: by_expiry[e] for e in selected if e in by_expiry}
         if not sub:
             return None
-        return client.fetch_nbbo(asset.ticker, sub, snapshot_utc(as_of), asset.exercise_style)
+        chain = client.fetch_nbbo(asset.ticker, sub, snapshot_utc(as_of), asset.exercise_style)
+        return None if chain is None else (chain, meta)
 
     return fetch
 

@@ -12,19 +12,26 @@ from __future__ import annotations
 import glob
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from backtest.fixture_hygiene import dedupe_quotes
 from volfit.api.state import AppState
 from volfit.data.provider import OptionChainProvider
 from volfit.data.types import ChainSnapshot, OptionQuote
 
 FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
+#: ``VOLFIT_FIXTURE_DEDUPE=0`` replays the raw chain (byte-identity checks);
+#: the default runs fixture_hygiene.dedupe_quotes on every load.
+DEDUPE_ENV = "VOLFIT_FIXTURE_DEDUPE"
+
 
 @dataclass(frozen=True)
 class Fixture:
-    """A loaded fixture: metadata + the raw NBBO chain."""
+    """A loaded fixture: metadata + the NBBO chain (one series per contract —
+    ``hygiene`` reports what fixture_hygiene dropped, per expiry; empty when
+    nothing was duplicated or the dedupe is switched off)."""
 
     asset: str
     as_of: date
@@ -34,6 +41,7 @@ class Fixture:
     expiries: list[date]
     forwards: dict  # iso expiry -> {forward, discount, residual_rms, ...}
     chain: ChainSnapshot
+    hygiene: dict = field(default_factory=dict)
 
 
 class StaticProvider(OptionChainProvider):
@@ -73,6 +81,12 @@ def load_fixture(path: str) -> Fixture:
         )
         for q in d["quotes"]
     ]
+    # One series per (expiry, strike, side): the daily capture could write two
+    # roots into one slice (an adjusted series, SPX + SPXW) — see
+    # fixture_hygiene. Off by VOLFIT_FIXTURE_DEDUPE=0.
+    hygiene: dict = {}
+    if os.environ.get(DEDUPE_ENV, "1") != "0":
+        quotes, hygiene = dedupe_quotes(quotes, d.get("forwards") or {}, d["spot"])
     chain = ChainSnapshot(
         ticker=d["asset"], spot=d["spot"], timestamp=ts,
         quotes=quotes, exercise_style=d["exercise_style"],
@@ -81,7 +95,7 @@ def load_fixture(path: str) -> Fixture:
         asset=d["asset"], as_of=date.fromisoformat(d["as_of"]), regime=d.get("regime", ""),
         exercise_style=d["exercise_style"], sector=d.get("sector", ""),
         expiries=[date.fromisoformat(e) for e in d["expiries"]],
-        forwards=d["forwards"], chain=chain,
+        forwards=d["forwards"], chain=chain, hygiene=hygiene,
     )
 
 

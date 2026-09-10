@@ -73,6 +73,14 @@ Key commands (Windows, repo root):
             graph-LOO parts under backtest\results\benchmark\ + HTML/JSON
             artifact); full sweep via backend\backtest\run_benchmark_pack.ps1
             in the USER'S window (hours; tool background jobs get killed).
+            The script passes the RATIFIED knobs by default (`-Eta 10 -CrossMult 25`,
+            overridable; `-Tag _x` names the sweep, `-DryRun` prints the argument
+            list) — a bare `benchmark_pack run` is eta 1 / cross-mult 1 and NOT an
+            adjudication (2026-09-10b). Fixtures are cleaned at replay
+            (`backtest.fixture_hygiene`: one option series per expiry — the XOM
+            adjusted series, SPX+SPXW; `VOLFIT_FIXTURE_DEDUPE=0` replays raw;
+            `-m backtest.fixture_scan [--regime R]` lists collisions); the graph LOO
+            quarantines non-finite / absurd nodes (reported per part + in the HTML).
 - Certification: `-m backtest.certification run|report` (15 named stress cases
             — every historical bug — run via their pytest locks; client-facing
             HTML/JSON under backtest\results\certification\, ~5-10 min).

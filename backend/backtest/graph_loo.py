@@ -65,6 +65,11 @@ HANDLES = ("atm", "skew", "curv")
 #: Band-coverage z-scores (50/80/95%): coverage_p = P(|zeta| <= z_p) — the
 #: spec-22.4 gate-4 calibration readout, derivable from the stored zeta.
 COVERAGE_Z = {"cov50": 0.6745, "cov80": 1.2816, "cov95": 1.9600}
+#: Sane ATM-vol band for a node's calibrated / transported handles (1 % … 400 %).
+#: A node outside it — or one carrying a non-finite handle, precision or prior —
+#: is QUARANTINED for the day: withheld from the joint solve and never scored
+#: (2026-09-10: one XOM node with an absurd fit NaN'd six whole spike days).
+ATM_VOL_SANE = (0.01, 4.0)
 
 
 @dataclass(frozen=True)
@@ -145,6 +150,13 @@ def _score_node(state, full, held, idx, node, truth, fit_mode) -> dict | None:
     zeta = float(standardized_residuals(
         np.array([truth[0]]), np.array([post[0]]), np.array([sd * sd]), np.array([obs_prec])
     )[0])
+    # Never a NaN row: a non-finite band, ζ or residual means the solve (or the
+    # node's own fit) is broken — the row is skipped and the caller's quarantine
+    # accounting names why, instead of the summary silently dropping it.
+    checks = [sd, zeta, *(np.asarray(post[:3], float) - np.asarray(truth[:3], float)),
+              *(np.asarray(base[:3], float) - np.asarray(truth[:3], float))]
+    if not np.all(np.isfinite(checks)):
+        return None
     sm_g = _smile_rmse(state, node.ticker, node.expiry, fit_mode, post)
     sm_b = _smile_rmse(state, node.ticker, node.expiry, fit_mode, base)
     row = {
@@ -239,22 +251,84 @@ def _hops_from_lit(adj: dict, sources: set[int], target: int) -> int | None:
     return None
 
 
+# ------------------------------------------------------------------ quarantine
+def _finite(values) -> bool:
+    return bool(np.all(np.isfinite(np.asarray(values, dtype=float))))
+
+
+def screen_solution(full) -> list[tuple[tuple, str]]:
+    """The nodes a solved day must NOT carry into the joint solve, with a reason
+    each: a calibrated node whose handles, observation precision or transported
+    prior are non-finite, or whose ATM vol (calibrated or prior) sits outside
+    ``ATM_VOL_SANE``. One such node poisons the whole field (2026-09-10: XOM on
+    six spike days — every other node scored NaN while XOM, the only node whose
+    holdout removed the poison, scored). Node names are ``(ticker, expiry)``."""
+    lo, hi = ATM_VOL_SANE
+    bad: list[tuple[tuple, str]] = []
+    for i, node in enumerate(full.universe.nodes):
+        if not full.calibrated[i]:
+            continue
+        reason = None
+        y = full.obs_value_by_idx.get(i)
+        prior = full.priors_meta[i].handles
+        bd = full.obs_breakdowns.get(i)
+        if y is not None and not _finite(y):
+            reason = "non-finite calibrated handles"
+        elif bd is not None and (not _finite(bd.precision) or np.any(np.asarray(bd.precision) <= 0.0)):
+            reason = "non-finite observation precision"
+        elif not _finite(prior):
+            reason = "non-finite transported prior"
+        elif y is not None and not (lo <= float(y[0]) <= hi):
+            reason = f"calibrated atm vol {float(y[0]):.3g} outside [{lo:g}, {hi:g}]"
+        elif not (lo <= float(prior[0]) <= hi):
+            reason = f"prior atm vol {float(prior[0]):.3g} outside [{lo:g}, {hi:g}]"
+        if reason is not None:
+            bad.append((node.name, reason))
+    return bad
+
+
+def solve_screened(state, req, idio_atm_sigma, day_label: str):
+    """The day's full solve with the quarantine applied: solve, screen the
+    calibrated nodes, and — when any is flagged — re-solve once with them
+    withheld (``hold_out``: they stay calibrated for accounting but feed
+    nothing). A field still non-finite after that names the day and raises,
+    so a poisoned day is SKIPPED loudly by the run loop instead of scored as
+    NaN rows. Returns ``(solution | None, [(name, reason), ...])``."""
+    full = solve(state, req, idio_atm_sigma=idio_atm_sigma)
+    if full is None:
+        return None, []
+    bad = screen_solution(full)
+    if bad:
+        names = frozenset(name for name, _ in bad)
+        full = solve(state, req, hold_out=names, idio_atm_sigma=idio_atm_sigma)
+        if full is None:
+            return None, bad
+    if not (_finite(full.field.mean) and _finite(full.field.sd)):
+        raise RuntimeError(
+            f"{day_label}: the graph field is non-finite after quarantining "
+            f"{len(bad)} node(s) — not scored"
+        )
+    return full, bad
+
+
 # --------------------------------------------------------------- one (pair, R, design)
 def _run_design(
     state, full, req, design: str, fit_mode: str,
     idio_sigma: dict[str, float] | None = None, adj: dict | None = None,
+    quarantined: frozenset = frozenset(),
 ) -> list[dict]:
     """Score either every validation-clean node (full_loo) or the dark single names
-    (liquid_split) for one solved universe."""
+    (liquid_split) for one solved universe. ``quarantined`` names (from
+    ``solve_screened``) are neither scored nor fed to any holdout solve."""
     universe = full.universe
     obs_set = {
         i for i, node in enumerate(universe.nodes)
-        if node.lit and full.calibrated[i]
+        if node.lit and full.calibrated[i] and node.name not in quarantined
     }
     rows: list[dict] = []
     if design == "liquid_split":
         for i, node in enumerate(universe.nodes):
-            if node.lit:
+            if node.lit or node.name in quarantined:
                 continue  # only the dark single-name targets are scored
             try:
                 truth = _calibrated_handles(state, node.ticker, node.expiry, fit_mode)
@@ -268,12 +342,16 @@ def _run_design(
                     r["hops"] = _hops_from_lit(adj, obs_set, i)
                 rows.append(r)
         return rows
-    # full_loo: withhold each validation-clean node in turn.
+    # full_loo: withhold each validation-clean node in turn (the quarantined
+    # names stay withheld from every holdout solve and are never scored).
     for i, node in enumerate(universe.nodes):
         if not full.calibrated[i] or not full.priors_meta[i].valid_for_validation:
             continue
+        if node.name in quarantined:
+            continue
         try:
-            held = solve(state, req, hold_out=frozenset({node.name}), idio_atm_sigma=idio_sigma)
+            held = solve(state, req, hold_out=frozenset({node.name}) | quarantined,
+                         idio_atm_sigma=idio_sigma)
             if held is None:
                 continue
             r = _score_node(state, full, held, i, node, full.obs_value_by_idx[i], fit_mode)
@@ -321,8 +399,14 @@ def run(
     lambda_scale: float = 0.0,
     nu: float = 0.1,
     msg: MessageKnobs | None = None,
+    quarantine_log: list | None = None,
 ) -> list[dict]:
     """Score consecutive day pairs across the designs and SSR regimes.
+
+    ``quarantine_log`` (a list the caller owns) receives one record per node
+    withheld from a day's solve by ``solve_screened`` — {regime, as_of,
+    prior_as_of, design, ssr, ticker, expiry, reason} — so the part file and
+    the report can state how many nodes a day did NOT score, and why.
 
     ``pair_range=(a, b)`` scores pairs ``a..b-1`` only (the benchmark pack's
     chunked/resumable driver); ``max_pairs`` keeps the historical prefix cut.
@@ -420,14 +504,27 @@ def run(
                     store_cell = dyn_stores[(design, int(r_val))]
                     pre_store = dict(store_cell)  # frozen states: shallow is safe
                     state_t.graph_dynamic_residuals = store_cell
-                    full = solve(state_t, req, idio_atm_sigma=idio_sig)
+                    day_label = f"{regime} {d1.isoformat()} {design} R={int(r_val)}"
+                    full, bad = solve_screened(state_t, req, idio_sig, day_label)
                     # holdout solves read the pre-day-T store, never write it
                     state_t.graph_dynamic_residuals = pre_store
+                    if bad:
+                        print(f"  {day_label}: quarantined {len(bad)} node(s): "
+                              + "; ".join(f"{n[0]} {n[1]} — {why}" for n, why in bad[:6])
+                              + (" …" if len(bad) > 6 else ""), flush=True)
+                        if quarantine_log is not None:
+                            for (tk, iso), why in bad:
+                                quarantine_log.append(dict(
+                                    regime=regime, as_of=d1.isoformat(),
+                                    prior_as_of=d0.isoformat(), design=design,
+                                    ssr=int(r_val), ticker=tk, expiry=iso, reason=why,
+                                ))
                     if full is None:
                         continue
+                    quarantined = frozenset(name for name, _ in bad)
                     adj = _adjacency(full.universe, req)
                     for row in _run_design(state_t, full, req, design, full.fit_mode,
-                                           idio_sig, adj=adj):
+                                           idio_sig, adj=adj, quarantined=quarantined):
                         out.append(dict(row, regime=regime, as_of=d1.isoformat(),
                                         prior_as_of=d0.isoformat(),
                                         ssr=int(r_val), design=design))
@@ -502,11 +599,12 @@ def summarize(rows: list[dict]) -> list[dict]:
     return out
 
 
-def _write(rows, summary, name: str) -> str:
+def _write(rows, summary, name: str, quarantine: list | None = None) -> str:
     os.makedirs(RESULTS_DIR, exist_ok=True)
     base = os.path.join(RESULTS_DIR, name)
     with open(base + ".json", "w", encoding="utf-8") as fh:
-        json.dump({"rows": rows, "summary": summary}, fh, default=str, indent=2)
+        json.dump({"rows": rows, "summary": summary, "quarantine": quarantine or []},
+                  fh, default=str, indent=2)
     return base
 
 
@@ -521,10 +619,11 @@ def main() -> int:
     r_values = tuple(float(r) for r in args.regimes_r.split(","))
     print(f"regime={args.regime} designs={designs} R={r_values}", flush=True)
 
-    rows = run(args.regime, designs, r_values, args.max_pairs, EdgeConfig())
+    qlog: list[dict] = []
+    rows = run(args.regime, designs, r_values, args.max_pairs, EdgeConfig(), quarantine_log=qlog)
     summary = summarize(rows)
-    base = _write(rows, summary, f"{args.regime}_graph_loo")
-    print(f"\nwrote {base}.json  ({len(rows)} scored nodes)\n")
+    base = _write(rows, summary, f"{args.regime}_graph_loo", quarantine=qlog)
+    print(f"\nwrote {base}.json  ({len(rows)} scored nodes, {len(qlog)} quarantined)\n")
     hdr = f"{'design':<14}{'R':>2}{'n':>5}{'atmGr':>8}{'atmBs':>8}{'atmSk':>8}{'wGr':>7}{'wBs':>7}{'zMean':>7}{'zStd':>7}"
     print(hdr)
     for s in summary:

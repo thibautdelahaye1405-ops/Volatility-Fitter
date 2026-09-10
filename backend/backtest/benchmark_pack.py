@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from html import escape
 
@@ -108,9 +108,14 @@ def run_regime(
             print(f"{regime} pairs {a}-{b}: part exists, skipped", flush=True)
             continue
         print(f"{regime} pairs {a}-{b}: scoring…", flush=True)
+        # The nodes a day withheld from its solve (graph_loo.solve_screened),
+        # written beside the rows so a report can never score fewer nodes than
+        # it says without naming them.
+        quarantine: list[dict] = []
         rows = run_loo(regime, designs, r_values, None, cfg, pair_range=(a, b),
                        eta_scale=eta_scale, history_rows=_history_seed(regime, a, tag),
-                       lambda_scale=lambda_scale, nu=nu, msg=msg)
+                       lambda_scale=lambda_scale, nu=nu, msg=msg,
+                       quarantine_log=quarantine)
         # Provenance stamp: the merge dedups on (regime, day, design, R, node),
         # so rows from differently-knobbed sweeps would otherwise mix silently.
         stamp = dict(eta=eta_scale, indexWeight=cfg.index_weight,
@@ -122,8 +127,10 @@ def run_regime(
                          calDecay=msg.cal_decay)
         rows = [dict(r, **stamp) for r in rows]
         with open(path, "w", encoding="utf-8") as fh:
-            json.dump({"regime": regime, "pairs": [a, b], "rows": rows}, fh, default=str)
-        print(f"{regime} pairs {a}-{b}: {len(rows)} scores -> {path}", flush=True)
+            json.dump({"regime": regime, "pairs": [a, b], "rows": rows,
+                       "quarantine": quarantine}, fh, default=str)
+        print(f"{regime} pairs {a}-{b}: {len(rows)} scores, {len(quarantine)} quarantined"
+              f" -> {path}", flush=True)
 
 
 def load_parts(regime: str | None = None, tag: str | None = None) -> list[dict]:
@@ -137,10 +144,24 @@ def load_parts(regime: str | None = None, tag: str | None = None) -> list[dict]:
     ``tag`` restricts to one sweep's parts (e.g. "_b14_learned") — REQUIRED
     when comparing ablations, else first-wins mixes sweeps silently; ``""``
     selects only untagged parts."""
-    if not os.path.isdir(RESULTS_DIR):
-        return []
     rows: list[dict] = []
     seen: set[tuple] = set()
+    for part in _part_files(regime, tag):
+        for row in part["rows"]:
+            key = (row.get("regime"), row.get("as_of"), row.get("design"),
+                   row.get("ssr"), row.get("ticker"), row.get("expiry"))
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append(row)
+    return rows
+
+
+def _part_files(regime: str | None, tag: str | None):
+    """The part files of one regime / sweep tag (the selection rule of
+    ``load_parts``), parsed, in name order."""
+    if not os.path.isdir(RESULTS_DIR):
+        return
     for name in sorted(os.listdir(RESULTS_DIR)):
         if not name.endswith(".json") or "_pairs" not in name:
             continue
@@ -152,14 +173,24 @@ def load_parts(regime: str | None = None, tag: str | None = None) -> list[dict]:
             if part_tag != tag:
                 continue
         with open(os.path.join(RESULTS_DIR, name), encoding="utf-8") as fh:
-            for row in json.load(fh)["rows"]:
-                key = (row.get("regime"), row.get("as_of"), row.get("design"),
-                       row.get("ssr"), row.get("ticker"), row.get("expiry"))
-                if key in seen:
-                    continue
-                seen.add(key)
-                rows.append(row)
-    return rows
+            yield json.load(fh)
+
+
+def load_quarantine(regime: str | None = None, tag: str | None = None) -> list[dict]:
+    """Every node a sweep's days withheld from their solves (the ``quarantine``
+    list graph_loo writes beside the rows; parts from before 2026-09-10 carry
+    none), deduped on (regime, day, design, R, node) like the rows."""
+    out: list[dict] = []
+    seen: set[tuple] = set()
+    for part in _part_files(regime, tag):
+        for q in part.get("quarantine", []):
+            key = (q.get("regime"), q.get("as_of"), q.get("design"),
+                   q.get("ssr"), q.get("ticker"), q.get("expiry"))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(q)
+    return out
 
 
 # ------------------------------------------------------------------- aggregate
@@ -313,15 +344,32 @@ def _manifest(rows: list[dict]) -> str:
     return f'<div class="meta">{escape(" · ".join(parts))}</div>'
 
 
-def build_report_html(rows: list[dict]) -> str:
-    """The self-contained benchmark artifact from merged part rows."""
+def _quarantine_note(q: list[dict]) -> str:
+    """" · N quarantined (reason × n, …)" for a regime's withheld nodes ("" when none)."""
+    if not q:
+        return ""
+    reasons = Counter(x.get("reason", "?") for x in q)
+    days = len({x.get("as_of") for x in q})
+    detail = ", ".join(f"{escape(str(r))} × {n}" for r, n in reasons.most_common(4))
+    return (f" · <b>{len(q)} quarantined</b> on {days} day(s) — withheld from the"
+            f" solve, never scored ({detail})")
+
+
+def build_report_html(rows: list[dict], quarantine: list[dict] | None = None) -> str:
+    """The self-contained benchmark artifact from merged part rows.
+    ``quarantine`` (``load_quarantine``) states, per regime, how many nodes
+    the days withheld from their solves — a report never scores fewer nodes
+    than it says without naming why."""
     sections: list[str] = []
+    quarantine = quarantine or []
     for regime in sorted({r["regime"] for r in rows}):
         g = [r for r in rows if r["regime"] == regime]
         days = sorted({r["as_of"] for r in g})
+        q = [x for x in quarantine if x.get("regime") == regime]
         sections.append(
             f"<h2>{escape(_REGIME_LABELS.get(regime, regime))}</h2>"
-            f'<p class="note">{len(days)} day pairs · {len(g)} scored nodes.</p>'
+            f'<p class="note">{len(days)} day pairs · {len(g)} scored nodes'
+            f"{_quarantine_note(q)}.</p>"
         )
         sections.append("<h3>By design × SSR regime</h3>")
         sections.append(
@@ -378,12 +426,15 @@ def write_report(tag: str | None = None) -> tuple[str, str]:
     suffix = tag or ""
     html_path = os.path.join(RESULTS_DIR, f"benchmark_report{suffix}.html")
     json_path = os.path.join(RESULTS_DIR, f"benchmark_pack{suffix}.json")
+    quarantine = load_quarantine(tag=tag)
     with open(html_path, "w", encoding="utf-8") as fh:
-        fh.write(build_report_html(rows))
+        fh.write(build_report_html(rows, quarantine))
     payload = {
         "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "appVersion": volfit.__version__,
         "nRows": len(rows),
+        "nQuarantined": len(quarantine),
+        "quarantinedByRegime": dict(Counter(q.get("regime") for q in quarantine)),
         "byDesign": summarize_by(rows, ("regime", "design", "ssr")),
         "byKind": summarize_by(
             [r for r in rows if r["design"] == "full_loo"], ("regime", "kind", "ssr")
