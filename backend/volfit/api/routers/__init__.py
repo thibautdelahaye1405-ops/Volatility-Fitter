@@ -18,6 +18,7 @@ from volfit.api.routers.massive_iv import router as massive_iv_router
 from volfit.api.routers.priors import router as priors_router
 from volfit.api.routers.quality import router as quality_router
 from volfit.api.routers.scenario import router as scenario_router
+from volfit.api.routers.series import router as series_router
 from volfit.api.routers.settings import router as settings_router
 from volfit.api.routers.smiles import router as smiles_router
 from volfit.api.routers.snapshot import router as snapshot_router
@@ -51,6 +52,7 @@ ALL_ROUTERS = (
     priors_router,
     quality_router,
     scenario_router,
+    series_router,
     settings_router,
     snapshot_router,
     spot_router,

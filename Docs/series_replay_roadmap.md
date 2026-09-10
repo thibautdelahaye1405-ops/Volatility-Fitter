@@ -429,6 +429,14 @@ shapes get ONE loader), router `api/routers/series.py` (list / get / delete
 import as series in seconds; `GET /series/{id}` lists their frames; tests on
 the tiny synthetic store `test_filter_replay` already uses.
 
+(S1 as built, 2026-09-10j: `POST /series/import-store` takes
+`SeriesImportRequest {name, ticker, source: {kind: captures | store |
+fixtures, path?, start?, end?, maxFrames?}, lanes? | presets?, fitMode?,
+ladder?, note}`; captures are REFERENCED by snapshot id, store / fixture
+chains are copied as series-owned rows; the clock is derived from the
+median gap; daily-fixture hygiene is a rider. Measured: the 0DTE campaign
+store → 60 SPY frames in 1.2 s, the replay-day store → 25 in 0.3 s.)
+
 ### S2 — Harvest engine + job slot
 
 `api/series_instants.py` (resolver: step grid, session calendar, servability

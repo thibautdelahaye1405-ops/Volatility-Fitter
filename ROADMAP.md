@@ -261,8 +261,37 @@ keeping rows + the fast path, frame exclusion from both listings, the
 picker payload never lists a frame, the delete cascade); the v10 lock in
 test_asof_captures reads SCHEMA_VERSION. No Options field moved
 (`gen_help_schema.py --check` clean); help vitest 43 green; ruff clean.
-NEXT: S1 (series_store CRUD + import from captures / backtest stores /
-fixtures + the read router).
+**S1 — store + import + read API SHIPPED 2026-09-10j.**
+`api/series_store.py` (`SeriesStore` over an open VolStore: create / list /
+get / exists / delete, `set_progress` checkpoints, the lane mirror rows +
+`lane_filter` doc, `put_frame` upsert by index + `frame_chain` (the stored
+chain by snapshot id), `save_fit` upsert per (lane, frame, expiry) with the
+LV row mapped None ↔ '', `fits` filters, `count_fits`; delete removes the
+series-OWNED snapshot rows and their quotes and leaves a referenced capture
+alone), `api/series_import.py` (ONE loader for three sources —
+`ImportSource.kind` captures | store | fixtures — the app's captures are
+REFERENCED by id, a campaign VolStore's chains and fixture files in both
+capture shapes (intraday `snapshots[]`, daily `snapshot_ts_utc`) are copied
+in as owned frames stamped like `capture_intraday._persist_db` (US tick,
+per-expiry settlement honouring `meta.expiryRoots`, size → open interest);
+start / end / maxFrames bounds, one frame per instant; the clock is DERIVED
+(nearest step to the median gap; calendar past half a day), the ladder
+follows D6 (pinned = the union of the frames' expiries or the caller's
+list, cropped nearest-first), lanes from explicit specs or preset ids
+(default `current`), `quote_kind_of` recovers `marks` from a reloaded chain
+since the store keeps no label), `routers/series.py` (GET /series?ticker=,
+GET /series/{id}, DELETE /series/{id}, POST /series/import-store; 409
+without VOLFIT_DB, 404 / 422; governance events series_import /
+series_delete). Locks: test_series_store (5) + test_series_import (10, incl.
+the router); neighbouring suites 83 green; ruff clean. Real-data exit check
+(throw-away app store): `backtest/results/intraday.sqlite` (0DTE campaign,
+312 snapshots SPY/QQQ/IWM) → 60 SPY frames in 1.2 s (≈1,960 quotes per
+frame, 12 expiries, 7 MB); `replay_day.sqlite` (V3.8, 2026-08-19) → 25 SPY
+frames in 0.3 s (6 expiries, 2.9 MB). Not done by design: daily-fixture
+hygiene at import (`backtest.fixture_hygiene` lives outside the package —
+a rider for the daily shape; the intraday captures never had the
+two-root defect). NEXT: S2 (instants resolver, historical + live harvest,
+`SeriesJobs`, estimate, start / pause / resume / cancel, status + stream).
 
 User ask (2026-09-10): "harvest, store and replay a time-series of smiles /
 surface for a given ticker and a given period and frequency: choose a
@@ -1668,20 +1697,27 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10i (resume here)
+## STATUS — updated 2026-09-10j (resume here)
 
 ### ▶ CURRENT ARC: the SERIES ARC (adopted 2026-09-10, D1–D12 RATIFIED) —
 harvest / store / replay a time-series of smiles and surfaces for one
 ticker under several model lanes. Spec, survey, data model, API, decisions
 and phases S0–S7: **Docs/series_replay_roadmap.md**; the arc header (with
-the per-phase wrap) sits above the LV operator arc. **S0 SHIPPED
+the per-phase wraps) sits above the LV operator arc. **S0 SHIPPED
 2026-09-10i** (schemas_series + series_presets, store v11 with the frame
-exclusion, docs catalog entry, 20 locks). On "continue the series arc"
-work S1 → S7 in order: S1 = `api/series_store.py` CRUD + `series_import.py`
-(the app's captures / a backtest VolStore / the intraday and daily fixture
-shapes through ONE loader) + `routers/series.py` (list / get / delete /
-import-store); the 0DTE campaign store and the V3.8 replay-day store
-become series on day one.
+exclusion, docs catalog entry) and **S1 SHIPPED 2026-09-10j**
+(`series_store` CRUD, `series_import` — captures referenced, campaign
+stores and fixtures copied as owned frames, derived clock, D6 ladder —
+`routers/series.py` list / get / delete / import-store; the 0DTE campaign
+store imports 60 SPY frames in 1.2 s). On "continue the series arc" work
+S2 → S7 in order: S2 = `api/series_instants.py` (step grid, session
+calendar, servability from the as-of payload, floors) + `series_harvest.py`
+(historical through the provider's as-of path per instant with progress;
+live as a `SeriesSchedule` on the scheduler tick reading the book
+synchronously when streaming) + `series_jobs.py` (`SeriesJobs`: one running
+series, a queue, pause / resume / cancel, per-frame checkpoints, restart
+recovery → paused) + the routes `/series/estimate`, `/start` … `/cancel`,
+`/status`, `/stream`.
 
 ### ▶ NEXT: the 2026-09-09/10 confirm-per-item pass (wraps 2026-09-09i →
 2026-09-10f below) worked this list top to bottom — SHIPPED: the connector's
