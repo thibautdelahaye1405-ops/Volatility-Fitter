@@ -22,6 +22,7 @@ import ExtrapolateResults from "../ExtrapolateResults";
 import ObservationPlanCard from "../ObservationPlanCard";
 import RelationsTab from "./RelationsTab";
 import TimelinePreview from "./TimelinePreview";
+import { useDrawerHeight } from "./useDrawerHeight";
 import ValidationTab from "./ValidationTab";
 import type { NodeRef } from "../../lib/relationRows";
 import type { RelationDraft } from "../../state/useRelationDraft";
@@ -106,6 +107,9 @@ export default function GraphDrawer({
 }: GraphDrawerProps) {
   const manual = source === "manual";
   const litEntries = Object.entries(graph.lit).sort(([a], [b]) => a.localeCompare(b));
+  // Drawer height: the tab default until the top-edge handle is dragged
+  // (useDrawerHeight: clamp, session memory, double-click reset).
+  const drawer = useDrawerHeight(tab);
 
   // Canonical scenario shortcuts (U3): one click replaces the pulse set.
   const scenarioButtons = (
@@ -348,9 +352,29 @@ export default function GraphDrawer({
         </button>
       </div>
       {open && (
-        <div className={(tab === "relations" ? "h-64" : "h-52") + " overflow-y-auto border-t border-slate-800 px-4 py-2"}>
-          {content[tab]}
-        </div>
+        <>
+          {/* Top-edge drag handle (rider 2026-09-10): drag up for a taller
+              drawer, double-click to reset; a wider invisible hit area makes
+              the 1 px seam easy to grab (the Nodes-pane Resizer's pattern). */}
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize drawer"
+            data-testid="graph-drawer-handle"
+            title="Drag to resize · double-click to reset"
+            {...drawer.handleProps}
+            className="group relative h-1 cursor-row-resize border-t border-slate-800 bg-slate-800/80 transition-colors hover:bg-accent-500/60"
+          >
+            <span className="absolute inset-x-0 -top-1 -bottom-1" />
+          </div>
+          <div
+            data-testid="graph-drawer-body"
+            style={{ height: drawer.height }}
+            className="overflow-y-auto px-4 py-2"
+          >
+            {content[tab]}
+          </div>
+        </>
       )}
     </div>
   );

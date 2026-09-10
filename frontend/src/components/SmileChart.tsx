@@ -127,6 +127,10 @@ export interface ChartFooterContext {
   xView: readonly [number, number];
   /** k → display coordinate of the market frame (the chart's `tx`). */
   tx: (k: number) => number;
+  /** The crosshair's log-moneyness while the pointer is over the plot, else
+   *  null — a strip on the same axis can badge the bar under it (2026-09-10:
+   *  the weight strip's readout became the chart's crosshair badge). */
+  crosshairK: number | null;
 }
 
 /** Human labels for the named degraded-market conditions. */
@@ -715,7 +719,7 @@ export default function SmileChart({
 
       {/* Optional footer strip (V3.4 weight strip) — above the brush, on the
           plot's live x view so it follows every zoom / pan / axis switch */}
-      {footer != null && <div className="mt-2 shrink-0">{footer({ xView, tx })}</div>}
+      {footer != null && <div className="mt-2 shrink-0">{footer({ xView, tx, crosshairK: hoverK })}</div>}
 
       {/* Strike-window brush (coarse, in log-moneyness k) */}
       <div className="mt-2 shrink-0 px-1">

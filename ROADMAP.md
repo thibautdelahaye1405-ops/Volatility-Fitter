@@ -1583,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10d (resume here)
+## STATUS — updated 2026-09-10e (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1790,8 +1790,10 @@ below) — every recorded rider is closed except the ones listed here:
    adjudication.
 9. GRAPH ERGONOMICS riders (wraps 2026-09-07f + 2026-09-08a below; none are
    gates): the Layered DEFAULT vs the intraday campaign's verdict is a
-   benchmark-pack adjudication candidate (the UI ORDER is ruled); a resizable
-   drawer for very large Relations lists; live-preview lag on a 1k-node
+   benchmark-pack adjudication candidate (the UI ORDER is ruled); ~~a resizable
+   drawer for very large Relations lists~~ DONE 2026-09-10e (wrap below: a
+   top-edge drag handle, 140 px … 70 % of the viewport, remembered for the
+   session, double-click resets; `useDrawerHeight.ts`); live-preview lag on a 1k-node
    universe rides the P7 sparse-solve rider; pod collapse / bundle expansion
    are chart-local (not persisted in the workspace file); a plain drag means
    CONNECT — moving pods would need a modifier. The first-use fixes of
@@ -1850,10 +1852,16 @@ below) — every recorded rider is closed except the ones listed here:
    header line; SPY haircut/20/convex: 2.2 bp surface, 5.3 bp converged).
 12. QUOTE-WEIGHTING riders (wrap 2026-09-09a below; none are gates): the
    `equal` → `uniform_density` DEFAULT flip is a benchmark-pack adjudication
-   (item 1 above — `equal` stays the default by the standing rule); the
+   (item 1 above — `equal` stays the default by the standing rule); ~~the
    Quality tab could report the aggregate weight per strike bucket beside
-   the RMS; the strip's hover readout could become the chart's crosshair
-   badge on the strip (today: a native title tooltip).
+   the RMS~~ DONE 2026-09-10e (wrap below: `QualityNode.weightBuckets` — five
+   shares by standardized-moneyness band, `quality_weights.py`; the "Wgt"
+   mini-bar column with the shares on hover; guide bullet); ~~the strip's
+   hover readout could become the chart's crosshair badge on the strip
+   (today: a native title tooltip)~~ DONE 2026-09-10e (the chart's hover k
+   travels through the footer context; the bar pair under the crosshair
+   lights and its readout renders through the shared CrosshairBadge; native
+   titles stay as the fallback).
 USER-side: restart the long-running :8000 (new OptionsSettings fields —
 wrap 2026-09-02g: `autoUpdate` / `autoUpdateSeconds` / `streamFreezeFit`
 replace the five scheduler fields, migrated on load; the `/scheduler` payload
@@ -1867,6 +1875,44 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-10e) — GRAPH + WEIGHTING RIDERS: A RESIZABLE RELATIONS DRAWER, THE QUALITY "WGT" COLUMN, THE WEIGHT STRIP'S CROSSHAIR BADGE
+
+Item 11 of the confirm-per-item pass ("build all three"); two pieces built
+by forked sub-agents (drawer, badge), the Quality column by the lead.
+
+- **Resizable graph drawer.** `graphshell/GraphDrawer.tsx` (381 lines): the
+  fixed `h-64` / `h-52` body became a top-edge drag handle (`role=
+  "separator"`, `data-testid="graph-drawer-handle"`, the Nodes-pane
+  Resizer's seam + hit area) over a body with an inline height;
+  `useDrawerHeight.ts` (117) owns it: per-tab default until dragged
+  (256 / 208 px), window mousemove/mouseup (no pointer capture — jsdom and
+  the browser agree), dragging UP = taller, clamp 140 px … ⌊0.7 × viewport⌋,
+  remembered in `volfit.graph.drawerHeight.v1` (try/catch; garbage or
+  missing = defaults; removed on reset), double-click resets. Lock
+  `useDrawerHeight.test.tsx` (5).
+- **Quality "Wgt" column.** `volfit/api/quality_weights.py`:
+  `weight_bucket_shares(k, w_mid, atm_vol, tau, scheme)` — the fit's own
+  weights (`calib.weights.resolve_weights`; unit under `equal`) pooled into
+  five STANDARDIZED-moneyness bands z = k / σ_atm√τ (deep put < −2 ≤ put <
+  −0.5 ≤ ATM ≤ 0.5 < call ≤ 2 < deep call), shares of the total rounded to
+  4 dp; None when not standardizable. `QualityNode.weightBuckets` filled in
+  `_node_row` from the prepared quotes; `WeightBucketsCell.tsx` draws five
+  bars (ATM accented) with the shares in the title; the node table gains
+  the column beside RMS; guide bullet in the Quality guide. Locks: backend
+  `test_weight_buckets_share_the_fit_weights_by_band` (shares sum to 1,
+  equal = count shares, band membership of the helper, None off-fit);
+  viewer test (the cell, its title, the dash for a node without shares).
+- **Crosshair badge on the Weights strip.** `SmileChart.tsx`'s
+  `ChartFooterContext` gains `crosshairK` (the chart's hover k, null off
+  the plot); `SmileViewer` forwards it; `WeightStrip.tsx` (181) lights the
+  bar pair within 6 px of the crosshair (`data-active`) and renders its
+  readout through the shared `CrosshairBadge` (`data-testid="weight-strip-
+  badge"`; `weightReadout` exported; excluded quotes read "excluded");
+  native `<title>` tooltips stay as the fallback. Lock `WeightStrip.test.tsx`
+  (3). SmileChart.tsx is 736 lines (pre-existing over the policy).
+- Suites: backend quality 16 green; frontend 12 files / 65 tests (Quality
+  viewer, strip, graphshell, help locks, smile chart/viewer); `tsc` clean.
 
 ### 🧭 SESSION WRAP (2026-09-10d) — LV RIDERS: THE BENCH TAKES THE DESK OPTIONS AS FLAGS; THE AFFINE MODULE IS SPLIT BEHIND A FAÇADE
 

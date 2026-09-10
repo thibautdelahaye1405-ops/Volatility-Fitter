@@ -25,6 +25,7 @@ from volfit.api.data_age import format_age, ticker_ages
 from volfit.api.filter_mode import resolve_filter_mode
 from volfit.api.quality_asof import asof_fields
 from volfit.api.quality_gates import calendar_issues, certificate_fields
+from volfit.api.quality_weights import weight_bucket_shares
 from volfit.api.schemas_quality import (
     LvQuality,
     QualityNode,
@@ -288,6 +289,13 @@ def _node_row(
         nQuotes=int(record.prepared.k.size),
         rmsBp=rms_bp,
         maxIvBp=max_iv * 1e4,
+        # The fit's summed weight by moneyness band (the Quality "Wgt" column):
+        # the same scheme weights the calibration summed, pooled over five
+        # standardized bands — quality_weights.
+        weightBuckets=weight_bucket_shares(
+            record.prepared.k, record.prepared.w_mid, atm_vol,
+            float(record.prepared.tau), state.fit_settings().weightScheme,
+        ),
         atmVol=atm_vol,
         skew=skew,
         leeLeft=lee_left,

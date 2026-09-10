@@ -116,6 +116,18 @@ describe("QualityViewer", () => {
     expect(bad.getAttribute("title")).toContain("20.0% of the certificate grid");
   });
 
+  it("renders the fit weight by moneyness band beside the RMS (the Wgt column)", () => {
+    const r = report();
+    r.nodes = r.nodes.map((n, i) => (i === 0 ? { ...n, weightBuckets: [0.1, 0.2, 0.4, 0.2, 0.1] } : n));
+    mockUse.mockReturnValue({ report: r, loading: false, error: null, reload: vi.fn() });
+    renderViewer();
+    expect(screen.getByText("Wgt")).toBeTruthy();
+    const cells = screen.getAllByTestId("weight-buckets");
+    expect(cells.length).toBe(1); // the stale node carries no shares -> a dash
+    expect(cells[0].getAttribute("title")).toMatch(/deep put 10% · put 20% · ATM 40% · call 20% · deep call 10%/);
+    expect(cells[0].querySelectorAll("span").length).toBe(5);
+  });
+
   it("shows the live-only offline card with retry", () => {
     const reload = vi.fn();
     mockUse.mockReturnValue({ report: null, loading: false, error: "backend down", reload });

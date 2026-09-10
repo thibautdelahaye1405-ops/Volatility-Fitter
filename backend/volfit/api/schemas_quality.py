@@ -27,6 +27,10 @@ class QualityNode(BaseModel):
     nQuotes: int
     rmsBp: float  # weighted RMS vol error vs the fit target, in vol bp
     maxIvBp: float  # worst per-quote IV error of the displayed fit, in vol bp
+    #: The fit's summed quote weight by standardized-moneyness band — deep put,
+    #: put, ATM, call, deep call (z = k / σ_atm√τ; volfit.api.quality_weights) —
+    #: as shares of the total (sum 1); None when the slice cannot be standardized.
+    weightBuckets: list[float] | None = None
     atmVol: float
     skew: float
     leeLeft: float  # total-variance wing slopes (Lee bound: <= 2)

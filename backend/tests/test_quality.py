@@ -221,6 +221,43 @@ def test_rms_budget_drives_readiness():
     assert not row.ready and any("budget" in issue for issue in row.issues)
 
 
+def test_weight_buckets_share_the_fit_weights_by_band():
+    """The "Wgt" column (quality_weights): five shares by standardized-
+    moneyness band that sum to one; under the ``equal`` scheme they are the
+    quote-count shares; a density scheme moves weight without changing the
+    band memberships; a node without a fit carries none."""
+    import numpy as np
+
+    from volfit.api.quality_weights import BUCKET_EDGES, weight_bucket_shares
+
+    state = AppState(REF_DATE)
+    iso = _isos(state)[0]
+    service.calibrate_node(state, TICKER, iso, "mid")
+    row = {(n.ticker, n.expiry): n for n in quality.build_quality_report(state).nodes}[(TICKER, iso)]
+    assert row.weightBuckets is not None and len(row.weightBuckets) == 5
+    assert all(s >= 0.0 for s in row.weightBuckets)
+    assert abs(sum(row.weightBuckets) - 1.0) < 5e-4  # five shares rounded to 4 dp
+    # equal scheme = one vote per quote: the shares are the band counts / n.
+    prep = service.fit_or_get(state, TICKER, iso, "mid").prepared
+    z = prep.k / (row.atmVol * np.sqrt(prep.tau))
+    band = np.searchsorted(np.asarray(BUCKET_EDGES), z, side="right")
+    band = np.where((band == 3) & (z == 0.5), 2, band)
+    counts = np.bincount(band, minlength=5)[:5]
+    assert np.allclose(row.weightBuckets, counts / counts.sum(), atol=2e-4)
+    # The helper itself: one quote per band (z = -2.5, -1.5, 0, 1.5, 2.5) under
+    # equal; the closed ATM band takes z = ±0.5.
+    k = np.array([-0.50, -0.30, 0.0, 0.30, 0.50])
+    w = np.full(5, 0.04)
+    equal = weight_bucket_shares(k, w, 0.20, 1.0, "equal")
+    assert equal == [0.2, 0.2, 0.2, 0.2, 0.2]
+    assert weight_bucket_shares(np.array([-0.1, 0.1]), w[:2], 0.20, 1.0, "equal") == [0.0, 0.0, 1.0, 0.0, 0.0]
+    assert weight_bucket_shares(k, w, 0.0, 1.0, "equal") is None  # no ATM vol: not standardizable
+    assert weight_bucket_shares(np.array([]), np.array([]), 0.2, 1.0, "equal") is None
+    for n in quality.build_quality_report(state).nodes:
+        if not n.hasFit:
+            assert n.weightBuckets is None
+
+
 def test_quality_route_over_http():
     from fastapi.testclient import TestClient
 

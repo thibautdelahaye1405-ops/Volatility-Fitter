@@ -23,7 +23,7 @@ export const GRAPH: GuidePage = {
     "  - **Advanced**: the units toggle (σ vol points / raw precision p) and **Smooth field (legacy)**, which swaps the whole pane for the legacy weights, the η κ λ ν dials and the per-edge weight matrix, with **← Back to Layered** to leave it.",
     "- **Smile universe** (centre) — the canvas: ticker pods on calendar spines, every relation an **arrow** from informer to receiver. After a run the reveal stages nodes by their BFS distance from the observations — an attribution picture, never solver chronology (the posterior is solved jointly).",
     "- **Inspector** (right) — a selected **arrow** shows the relation card (sliders); otherwise the selected node's facts and its prior → posterior move: ATM vol · Skew · Curvature · Shift, **Posterior confidence (1σ)**, **Incoming confidence q = Σp**, Innovation, Prior source, Prior as-of, Transport distance; *Open this node's reconstructed smile*. Under Layered or Precision the **Message inspector** lists incoming messages (informer, its innovation z, β, the vote β·z, σ_edge), the exact local consensus and the global posterior with a divergence explainer.",
-    "- **Drawer** (bottom) — `Relations` | `Preview` | `Diagnostics` | `Validation` | `Observation plan`.",
+    "- **Drawer** (bottom) — `Relations` | `Preview` | `Diagnostics` | `Validation` | `Observation plan`. Drag its top edge to make it taller or shorter (a long Relations list then gets the room; the height is remembered for the session); double-click the edge to reset.",
     "",
     "## First run",
     "",

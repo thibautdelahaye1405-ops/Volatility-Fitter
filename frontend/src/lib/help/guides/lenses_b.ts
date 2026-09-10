@@ -52,6 +52,7 @@ export const PARAMETRIC: GuidePage = {
     "## Numbers and badges",
     "",
     "- **RMS · max** in vol bp, against the active [fit target](help:glossary:fit-target) — zero inside a band.",
+    "- **Wgt** — the fit's summed quote weight by moneyness band, five bars: deep put · put · ATM · call · deep call in standardized moneyness (z = k / σ_atm√τ; ATM is ±0.5, deep beyond ±2), so a two-day and a one-year slice compare. It is what the [quote weighting](help:settings:weightScheme) actually produced, pooled — the Weights strip under the smile draws the same weights per quote. Hover for the shares; a slice with all its weight in the ATM band has nothing holding its wings but the model.",
     "- **ATM · skew · curvature** — the three [handles](help:glossary:handle); **Lee L/R** the wing slopes (cap 1.95); **var-swap vol** the model's fair level and, when quoted, the basis.",
     "- `STALE` — inputs moved since the fit; `MOCK` — no backend, a built-in fixture; `UPDATED` — a refit just landed.",
     "- **GRAPH** — this smile is a graph reconstruction (model · prior source · quote metrics · posterior var-swap ± 1σ; `✕` clears). **FILTER** — the observation filter's gains per handle and ρ; amber when the measurement was flagged contaminated.",

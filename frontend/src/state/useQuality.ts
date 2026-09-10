@@ -18,6 +18,10 @@ export interface QualityNode {
   nQuotes: number;
   rmsBp: number;
   maxIvBp: number;
+  /** The fit's summed quote weight by standardized-moneyness band — deep put,
+   *  put, ATM, call, deep call (z = k / σ_atm√τ) — as shares of the total
+   *  (sum 1); null / absent when the slice cannot be standardized. */
+  weightBuckets?: number[] | null;
   atmVol: number;
   skew: number;
   leeLeft: number;

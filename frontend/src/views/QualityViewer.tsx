@@ -22,6 +22,7 @@ import QualityNodeCard, {
   fmtAge,
 } from "../components/quality/QualityNodeCard";
 import QualityTiles from "../components/quality/QualityTiles";
+import WeightBucketsCell from "../components/WeightBucketsCell";
 import { fmtBp, sortNodes } from "../lib/qualityFormat";
 import type { SortMode } from "../lib/qualityFormat";
 import { cardClass } from "../lib/ui";
@@ -250,6 +251,7 @@ export default function QualityViewer() {
                   <th className={th}>Model</th>
                   <th className={th}>#Q</th>
                   <th className={th}>RMS bp</th>
+                  <th className={th} title="Fit weight by moneyness band — deep put · put · ATM · call · deep call (z = k / σ_atm√τ): what the quote weighting summed, pooled">Wgt</th>
                   <th className={th}>Max IV bp</th>
                   <th className={th}>ATM</th>
                   <th className={th}>Lee L/R</th>
@@ -290,6 +292,7 @@ export default function QualityViewer() {
                       <td className={`${td} ${n.hasFit && n.rmsBp > report.rmsBudgetBp ? "text-amber-300" : ""}`}>
                         {n.hasFit ? fmtBp(n.rmsBp) : "—"}
                       </td>
+                      <td className={td}>{n.hasFit ? <WeightBucketsCell shares={n.weightBuckets} /> : "—"}</td>
                       <td className={td}>{n.hasFit ? fmtBp(n.maxIvBp) : "—"}</td>
                       <td className={td}>{n.hasFit ? `${(n.atmVol * 100).toFixed(1)}%` : "—"}</td>
                       <td className={`${td} ${!n.leeOk ? "text-rose-400" : ""}`}>

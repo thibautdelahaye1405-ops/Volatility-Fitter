@@ -9,10 +9,19 @@
 // quotes in every axis mode and follow every zoom. Excluded quotes render as
 // hollow outlines. Binning / normalization lives in lib/weightStrip; data in
 // state/useWeights.
+//
+// Readout (2026-09-10): the chart also hands the strip its crosshair k. The
+// bar pair nearest the crosshair (within a few px) lights up and its readout
+// — k, the scheme's target, the density multiplier applied, the weight — is
+// drawn as the chart's crosshair badge on the strip, so sweeping the smile
+// reads the weights without a native tooltip's delay. The SVG <title>s stay
+// as the fallback when there is no crosshair (touch, a stripped chart).
 import { useMemo } from "react";
+import { CrosshairBadge } from "./CrosshairOverlay";
 import type { SmileData } from "../lib/mockData";
 import { linearScale } from "../lib/chartScale";
 import { buildWeightBars, targetLabel } from "../lib/weightStrip";
+import type { WeightBar } from "../lib/weightStrip";
 import { useElementSize } from "../lib/useElementSize";
 import { useWeights } from "../state/useWeights";
 import type { FitMode } from "../state/useSmile";
@@ -21,6 +30,9 @@ import type { FitMode } from "../state/useSmile";
 const MARGIN = { left: 52, right: 14 } as const;
 const BAR_W = 2.5; // px per bar; the pair straddles the quote's x
 const EXCLUDED_H = 0.35; // hollow-outline height, fraction of the strip
+/** Max distance (px) between the crosshair and a bar pair's centre for the
+ *  pair to count as "under" the crosshair — the pair's own width plus a hair. */
+const ACTIVE_TOL = 6;
 
 interface WeightStripProps {
   live: boolean;
@@ -34,6 +46,35 @@ interface WeightStripProps {
   xView: readonly [number, number];
   /** The chart's k → display transform (its axis mode + market frame). */
   tx: (k: number) => number;
+  /** The chart's crosshair k while the pointer is over its plot (null /
+   *  omitted = no crosshair): the strip badges the bar pair under it. */
+  crosshairK?: number | null;
+}
+
+/** The hover / badge text of one bar pair. */
+export function weightReadout(b: WeightBar): string {
+  if (b.excluded) return `k ${b.k.toFixed(3)} · excluded`;
+  return `k ${b.k.toFixed(3)} · target ${b.targetRaw.toFixed(3)} · ×${b.spacingMult.toFixed(2)} spacing · weight ${b.weight.toFixed(2)}`;
+}
+
+/** The bar pair whose centre lies within ACTIVE_TOL px of the crosshair. */
+function activeBar(
+  bars: readonly WeightBar[],
+  crosshairK: number | null | undefined,
+  xOf: (k: number) => number,
+): WeightBar | null {
+  if (crosshairK == null || !Number.isFinite(crosshairK)) return null;
+  const cx = xOf(crosshairK);
+  let best: WeightBar | null = null;
+  let bestD = ACTIVE_TOL;
+  for (const b of bars) {
+    const d = Math.abs(xOf(b.k) - cx);
+    if (d <= bestD) {
+      bestD = d;
+      best = b;
+    }
+  }
+  return best;
 }
 
 export default function WeightStrip({
@@ -44,6 +85,7 @@ export default function WeightStrip({
   smile,
   xView,
   tx,
+  crosshairK = null,
 }: WeightStripProps) {
   const { ref, size } = useElementSize();
   const data = useWeights(true, live, ticker, expiry, fitMode, smile);
@@ -55,10 +97,10 @@ export default function WeightStrip({
   const plotW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const plotH = Math.max(0, size.height);
   const xScale = linearScale([xView[0], xView[1]], [0, plotW]);
+  const xOf = (k: number) => xScale.map(tx(k));
   const quoteCount = smile?.quotes.length ?? 0;
   const scheme = data?.scheme ?? null;
-  const readout = (b: (typeof bars)[number]) =>
-    `k ${b.k.toFixed(3)} · target ${b.targetRaw.toFixed(3)} · ×${b.spacingMult.toFixed(2)} spacing · weight ${b.weight.toFixed(2)}`;
+  const active = plotW > 0 ? activeBar(bars, crosshairK, xOf) : null;
 
   if (quoteCount === 0) return null;
   return (
@@ -78,45 +120,60 @@ export default function WeightStrip({
           {data !== null ? `scheme ${data.scheme}` : "weights unavailable"}
         </span>
       </div>
-      {/* Bar strip (measured for responsive SVG) */}
+      {/* Bar strip (measured for responsive SVG) + the crosshair badge */}
       <div ref={ref} className="relative min-h-0 flex-1">
         {size.width > 0 && size.height > 0 && (
           <svg width={size.width} height={size.height} className="absolute inset-0">
             <g transform={`translate(${MARGIN.left},0)`}>
               <line x1={0} x2={plotW} y1={plotH - 0.5} y2={plotH - 0.5} stroke="rgb(255 255 255 / 0.08)" />
               {bars.map((b) => {
-                const x = xScale.map(tx(b.k));
+                const x = xOf(b.k);
                 if (x < -4 || x > plotW + 4) return null;
+                const isActive = active !== null && active.index === b.index;
                 if (b.excluded) {
                   return (
                     <rect
                       key={b.index}
                       data-quote-index={b.index}
+                      data-active={isActive ? "true" : undefined}
                       x={x - BAR_W}
                       y={plotH * (1 - EXCLUDED_H)}
                       width={2 * BAR_W}
                       height={plotH * EXCLUDED_H - 1}
                       fill="none"
-                      stroke="rgb(148 163 184 / 0.55)"
+                      stroke={isActive ? "rgb(226 232 240 / 0.9)" : "rgb(148 163 184 / 0.55)"}
                       strokeDasharray="2 2"
-                    />
+                    >
+                      <title>{weightReadout(b)}</title>
+                    </rect>
                   );
                 }
                 const ht = Math.max(1, b.target * (plotH - 2));
                 const hw = Math.max(1, b.weightNorm * (plotH - 2));
                 return (
-                  <g key={b.index} data-quote-index={b.index}>
-                    <rect x={x - BAR_W - 0.5} y={plotH - ht} width={BAR_W} height={ht} fill="rgb(148 163 184 / 0.5)">
-                      <title>{readout(b)}</title>
+                  <g key={b.index} data-quote-index={b.index} data-active={isActive ? "true" : undefined}>
+                    {/* The lit pair: brighter fills and a hairline outline, the
+                        chart's own "selected quote" emphasis. */}
+                    <rect x={x - BAR_W - 0.5} y={plotH - ht} width={BAR_W} height={ht}
+                      fill={isActive ? "rgb(203 213 225 / 0.85)" : "rgb(148 163 184 / 0.5)"}
+                      stroke={isActive ? "rgb(226 232 240)" : "none"} strokeWidth={0.75}>
+                      <title>{weightReadout(b)}</title>
                     </rect>
-                    <rect x={x + 0.5} y={plotH - hw} width={BAR_W} height={hw} fill="var(--color-accent-400)" fillOpacity={0.8}>
-                      <title>{readout(b)}</title>
+                    <rect x={x + 0.5} y={plotH - hw} width={BAR_W} height={hw}
+                      fill="var(--color-accent-400)" fillOpacity={isActive ? 1 : 0.8}
+                      stroke={isActive ? "rgb(226 232 240)" : "none"} strokeWidth={0.75}>
+                      <title>{weightReadout(b)}</title>
                     </rect>
                   </g>
                 );
               })}
             </g>
           </svg>
+        )}
+        {active !== null && (
+          <div data-testid="weight-strip-badge">
+            <CrosshairBadge label={weightReadout(active)} />
+          </div>
         )}
       </div>
     </div>

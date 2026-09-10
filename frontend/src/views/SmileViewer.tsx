@@ -239,9 +239,9 @@ export default function SmileViewer() {
             autoScaleY={autoScaleY} onToggleAutoScale={toggleAutoScale}
             footer={
               showWeights
-                ? ({ xView, tx }) => (
+                ? ({ xView, tx, crosshairK }) => (
                     <WeightStrip live={live} ticker={ticker} expiry={expiry} fitMode={fitMode}
-                      smile={smile} xView={xView} tx={tx} />
+                      smile={smile} xView={xView} tx={tx} crosshairK={crosshairK} />
                   )
                 : null
             }
