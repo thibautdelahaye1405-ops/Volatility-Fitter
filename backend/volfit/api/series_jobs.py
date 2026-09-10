@@ -60,8 +60,11 @@ class SeriesJobs:
         self._pause: set[str] = set()
         self._cancel: set[str] = set()
         self._stopping = False
-        #: S3 plugs the lane calibration in: ``hook(jobs, doc) -> None``.
-        self.calibrate_hook: Callable[["SeriesJobs", SeriesDoc], None] | None = None
+        #: The lane calibration run after the harvest (``series_lanes.run_lanes``;
+        #: ``hook(jobs, doc) -> None``). None = harvest only (tests, scripts).
+        from volfit.api.series_lanes import run_lanes  # lazy: lanes pull the fit stack
+
+        self.calibrate_hook: Callable[["SeriesJobs", SeriesDoc], None] | None = run_lanes
 
     # -------------------------------------------------------------- store
     def _store(self) -> VolStore:
@@ -261,6 +264,7 @@ class SeriesJobs:
                     if status in RUNNING_STATUSES or final != "done":
                         self._checkpoint(series_id, doc.progress.model_copy(update={
                             "status": final, "current": None,
+                            "error": error or doc.progress.error,
                         }), error)
             except Exception:  # noqa: BLE001
                 pass

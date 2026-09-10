@@ -60,7 +60,26 @@ def resolve(state, spec: SeriesSpec, now_utc: datetime | None = None):
              for ts, _w in instants]
     n_exp = len(spec.ladder.expiries) if spec.ladder.expiries else 6
     est = _estimate(spec, spec.source, instants, flags, n_exp, now_utc)
+    est.warnings.extend(lane_warnings(state, spec))
     return spec, instants, flags, est
+
+
+def lane_warnings(state, spec: SeriesSpec) -> list[str]:
+    """What a lane combination is known to cost (recorded findings): the
+    ACTIVE observation filter under the calendar-coupled solver on a sub-day
+    series — its per-node predictions are not calendar-consistent across a
+    dense ladder, so the symmetric repair grinds through its escalations
+    (minutes per frame, 2026-09-10 on the 0DTE store)."""
+    out: list[str] = []
+    base = state.options()
+    for lane in spec.lanes:
+        opts = {**base.model_dump(), **lane.patchOptions}
+        if (opts.get("observationFilterMode") == "active" and opts.get("enforceCalendar")
+                and spec.clock.step_seconds is not None):
+            out.append(f"lane {lane.name!r}: the active filter under the calendar-coupled "
+                       "solver can take minutes per frame on a dense intraday ladder "
+                       "(set enforceCalendar off on the lane, or use the overlay filter)")
+    return out
 
 
 def estimate(state, spec: SeriesSpec, now_utc: datetime | None = None) -> SeriesEstimate:

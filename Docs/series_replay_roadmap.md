@@ -476,6 +476,24 @@ reproduces the `filter_replay` ring on the same store; cancel then resume
 continues at the frame; the whole S1 import store calibrates under three
 lanes inside the perf rail (60 frames × 2 LQD lanes < 60 s on the dev box).
 
+(S3 as built, 2026-09-10l: lanes run SEQUENTIALLY in the job thread (the
+concurrency of free lanes is a rider); the lane frame is calibrated by
+`workflow.calibrate_ticker` — the desk's own items — and the carry (prior
+snapshot + filter docs) is checkpointed per (lane, frame) into the lane
+row; the intraday clock is ON for a sub-day series unless the lane patch
+says otherwise, and a rung past its settlement instant is dropped. The
+rail as measured on the 0DTE campaign store (60 SPY frames, 7.3
+expiries, 1,961 quotes, American): free lane 28 s (391 ms per frame
+median) — inside the rail; hybrid-prior lane 160 s (1,266 ms median, a
+44 s outlier where the calendar repair grinds under the prior anchor
+rows) — the rail is honoured by free lanes only; both lanes 192 s wall.
+Finding: the ACTIVE filter under the calendar-coupled solver on a dense
+intraday ladder does not converge — its per-node predictions are not
+calendar-consistent, the symmetric repair grinds to its escalation limit
+(451 s on one frame) and dies in a NaN; creation warns for that lane
+combination and a dying repair keeps the phase-A fits. The fix belongs to
+the observation-filter arc.)
+
 ### S4 — Series lens v1 (frontend)
 
 Lens registration (the six files) + guide `series` + command docs + Alt+6 +

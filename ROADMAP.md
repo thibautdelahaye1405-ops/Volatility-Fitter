@@ -341,8 +341,59 @@ listing untouched. Deviation from the plan recorded in the doc: the live
 runner waits in its own thread (no scheduler hook needed). Riders: the
 `term` / `0dte` ladders crop AFTER the fetch (the provider's natural
 ladder is requested); a Bloomberg daily series is untested live
-(workflow-review gate). NEXT: S3 (lane calibration on detached states,
-chaining, metrics, LV lanes, the three locks).
+(workflow-review gate).
+
+**S3 — lane calibration SHIPPED 2026-09-10l.** `api/series_lanes.py`: one
+detached `AppState` per (lane, frame) over `replay_report._StoredChains`
+(the frame's chain as the only provider), the lane's patches over the frozen
+base (`lane_options`: the pinned switches, `localVolEnabled` by family, and
+the intraday clock ON for a sub-day series unless the patch says otherwise —
+a same-day rung has calendar t = 0 without it; `alive_expiries` drops a
+rung past its settlement instant), the carry threaded explicitly (`LaneCarry`:
+the lane's own previous surface via `priors.capture_snapshot` →
+`set_active_prior`, the filter holders + rings via the workspace-doc
+helpers, the data version bumped per frame) and checkpointed per (lane,
+frame) into the lane row so a pause / restart resumes with the exact chain
+state; the frame is calibrated by `workflow.calibrate_ticker` — the desk's
+own items; `run_lanes` = the `SeriesJobs.calibrate_hook` (frame-major so
+the pull against the free reference lane lands as fits do; one bad (lane,
+frame) is a failed row, never the run's end; a dying calendar repair keeps
+the committed phase-A fits, tagged `calendarRepair`). `api/series_metrics.py`:
+the stored fit docs (LQD backbone + display overlay in the snapshot-file
+shape, the diagnostics in the fit-history shape, the LV surface row as the
+prior snapshot keeps it) and the evidence row (rms / max bp on the fit's
+own weights — the Quality lens definitions —, Lee slopes, belly flag, pull
+ATM bp / skew vs the free reference, the filter's last step ζ / gain /
+provenance / reset). `state.selected_expiries` resolves the selection on
+first use. **The three D11 locks hold** (`tests/test_series_lanes.py`, 10):
+a free lane's fits are byte-identical to `workflow.calibrate_ticker` on the
+same chain under the same options; a prior lane's frame-1 fit equals a
+manual roll; a filter lane's ring equals `backtest.filter_replay` on the
+same store step for step; plus pause → resume stores exactly the fits of
+an uninterrupted run (the carry doc round-trips), the LV lane's surface
+row + LV prior carry, the alive-expiry rule, the dying-repair lock and the
+creation warning. Series suite 71 green, ruff clean, every module < 400.
+**Measured on the 0DTE campaign store (60 SPY frames, 7.3 expiries, 1,961
+quotes, American):** free lane 391 ms per frame median (28 s for 60 —
+inside the plan's rail), hybrid-prior lane 1,266 ms median with a 44 s
+outlier (160 s for 60 — the calendar repair under the prior anchor rows
+grinds on some frames), wall 192 s for both, 882 fits, 0 failures, slice
+rms median 4.0 bp free / 5.5 bp prior, |pull ATM| 3.6 bp median.
+**FINDING (upstream, recorded for the observation-filter arc):** the
+ACTIVE filter under the calendar-coupled solver on a dense intraday ladder
+does not converge — the per-node Kalman predictions (curvature +0.68 on
+07-01 vs −0.44 on 07-02 at 14:30) are not calendar-consistent, so
+`symmetric.repair_surface` grinds through max_nfev × escalations × growth
+passes (451 s on one frame) and ends in a NaN Jacobian in `joint_refit`;
+the per-node fits and the overlay filter are fine, the prior lane is fine.
+The desk's own Calibrate would hit the same under those settings. The
+series creation now WARNS for that lane combination (`lane_warnings`:
+active + enforceCalendar + sub-day step) and the run keeps the phase-A
+fits. Riders: the prior lane's repair grind (profile the 44 s frame);
+shared de-Am prep across lanes (S7); free-lane frame parallelism; a
+resume retries failed (lane, frame) rows only on request. NEXT: S4 (the
+Series lens v1: registration, playback algebra, transport + filmstrip, the
+Smile stage with a `lanes` slot, the frame payload route, smoke on :4197).
 
 User ask (2026-09-10): "harvest, store and replay a time-series of smiles /
 surface for a given ticker and a given period and frequency: choose a
@@ -1748,7 +1799,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10k (resume here)
+## STATUS — updated 2026-09-10l (resume here)
 
 ### ▶ CURRENT ARC: the SERIES ARC (adopted 2026-09-10, D1–D12 RATIFIED) —
 harvest / store / replay a time-series of smiles and surfaces for one
@@ -1763,21 +1814,24 @@ as owned frames — `routers/series.py` list / get / delete / import-store),
 estimate, `series_harvest` historical / live, `series_create`,
 `series_jobs` — one slot + queue, pause / resume / cancel, restart recovery,
 `calibrate_hook` seam — the job routes + SSE; live-checked on the user's
-Massive key: 2 real SPY NBBO frames in 32.7 s). On "continue the series
-arc" work S3 → S7 in order: S3 = `api/series_lanes.py` (one detached
-`AppState` per lane over a `_SeriesChains` provider — generalize
-`replay_report._StoredChains`; the lane's patches applied with
-`model_copy(update=)`; prior chaining = the lane's own previous frame via
-`priors.capture_snapshot` → `set_active_prior` on the lane state; filter
-states + rings carried frame to frame; commit → `series_fits` with
-metrics; per-frame checkpoints; LV lanes through
-`affine_fit.calibrate_affine_surface`; lanes concurrent, free lanes
-frame-parallel through the shared pool) + `series_metrics.py` (rms / max /
-arb / pull vs the free lane / ζ / gain / roughness) plugged into
-`SeriesJobs.calibrate_hook`; the three locks (free-lane byte-identity with
-`POST /calibrate/{ticker}`, prior lane ≡ a manual roll, filter lane ≡
-`backtest/filter_replay` on the same store) + cancel / resume at the frame
-+ the 60-frame × 2-lane < 60 s rail.
+Massive key: 2 real SPY NBBO frames in 32.7 s), **S3** (2026-09-10l:
+`series_lanes` — a detached state per (lane, frame), the carry threaded
+and checkpointed, the desk's own Calibrate items, `run_lanes` as the hook
+— `series_metrics`; the three D11 locks hold; measured 60 real SPY frames:
+free lane 28 s, hybrid-prior lane 160 s; FINDING: the active filter under
+the calendar-coupled solver grinds on a dense intraday ladder — creation
+warns, the run keeps the phase-A fits). On "continue the series arc" work
+S4 → S7 in order: S4 = the Series lens v1 — lens registration (the six
+files + guide + command docs + Alt+6 + deep link + `useLensViewMemory`),
+`lib/seriesPlayback.ts` (pure, vitest-locked, generalizing `lvTrace`),
+`state/useSeries.ts` + `useSeriesFrames.ts` (LRU + prefetch),
+`components/series/*` (header, lane chips, transport bar, filmstrip,
+frames table, the New series dialog with the estimate + lane composer),
+`views/SeriesViewer.tsx` with the Smile stage first (`SmileChart` gains a
+`lanes` slot), and the backend frame / strip payload routes (`GET
+/series/{id}/frame/{idx}`, `GET /series/{id}/strip` — curves evaluated
+from the stored params through the snapshot-file record rebuild, cached
+per (series, frame, lanes)); smoke `scripts/series_check.mjs` on :4197.
 
 ### ▶ NEXT: the 2026-09-09/10 confirm-per-item pass (wraps 2026-09-09i →
 2026-09-10f below) worked this list top to bottom — SHIPPED: the connector's
