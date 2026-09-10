@@ -96,9 +96,13 @@ Key commands (Windows, repo root):
 - Snapshot: .venv\Scripts\python backend\snapshot.py SPY QQQ   (Yahoo -> SQLite + forwards)
 - Massive diag: $env:VOLFIT_MASSIVE_KEY='...'; .venv\Scripts\python backend\massive_diag.py SPY
             (probes api.massive.com + api.polygon.io, every call, to pinpoint a feed gate)
-- LV bench:  .venv\Scripts\python backend\lv_benchmark.py [--fixture <json>]   (offline
-            Local-Vol fit over a static fixture; prints per-expiry Phase-0 diagnostics
-            [vtxInRange / vegaFloored / PDE steps]. capture_massive_weekly.py refreshes
+- LV bench:  .venv\Scripts\python backend\lv_benchmark.py [--fixture <json>] [--fit-mode
+            mid|bidask|haircut] [--nodes N] [--convex-wing]   (offline Local-Vol fit
+            over a static fixture; the desk options as flags since 2026-09-10; prints
+            per-expiry Phase-0 diagnostics [vtxInRange / vegaFloored / PDE steps].
+            The affine module is a façade since 2026-09-10: affine_surface /
+            affine_precompute / affine_dupire hold the surface, the step precompute
+            and the Dupire march; affine_march / affine_steps are the Numba kernels. capture_massive_weekly.py refreshes
             the true-weekly fixture tests\fixtures\lv_weekly_massive.json from Massive Live.)
 - Demo:     .venv\Scripts\python backend\demo.py
 - Backtest: offline harness in backend\backtest\ (run `-m backtest.<mod>` from backend\,

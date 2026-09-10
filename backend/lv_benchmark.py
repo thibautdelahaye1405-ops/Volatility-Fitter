@@ -9,6 +9,8 @@ Run:
 
     ..\\.venv\\Scripts\\python backend\\lv_benchmark.py            # default settings
     ..\\.venv\\Scripts\\python backend\\lv_benchmark.py --rate 0.045 --theoretical
+    ..\\.venv\\Scripts\\python backend\\lv_benchmark.py --fit-mode haircut --nodes 20 --convex-wing
+                                                          # the desk options (2026-09-10)
 
 Prints per-expiry weighted RMS vol error (bp), the worst-quote error, and the
 fit's bound/eval diagnostics. This is the regression benchmark the user asked
@@ -115,8 +117,10 @@ def build_state(
     return state
 
 
-def report(state: AppState, ticker: str) -> None:
-    resp = calibrate_affine_surface(state, ticker, AffineFitRequest())
+def report(state: AppState, ticker: str, fit_mode: str = "mid") -> None:
+    """Fit one ticker's LV surface to ``fit_mode`` (mid / bidask / haircut) and
+    print the surface summary + the per-expiry Phase-0 diagnostics."""
+    resp = calibrate_affine_surface(state, ticker, AffineFitRequest(fitMode=fit_mode))
     d = last_affine_diagnostics(state, ticker)
     xdiag = {x.expiry: x for x in (last_affine_expiry_diagnostics(state, ticker) or [])}
     print(
@@ -153,18 +157,34 @@ def main() -> int:
     ap.add_argument("--theoretical", action="store_true", help="theoretical (dividend-model) forward")
     ap.add_argument("--dividends", action="store_true", help="load the captured dividend schedule")
     ap.add_argument("--fixture", default=str(FIXTURE), help="fixture JSON (default: Bloomberg benchmark)")
+    # The desk options as a one-liner (2026-09-10): the user's LV runs are
+    # "haircut / 20 nodes / convex wing" — reproduce them without editing code.
+    ap.add_argument("--fit-mode", choices=("mid", "bidask", "haircut"), default="mid",
+                    help="fit target: mid residuals, the bid-ask band or the haircut band")
+    ap.add_argument("--nodes", type=int, default=None,
+                    help="strike vertices per expiry (gridXNodes; default: the Options default)")
+    ap.add_argument("--convex-wing", action="store_true",
+                    help="convex put wing below the 5-delta strike (Options convexWing)")
     args = ap.parse_args()
     path = Path(args.fixture)
     data, _ = load_benchmark(path)
     state = build_state(rate=args.rate, theoretical=args.theoretical, with_dividends=args.dividends, path=path)
+    overrides: dict = {}
+    if args.nodes is not None:
+        overrides["gridXNodes"] = args.nodes
+    if args.convex_wing:
+        overrides["convexWing"] = True
+    if overrides:
+        state.set_options(state.options().model_copy(update=overrides))
     src = data.get("source", "?")
     cfg = (
         f"src={src}, as_of={fixture_as_of(data)}, rate={args.rate}, "
-        f"forward={'theoretical' if args.theoretical else 'parity'}, dividends={args.dividends}"
+        f"forward={'theoretical' if args.theoretical else 'parity'}, dividends={args.dividends}, "
+        f"target={args.fit_mode}, nodes={state.options().gridXNodes}, convexWing={state.options().convexWing}"
     )
     print(f"Local-Vol benchmark ({cfg})\n")
     for ticker in data["tickers"]:
-        report(state, ticker)
+        report(state, ticker, args.fit_mode)
         print()
     return 0
 

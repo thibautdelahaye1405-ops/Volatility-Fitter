@@ -1583,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10c (resume here)
+## STATUS — updated 2026-09-10d (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1824,8 +1824,10 @@ below) — every recorded rider is closed except the ones listed here:
    could ratify; the var-swap source-PDE march (`varSwapMethod =
    source_pde`) still steps backward with implicit Euler on the graded time
    grid; the Compare tab's twin keeps its own Rannacher dt/8 dx/4 display
-   operator (its floor is unchanged); `affine.py` is 806 lines (the solver
-   loop could move out); ~~under the user's haircut + 20-node options the
+   operator (its floor is unchanged); ~~`affine.py` is 806 lines (the solver
+   loop could move out)~~ SPLIT 2026-09-10d (wrap below: `affine.py` is a
+   42-line façade over `affine_surface` / `affine_precompute` /
+   `affine_dupire`, byte-identical, 173 LV tests); ~~under the user's haircut + 20-node options the
    dailies fit is TRF-SVD-bound (11.9 s at 359 nodes) — the graded lattice
    is not the lever there, the solver is~~ **CLOSED 2026-09-09b** (wrap
    below): the band / haircut targets run the matrix-free GN with its new
@@ -1841,9 +1843,11 @@ below) — every recorded rider is closed except the ones listed here:
    TRF — the GN operator would need the extra column and the IRLS weights
    threaded; float32 matvecs inside lsmr
    would halve the remaining per-iteration cost (memory-bound gemv) if a
-   larger surface ever needs it; the bench script lives in the scratchpad
+   larger surface ever needs it; ~~the bench script lives in the scratchpad
    only — a `lv_benchmark.py --fit-mode` flag would make the desk options
-   (haircut / 20 / convexWing) a one-liner.
+   (haircut / 20 / convexWing) a one-liner~~ DONE 2026-09-10d
+   (`--fit-mode mid|bidask|haircut --nodes N --convex-wing`, echoed in the
+   header line; SPY haircut/20/convex: 2.2 bp surface, 5.3 bp converged).
 12. QUOTE-WEIGHTING riders (wrap 2026-09-09a below; none are gates): the
    `equal` → `uniform_density` DEFAULT flip is a benchmark-pack adjudication
    (item 1 above — `equal` stays the default by the standing rule); the
@@ -1863,6 +1867,35 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-10d) — LV RIDERS: THE BENCH TAKES THE DESK OPTIONS AS FLAGS; THE AFFINE MODULE IS SPLIT BEHIND A FAÇADE
+
+Item 10 of the confirm-per-item pass ("bench flags + module split"; the
+var-swap source-PDE BDF2 and the Dupire-twin riders stay recorded; the two
+accuracy dials and the GN mid loop are pack adjudications behind item 8).
+
+- **`lv_benchmark.py --fit-mode mid|bidask|haircut --nodes N --convex-wing`.**
+  `report(state, ticker, fit_mode)` passes the target to the
+  `AffineFitRequest`; `--nodes` / `--convex-wing` patch `gridXNodes` /
+  `convexWing` on the state's Options before the fits; the header line
+  echoes target / nodes / convexWing. Default run byte-identical (mid, 12,
+  off: SPY 2.4 bp surface / 4.3 converged). Desk run (haircut / 20 / convex):
+  SPY 2.2 / 5.3 bp, NVDA 7.1 / 9.0, 6.3 s for both.
+- **The split.** `affine.py` (829 lines) → `affine_surface.py` (363:
+  `AffineVarianceSurface`, `_INTERP_MODES`, `sparse_dot`, `_sequential_nu`),
+  `affine_precompute.py` (171: `AffinePDESolution`, `DupireSteps`,
+  `precompute_dupire_steps`, `_precompute_dense`), `affine_dupire.py` (341:
+  `solve_affine_dupire`), and `affine.py` a 42-line façade re-exporting
+  every name (`__all__`) so the five import sites, the package init and
+  `varswap_pde` are untouched. A pure text move (segments sliced from the
+  committed file by line range, module docstrings + imports added); 173 LV
+  tests green across 16 suites (goldens, march kernels, BDF2, GN, reprice,
+  API, benchmark). GOTCHA recorded: the package ALREADY had `affine_march.py`
+  (the Numba vectorized-Thomas kernels) and `affine_steps.py` (the
+  over-budget phi fallbacks) — the first cut overwrote both (restored from
+  git; the tree diff was the tell); hence the `_dupire` / `_precompute`
+  names, and the march's lazy `affine_steps.densify_step` import stays.
+  CLAUDE.md names the module map.
 
 ### 🧭 SESSION WRAP (2026-09-10c) — MARKET-DATA RIDERS: MASSIVE NBBO HISTORY LIVE-VERIFIED, THE BLOOMBERG GATE REACHES THE LIGHT, TWO TERMINAL LOOKS BLOCKED
 
