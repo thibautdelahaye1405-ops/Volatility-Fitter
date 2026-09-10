@@ -1585,8 +1585,22 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ## STATUS — updated 2026-09-10f (resume here)
 
-### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
-below) — every recorded rider is closed except the ones listed here:
+### ▶ NEXT: the 2026-09-09/10 confirm-per-item pass (wraps 2026-09-09i →
+2026-09-10f below) worked this list top to bottom — SHIPPED: the connector's
+Help Center page, one Bloomberg root per date (the SX5E 2-day slice), the LV
+tail anchor under an active filter, the five API-only Options fields in the
+dialog, the Bloomberg gate on the light + the Massive NBBO history verified,
+the bench's desk flags + the affine module split, the resizable graph
+drawer + the Quality "Wgt" column + the weight strip's crosshair badge, the
+Quoted-range / Affine-wings tail targets + the Local Vol viewer split.
+DEFERRED by the user (plans recorded in place): the MCPB bundle (item 0),
+M3 remote (item 0), the two invasive riders (item 2), the benchmark
+integrity fixes (item 1 — the `_lvop` sweep is not an adjudication), the
+var-swap source-PDE BDF2 (item 11), the Dupire-twin numerics riders (item
+10). BLOCKED: the two Terminal looks (item 5, workflow-review gate). The
+rest are pack adjudications or user-window runs. Two rider batches SHIPPED
+2026-08-27 (wraps 2026-08-27c + d below) — every recorded rider is closed
+except the ones listed here:
 0. MCP CONNECTOR — M0+M1+M2 SHIPPED 2026-09-09c (user: "turn the API into
    an MCP connector I can use from the Claude app"). `backend/volfit_mcp` =
    a thin httpx client of the running :8000 app wrapped as an MCP server

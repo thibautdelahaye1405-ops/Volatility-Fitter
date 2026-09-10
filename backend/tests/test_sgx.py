@@ -53,7 +53,9 @@ class FakeFetch:
 def _provider():
     fetch = FakeFetch(FILES)
     ad = SgxAdapter(); ad.workers = 2
-    return ExchangeChainProvider(["NK"], ad, fetch_json=fetch), fetch
+    # The fixture's ladder is dated 2026-08-21: pin the provider's "today" there,
+    # or the September expiry falls off the ladder once the calendar passes it.
+    return ExchangeChainProvider(["NK"], ad, fetch_json=fetch, today=lambda: date(2026, 8, 21)), fetch
 
 
 def test_codes_dates_and_helpers():

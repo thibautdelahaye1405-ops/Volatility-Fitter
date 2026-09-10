@@ -73,8 +73,10 @@ def test_flag_off_is_the_legacy_sequence(client):
     res = client.post("/fetch/snapshot", json={"tickers": [TICKER]})
     assert res.status_code == 200
     body = res.json()
-    # Same shape + semantics as fetch_options' result.
-    assert set(body) == {"tickers", "spots", "calibrationStarted"}
+    # Same shape + semantics as fetch_options' result (+ the 2026-09-09h
+    # ``skippedFresh`` list — empty without a ``maxAgeSeconds`` in the body).
+    assert set(body) == {"tickers", "spots", "calibrationStarted", "skippedFresh"}
+    assert body["skippedFresh"] == []
     assert body["tickers"] == [TICKER]
     assert TICKER in body["spots"]
     assert body["calibrationStarted"] is False  # autoCalibrate off => nothing fits
