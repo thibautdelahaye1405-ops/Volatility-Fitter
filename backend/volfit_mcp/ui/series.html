@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Series frame</title>
+<script>/*__BRIDGE__*/</script>
+<script>
+  // Handshake first (see lv_compare.html): Plotly loads asynchronously.
+  window.__plotly = { ready: false, failed: false };
+  window.__plotlyLoaded = function () { window.__plotly.ready = true; if (window.__onPlotly) window.__onPlotly(); };
+  window.__plotlyFailed = function () { window.__plotly.failed = true; if (window.__onPlotly) window.__onPlotly(); };
+</script>
+<script src="https://cdn.plot.ly/plotly-basic-3.1.0.min.js" async onload="window.__plotlyLoaded()" onerror="window.__plotlyFailed()"></script>
+<style>
+  :root { --bg:#ffffff; --fg:#1b1f24; --muted:#6b7280; --line:#e5e7eb; --chip:#f3f4f6; --chipOn:#1f6feb; --chipOnFg:#fff; --warn:#b45309; }
+  html[data-theme="dark"] { --bg:#171717; --fg:#e5e7eb; --muted:#9ca3af; --line:#2f3136; --chip:#26282c; --chipOn:#4c8dff; --chipOnFg:#0b0f14; --warn:#f59e0b; }
+  html, body { margin:0; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); }
+  .bar .title { font-weight:600; }
+  .chip { border:1px solid var(--line); background:var(--chip); color:var(--fg); border-radius:999px; padding:3px 10px; cursor:pointer; font-size:12px; }
+  .chip.on { background:var(--chipOn); color:var(--chipOnFg); border-color:var(--chipOn); }
+  .chip:disabled { opacity:.45; cursor:default; }
+  select.chip { padding:2px 8px; }
+  .grow { flex:1; }
+  .warn { color:var(--warn); }
+  .strip { display:flex; gap:10px; align-items:center; padding:6px 12px; border-bottom:1px solid var(--line); }
+  .strip input[type=range] { flex:1; accent-color:var(--chipOn); }
+  .strip .pos { color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; min-width:150px; text-align:right; }
+  #plot { width:100%; height:360px; }
+  #status { padding:18px 12px; color:var(--muted); text-align:center; }
+  #status.err { color:var(--warn); }
+  .legend { display:flex; flex-wrap:wrap; gap:8px 14px; padding:6px 12px; border-top:1px solid var(--line); font-size:12px; }
+  .legend .sw { display:inline-block; width:14px; height:3px; vertical-align:middle; margin-right:5px; border-radius:2px; }
+  .legend .rms { color:var(--muted); }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:8px; padding:8px 10px; border-top:1px solid var(--line); }
+  .tile { border:1px solid var(--line); border-radius:8px; padding:6px 8px; }
+  .tile .k { color:var(--muted); font-size:11px; }
+  .tile .v { font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="title" id="title">Series</span>
+  <span id="flags" class="warn"></span>
+  <span class="grow"></span>
+  <select class="chip" id="expiry" title="expiry"></select>
+  <button class="chip" id="prev">◀ prev frame</button>
+  <button class="chip" id="next">next frame ▶</button>
+  <button class="chip" id="wb" hidden>Workbench ↗</button>
+</div>
+<div class="strip" id="strip" hidden>
+  <input type="range" id="slider" min="0" max="0" value="0" step="1">
+  <span class="pos" id="pos"></span>
+</div>
+<div id="status">Connecting to the host…</div>
+<div id="plot" hidden></div>
+<div class="legend" id="legend"></div>
+<div class="tiles" id="tiles"></div>
+<script>
+(function () {
+  var B = window.VolfitBridge;
+  var doc = null, dark = false, busy = false, initDone = false;
+  var PALETTE = ["#2563eb", "#9333ea", "#f59e0b", "#10b981", "#ef4444", "#0ea5e9", "#a3e635", "#f472b6"];
+  function $(s) { return document.querySelector(s); }
+  function paper() { return dark ? "#171717" : "#ffffff"; }
+  function fg() { return dark ? "#e5e7eb" : "#1b1f24"; }
+  function colour(lid, i) { return (doc.laneColours || {})[lid] || PALETTE[i % PALETTE.length]; }
+  function pct(v) { return v == null ? "" : (100 * v).toFixed(2) + "%"; }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function status(text, err) {
+    var el = $("#status"); el.hidden = !text; el.textContent = text || ""; el.className = err ? "err" : "";
+    $("#plot").hidden = !!text;
+    B.sizeChanged(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
+  }
+  window.addEventListener("error", function (ev) { status("Chart error: " + (ev.message || ev), true); });
+
+  function render() {
+    if (!doc) { status(initDone ? "Waiting for the tool result…" : "Connecting to the host…"); return; }
+    if (window.__plotly.failed) { status("Plotly failed to load from https://cdn.plot.ly — the host blocked the chart library (CSP).", true); return; }
+    if (!window.__plotly.ready) { status("Loading the chart library…"); return; }
+    var f = doc.frame || {}, sh = doc.shown || {}, n = doc.nFrames || 0;
+    $("#wb").hidden = !doc.workbenchUrl;
+    $("#title").textContent = doc.name + " · " + doc.ticker + " · frame " + (f.idx + 1) + "/" + n + " · " + (f.ts || "") + " · " + (f.quoteKind || "quotes");
+    $("#flags").textContent = (f.status && f.status !== "ready" ? "frame " + f.status + " " : "") + (busy ? "loading…" : "");
+    var sel = $("#expiry"), exps = f.expiries || [];
+    sel.innerHTML = exps.map(function (e) { return '<option value="' + esc(e) + '"' + (e === sh.expiry ? " selected" : "") + ">" + esc(e) + "</option>"; }).join("");
+    sel.disabled = busy || exps.length < 2;
+    $("#prev").disabled = busy || f.idx <= 0; $("#next").disabled = busy || f.idx >= n - 1;
+    var sl = $("#slider"); $("#strip").hidden = n < 2; sl.max = Math.max(0, n - 1); sl.value = f.idx; sl.disabled = busy;
+    $("#pos").textContent = "frame " + (f.idx + 1) + " / " + n;
+    if (!sh.expiry) { status("This frame carries no expiry" + (f.error ? ": " + f.error : ".") , true); return; }
+    status("");
+    var traces = [];
+    var q = sh.quotes || [];
+    if (q.length) {
+      traces.push({ type: "scatter", mode: "markers", name: "bid/ask (mid)", x: q.map(function (p) { return p.k; }), y: q.map(function (p) { return 100 * p.mid; }),
+        marker: { color: "#6b7280", size: 5 },
+        error_y: { type: "data", symmetric: false, array: q.map(function (p) { return 100 * (p.ask - p.mid); }), arrayminus: q.map(function (p) { return 100 * (p.mid - p.bid); }), color: "#9ca3af", thickness: 1 },
+        hovertemplate: "k %{x:.4f} · K %{customdata[2]}<br>bid %{customdata[0]:.2f}% · mid %{y:.2f}% · ask %{customdata[1]:.2f}%<extra></extra>",
+        customdata: q.map(function (p) { return [100 * p.bid, 100 * p.ask, p.strike]; }) });
+    }
+    var legend = [];
+    (doc.laneOrder || []).forEach(function (lid, i) {
+      var c = (sh.curves || {})[lid]; var name = (doc.laneNames || {})[lid] || lid; var col = colour(lid, i);
+      var ln = (doc.lanes || {})[lid] || {};
+      legend.push('<span><span class="sw" style="background:' + col + '"></span>' + esc(name) + ' <span class="rms">' + (c && c.rmsBp != null ? c.rmsBp + " bp" : (ln.status || "no fit")) + "</span></span>");
+      if (!c || !c.k || !c.k.length) return;
+      traces.push({ type: "scatter", mode: "lines", name: name + (c.rmsBp != null ? " (" + c.rmsBp + " bp)" : ""), x: c.k, y: c.iv.map(function (v) { return 100 * v; }),
+        line: { color: col, width: 2 }, hovertemplate: "k %{x:.4f}<br>%{y:.2f}%<extra>" + esc(name) + "</extra>" });
+    });
+    var layout = { paper_bgcolor: paper(), plot_bgcolor: paper(), font: { color: fg(), size: 11 }, margin: { l: 58, r: 12, t: 12, b: 44 },
+      xaxis: { title: { text: "k = ln(K/F)" }, gridcolor: dark ? "#2f3136" : "#eee" },
+      yaxis: { title: { text: "implied vol (%)", standoff: 6 }, gridcolor: dark ? "#2f3136" : "#eee" }, legend: { orientation: "h", y: 1.1 }, hovermode: "closest" };
+    if (q.length) {  // frame the quoted range: the model wings run far beyond it
+      var ks = q.map(function (p) { return p.k; }); var lo = Math.min.apply(null, ks), hi = Math.max.apply(null, ks); var pad = Math.max(0.25 * (hi - lo), 0.02);
+      layout.xaxis.range = [lo - pad, hi + pad];
+    }
+    Plotly.react($("#plot"), traces, layout, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] });
+    $("#legend").innerHTML = legend.join("");
+    var tiles = [["spot", f.spot], ["quotes (" + esc(sh.expiry) + ")", q.length], ["forward", sh.forward], ["t (y)", sh.t]];
+    (doc.laneOrder || []).forEach(function (lid) { var c = (sh.curves || {})[lid]; if (c && c.atmVol != null) tiles.push([((doc.laneNames || {})[lid] || lid) + " ATM", pct(c.atmVol)]); });
+    $("#tiles").innerHTML = tiles.map(function (t) { return '<div class="tile"><div class="k">' + esc(t[0]) + '</div><div class="v">' + (t[1] == null ? "" : esc(t[1])) + "</div></div>"; }).join("");
+    B.sizeChanged(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
+  }
+  window.__onPlotly = render;
+
+  function load(frame, expiry, retry) {
+    // The chart redraws from series_frame's structuredContent (the same document
+    // this page received); a frame without the shown expiry falls back to its first.
+    var args = { id: doc.seriesId, frame: frame };
+    if (expiry) args.expiry = expiry;
+    if (doc.requestedLanes && doc.requestedLanes.length) args.lanes = doc.requestedLanes;
+    busy = true; render();
+    B.callTool("series_frame", args).then(function (res) {
+      if (res && res.isError && expiry && !retry) { return load(frame, null, true); }
+      busy = false; if (res && res.structuredContent) doc = res.structuredContent; render();
+    }, function () { busy = false; render(); });
+  }
+  $("#prev").onclick = function () { if (doc) load(doc.frame.idx - 1, doc.shown.expiry); };
+  $("#next").onclick = function () { if (doc) load(doc.frame.idx + 1, doc.shown.expiry); };
+  $("#slider").oninput = function () { if (doc) $("#pos").textContent = "frame " + (Number(this.value) + 1) + " / " + doc.nFrames; };
+  $("#slider").onchange = function () { if (doc && Number(this.value) !== doc.frame.idx) load(Number(this.value), doc.shown.expiry); };
+  $("#expiry").onchange = function () { if (doc && this.value !== doc.shown.expiry) load(doc.frame.idx, this.value); };
+  $("#wb").onclick = function () { if (doc && doc.workbenchUrl) B.openLink(doc.workbenchUrl); };
+  B.on("hostContext", function (hc) { dark = hc.theme === "dark"; document.documentElement.setAttribute("data-theme", dark ? "dark" : "light"); initDone = true; render(); });
+  B.on("toolResult", function (res) {
+    doc = res.structuredContent || null;
+    if (!doc && res.content) { try { doc = JSON.parse(res.content[0].text); } catch (e) { doc = null; } }
+    if (!doc) { status("The tool result carried no series frame" + (res.isError ? " (tool error)." : "."), true); return; }
+    render();
+  });
+  B.init("volfit-series");
+})();
+</script>
+</body>
+</html>

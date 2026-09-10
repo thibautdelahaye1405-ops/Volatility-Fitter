@@ -22,7 +22,7 @@ from mcp.server.apps import Apps, client_supports_apps
 from mcp.server.mcpserver import Context
 from mcp.types import CallToolResult, ToolAnnotations
 
-from volfit_mcp import aliases, ops, render_png
+from volfit_mcp import aliases, render_png
 from volfit_mcp.client import VolfitApi
 from volfit_mcp.report import md_table, r, thin
 from volfit_mcp.tools_charts import TERM_URI, VOL_SURFACE_URI, _blocks, _legacy_meta, workbench_url

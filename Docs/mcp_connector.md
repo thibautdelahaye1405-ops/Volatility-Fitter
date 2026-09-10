@@ -20,8 +20,8 @@ fit-target rule); the Documentation page lists this note itself.
   :8000. The workbench on :5173 shows the same universe, settings and fits the
   chat produced, so you can pivot between the two at any time. Nothing
   numerical lives in the connector.
-* **Curated verbs.** About twenty workflow tools with compact outputs, not the
-  app's ~140 routes. Chart tools are MCP Apps: interactive Plotly views (3D
+* **Curated verbs.** About thirty workflow tools with compact outputs, not the
+  app's ~150 routes. Chart tools are MCP Apps: interactive Plotly views (3D
   surfaces, heatmaps, smiles with bid/ask bands) rendered inline by Claude
   Desktop and claude.ai. Other hosts (Claude Code, mobile) get the structured
   data and, on request, a PNG.
@@ -92,10 +92,41 @@ tenant; Bloomberg stays local-only.
 | Run | `calibrate`, `wait_for_calibration`, `calibration_status`, `cancel_calibration` | background job with streamed progress |
 | Numbers | `calibration_report`, `get_smile`, `get_vol_surface`, `get_lv_surface`, `get_lv_compare` | rms in vol bp, arbitrage flags, readiness, grids |
 | Charts | `chart_lv_compare`, `chart_smile`, `chart_vol_surface`, `chart_term_structure` | inline MCP Apps: affine LV vs Dupire twin vs difference (3D / heatmap, per-expiry rms); smile vs bands with prev/next expiry; the implied-vol surface (3D / heatmap, k / K/F / strike axis, quoted-range crop, ATM ridge); the term structure (ATM + var-swap vol and total variance, calendar or event-dilated clock, events, dividends, calendar violations). Every card has a **Workbench** button that opens the node in the app (`/?node=TICKER|YYYY-MM-DD&activity=...`, `VOLFIT_WORKBENCH_URL`, default the Vite dev server) |
+| **Series** | `create_series`, `import_series`, `wait_for_series`, `series_report`, `series_frame`, `chart_series_frame`, `series_control`, `list_series` | a stored series through time (below): create or import, wait for its job, the per-lane evidence, one frame's numbers, the inline frame chart, the job controls, the list |
 
 Resources: `volfit://status`, `volfit://settings`, `volfit://help/settings-schema`,
 `volfit://help/docs` (+ `/{id}`), `volfit://aliases`. Prompts: `desk_calibration`,
 `morning_check`.
+
+## Series — the fitter through time
+
+A *series* (SERIES ARC, `Docs/series_replay_roadmap.md`) is one ticker x an
+ordered set of instants x a set of *lanes* — model configurations evaluated
+frame after frame, a lane's prior being its own previous fit and a filter
+lane carrying its state — run as a background job of the app's own (never the
+Calibrate slot) and stored, so the chat, the Series lens and a later session
+read the same frames. The connector wraps `/series`:
+
+| Step | Tool | Arguments |
+|---|---|---|
+| Create | `create_series` | `ticker` (spoken names accepted; must be in the universe), `name?`, `mode` = `historical` (a source with history — Massive) \| `live` (from now, or from `start`; instants already past land at once), `step` = `1m` … `1h` \| `session_close` \| `daily` \| `weekly` (default `15m`), `count` (20), `start?` (ISO 8601), `presets` (the dialog's lane presets, default `["lqd_free", "lqd_prior"]`; also `lqd_prior_filter`, `svi_free`, `mcs_free`, `lv_free`, `lv_prior`, `current` — an unknown id is a tool error naming the eight), `max_expiries?`, `fit_mode` (`mid`), `session_only` (true), `start_job` (true). Returns the id, the estimate (frames, servable, harvest / calibrate seconds, warnings), the status and the Workbench link |
+| Import | `import_series` | `ticker`, `path?`, `kind` = `store` (another VolStore file) \| `fixtures` (a capture fixture file or directory) \| `captures` (the app's own captures, no path), `name?`, `presets?`, `max_frames?`, `max_expiries?`, `start_job` |
+| Wait | `wait_for_series` | `id`, `wait_seconds` (60): polls the status every second with the progress streamed and returns when the job is done / failed / cancelled / paused (or never started) or the wait elapses — `outcome` says which; a pending series is never an error, call again |
+| Evidence | `series_report` | `id`, `expiry?` (default the first), `lanes?`: per lane over the ready frames — frames, mean rms / max error (vol bp), the worst frame, the handle-path **roughness** (mean frame-to-frame move of the ATM vol in bp and of the skew: what a prior or a filter damps, read beside the rms it costs), mean \|pull\| against the free lane of the same family, the filter's ATM ζ spread, the fit time; the raw evidence in `structuredContent` |
+| Frame | `series_frame` | `id`, `frame` (from 0; negative = from the end), `lanes?`, `expiry?`: the instant, spot, quote kind, per lane per expiry ATM vol / rms / skew, plus the quotes and every lane's curve for ONE expiry — the document the chart redraws from |
+| Chart | `chart_series_frame` | `id`, `frame` (0), `expiry?`, `lanes?`, `png`: the inline app — the frame's bid/ask bands and every lane's smile for the shown expiry, the instant · quote kind · frame i/n in the title, an expiry select, prev / next buttons and a slider over the frames (each step calls `series_frame` and redraws), a legend with the per-lane rms bp, a **Workbench** button that opens the Series lens at that frame (`/?node=T\|E&activity=series&series=<id>&frame=<n>`) |
+| Control | `series_control` | `id`, `action` = `start` \| `resume` \| `pause` \| `cancel` \| `delete`; pause / cancel on a series that is not running is a no-op that says so |
+| List | `list_series` | `ticker?`: id, name, ticker, mode, status, frames ready / total, lanes |
+
+One call, then two: *create a 20-frame 15-minute SPY series under LQD free +
+prior and report it* is `create_series(ticker="SPY", step="15m", count=20,
+presets=["lqd_free", "lqd_prior"])` → `wait_for_series(id)` until `outcome`
+is `done` → `series_report(id)`; `chart_series_frame(id, frame=-1)` shows the
+last frame. Creation needs the app to run with a store (`VOLFIT_DB`, which
+`restart.ps1` sets; 409 otherwise) and the ticker in the universe (422 →
+tool error); a historical series needs a source with history (Massive), a
+live series harvests from now on at the step (every instant already past
+lands at once, which is also the test path on the synthetic source).
 
 Fit target: a tool called without `fit_mode` targets the Options' `fitMode`
 (what `configure_fit` / `get_fit_settings` echo), never the target the UI
@@ -106,9 +137,11 @@ decimals, `k = ln(K/F)`, `x = K/F`, `t` in years.
 
 ## Verification
 
-* `cd backend ; ..\.venv\Scripts\python -m pytest tests/test_mcp_connector.py tests/test_mcp_stdio.py -q`
+* `cd backend ; ..\.venv\Scripts\python -m pytest tests/test_mcp_connector.py tests/test_mcp_stdio.py tests/test_mcp_series.py -q`
   — the whole pipeline in-process against the synthetic app, plus the real
-  stdio launch against a live uvicorn.
+  stdio launch against a live uvicorn, plus the series tools on a synthetic
+  app with a store (a live series in the past: create → wait → report →
+  frame → chart → control, ~10 s).
 * `cd frontend ; node scripts/mcp_app_check.mjs` — headless Edge plays the MCP
   Apps host, feeds the recorded fixtures to both chart apps, drives their
   controls and screenshots `.smoke/mcp-*.png`.

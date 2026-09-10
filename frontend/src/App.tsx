@@ -39,6 +39,7 @@ import { HelpProvider } from "./state/help";
 import Walkthrough from "./components/help/Walkthrough";
 import { classifyBundle } from "./lib/snapshotFile";
 import { useDeepLink } from "./state/useDeepLink";
+import { importSeriesFile, notifySeriesChanged } from "./state/useSeries";
 import { snapshotNameOf } from "./lib/snapshotFile";
 import { workspaceNameOf } from "./lib/workspaceFile";
 import { useShellShortcuts } from "./state/useShellShortcuts";
@@ -60,7 +61,9 @@ function Shell() {
     void file.text().then((text) => {
       let raw: unknown = null;
       try { raw = JSON.parse(text); } catch { /* the workspace opener reports it */ }
-      if (classifyBundle(raw) === "snapshot") void snap.openText(text, snapshotNameOf(file.name));
+      const kind = classifyBundle(raw);
+      if (kind === "snapshot") void snap.openText(text, snapshotNameOf(file.name));
+      else if (kind === "series") void importSeriesFile(raw).then(notifySeriesChanged).catch((err: unknown) => window.alert(err instanceof Error ? err.message : String(err)));
       else void ws.openFile(new File([text], `${workspaceNameOf(file.name)}.volfit.json`, { type: "application/json" }));
     });
   };

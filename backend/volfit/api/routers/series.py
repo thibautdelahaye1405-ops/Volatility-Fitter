@@ -13,10 +13,14 @@ the contract.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from time import monotonic
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+
+from volfit.api import series_files
+from volfit.api.series_adopt import AdoptError, AdoptPriorRequest, AdoptPriorResult, adopt_prior
 
 from volfit.api.schemas_series import (
     FramePayload,
@@ -238,6 +242,45 @@ def series_lane_filter_ring(series_id: str, lane_id: str, expiry: str,
         raise HTTPException(status_code=404, detail=f"unknown series {series_id!r}") from None
     except KeyError:
         raise HTTPException(status_code=404, detail=f"unknown lane {lane_id!r}") from None
+
+
+@router.post("/series/{series_id}/export")
+def export_series_file(series_id: str, request: Request) -> JSONResponse:
+    """The ``volfit-series/1`` bundle (S6): spec + frames' chains + fits + carries."""
+    state = _state(request)
+    try:
+        bundle = series_files.export_series(state, series_id)
+    except series_files.UnknownSeriesError:
+        raise HTTPException(status_code=404, detail=f"unknown series {series_id!r}") from None
+    name = bundle["series"]["spec"]["ticker"].lower()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    return JSONResponse(content=bundle, headers={
+        "Content-Disposition": f'attachment; filename="{name}_{stamp}.volfit-series.json"'})
+
+
+@router.post("/series/import", response_model=SeriesDoc)
+def import_series_file(request: Request, body: dict = Body(...)) -> SeriesDoc:
+    """Recreate a ``volfit-series/1`` bundle's series (idempotent by id)."""
+    state = _state(request)
+    try:
+        doc = series_files.import_series_file(state, body)
+    except series_files.SeriesFormatError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    state.log_event("series_import", scope=doc.id,
+                    payload={"ticker": doc.spec.ticker, "frames": len(doc.frames), "kind": "file"})
+    return doc
+
+
+@router.post("/series/{series_id}/adopt-prior", response_model=AdoptPriorResult)
+def adopt_series_prior(series_id: str, req: AdoptPriorRequest, request: Request) -> AdoptPriorResult:
+    """One lane's fits at one frame become the ticker's live prior (save = activate)."""
+    state = _state(request)
+    try:
+        return adopt_prior(state, series_id, req)
+    except UnknownSeriesError:
+        raise HTTPException(status_code=404, detail=f"unknown series {series_id!r}") from None
+    except AdoptError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
 
 
 @router.get("/series/stream/{series_id}")

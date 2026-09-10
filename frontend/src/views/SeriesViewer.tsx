@@ -21,6 +21,9 @@ import { useSeriesPlayback } from "../state/useSeriesPlayback";
 import { useSeriesFrames } from "../state/useSeriesFrames";
 import { useSeriesStrip } from "../state/useSeriesStrip";
 import { keyAction } from "../lib/seriesPlayback";
+import { adoptSeriesPrior, exportSeriesFile, seriesErrorMessage } from "../state/useSeries";
+import { seriesFilename } from "../lib/seriesFile";
+import { downloadText, pickSaveHandle, supportsFilePicker, writeHandle } from "../lib/fileHandles";
 import { useSmileSession } from "../state/smileSession";
 import type { FrameDoc, LaneSpec } from "../lib/seriesTypes";
 import { buttonClass, cardClass, chartMessageClass, chipClass, primaryButtonClass, selectClass } from "../lib/ui";
@@ -66,6 +69,12 @@ export default function SeriesViewer() {
   const sel = useSeriesSelection(ticker, live, seriesId, (id) => patch({ seriesId: id }));
   const { doc, progress, epochKey, pendingActive, pendingFrame, clearPending } = sel;
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (note === null) return;
+    const t = window.setTimeout(() => setNote(null), 5000);
+    return () => window.clearTimeout(t);
+  }, [note]);
 
   const frames = doc?.frames ?? EMPTY_FRAMES;
   const nFrames = frames.length;
@@ -171,6 +180,7 @@ export default function SeriesViewer() {
             </span>
           )}
           {sel.error && <span className="text-rose-400">{sel.error}</span>}
+          {note && <span className="text-emerald-400" data-testid="series-note">{note}</span>}
         </div>
         <div className={`${cardClass} flex min-h-0 flex-1 flex-col p-3`} data-chart-card="">
           <StageSwitch
@@ -205,6 +215,34 @@ export default function SeriesViewer() {
     );
   };
 
+  const onExport = async () => {
+    if (!seriesId || !doc) return;
+    try {
+      const bundle = await exportSeriesFile(seriesId);
+      const text = JSON.stringify(bundle);
+      const suggested = seriesFilename(doc.spec.ticker, doc.spec.name, String(bundle.savedAt ?? ""));
+      if (supportsFilePicker()) {
+        const handle = await pickSaveHandle(suggested);
+        if (!handle) return;
+        if (!(await writeHandle(handle, text))) throw new Error("could not write the file");
+      } else {
+        downloadText(suggested, text);
+      }
+      setNote(`exported ${suggested}`);
+    } catch (err) {
+      setNote(seriesErrorMessage(err));
+    }
+  };
+  const onAdoptPrior = async () => {
+    if (!seriesId || !doc) return;
+    try {
+      const res = await adoptSeriesPrior(seriesId, production?.id ?? null, playback.index);
+      setNote(`prior adopted: ${res.laneId} at frame ${res.idx + 1} (${res.nodes} nodes${res.lvSurface ? " + LV" : ""})`);
+    } catch (err) {
+      setNote(seriesErrorMessage(err));
+    }
+  };
+
   return (
     <div
       className="flex h-full flex-col gap-2 p-3 outline-none"
@@ -225,6 +263,8 @@ export default function SeriesViewer() {
         onSelect={(id) => patch({ seriesId: id })}
         onNew={() => setDialogOpen(true)}
         onDelete={sel.verbs.remove}
+        onExport={() => void onExport()}
+        onAdoptPrior={() => void onAdoptPrior()}
         onStart={sel.verbs.start}
         onResume={sel.verbs.resume}
         onPause={sel.verbs.pause}

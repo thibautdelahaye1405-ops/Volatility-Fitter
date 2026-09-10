@@ -23,6 +23,8 @@ from volfit_mcp import (
     tools_calibrate,
     tools_charts,
     tools_charts_surface,
+    tools_series,
+    tools_series_frame,
     tools_universe,
     tools_views,
     tools_workflow,
@@ -54,6 +56,18 @@ violations), or the get_* tools for the numbers.
 A vs B questions ("LQD-24 vs LQD-16", "mid vs haircut target", "with / without
 calendar enforcement"): compare_settings(a={...}, b={...}) runs both calibrations and
 returns the per-ticker / per-expiry differences in vol bp; the app ends under `keep`.
+
+THROUGH TIME ("replay SPY every 15 minutes over the last N frames", "does the prior
+damp the ATM path"): create_series(ticker, mode="historical"|"live", step, count,
+presets=["lqd_free", "lqd_prior", ...]) creates and starts a stored series — one
+ticker x instants x lanes (model configurations evaluated frame after frame: a lane's
+prior is its own previous fit) — as a background job of its own (needs the app with a
+store; historical needs a source with history such as Massive; import_series reads
+stored snapshots). Then wait_for_series(id) until outcome done, series_report(id) for
+the per-lane evidence (rms, roughness of the ATM / skew path, pull, fit time),
+chart_series_frame(id, frame) for a frame's bands + every lane's smile with prev / next
+/ slider, series_frame for the numbers, series_control to pause / resume / cancel /
+delete, list_series to find one.
 
 The step tools, when a single action is wanted: set_universe → fetch_preview /
 fetch_quotes → configure_fit → calibrate (one background job at a time; if it returns
@@ -87,6 +101,7 @@ def build_server(
         tools_charts.register(api, apps)
         tools_charts_surface.register(api, apps)
         tools_workflow.register_apps(api, apps, registry)  # run_desk_workflow + wait_for_workflow render the LV compare
+        tools_series_frame.register_apps(api, apps)  # chart_series_frame + the series page
         extensions.append(apps)
     trace_path = trace_path or os.environ.get("VOLFIT_MCP_TRACE") or None
     middleware = [TraceMiddleware(trace_path)] if trace_path else None
@@ -103,6 +118,8 @@ def build_server(
     tools_calibrate.register(mcp, api)
     tools_views.register(mcp, api)
     tools_workflow.register(mcp, api, registry)
+    tools_series.register(mcp, api)
+    tools_series_frame.register(mcp, api)  # series_frame: the tool the series page calls to navigate
     _register_resources(mcp, api)
     _register_prompts(mcp)
     return mcp

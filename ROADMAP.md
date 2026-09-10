@@ -507,10 +507,57 @@ arc to fix. Riders: `TermChart` sits at 549 lines (pre-existing; the
 lane layer added 23); the difference sheet's axis is K/F whatever the
 lens axis and it ignores the shared crop (the LV compare precedent); a
 τ crop resets per frame (τ shrinks); the Lanes chart does not scrub on
-click (`OverlayCurvesChart` has no pointer-with-x). NEXT: S6
-(`volfit-series/1` export / import, Adopt as prior, PNG frame export, the
-MCP tools `create_series` / `wait_for_series` / `series_report` /
-`chart_series_frame`).
+click (`OverlayCurvesChart` has no pointer-with-x).
+
+**S6 — files · adopt · connector SHIPPED 2026-09-10o.** Backend:
+`api/series_files.py` — `volfit-series/1` = the series document + every
+frame's chain (`export_inputs.export_chain`) + every fit + the lanes'
+carries; `POST /series/{id}/export` (a download) and `POST /series/import`
+recreate the series under its OWN id (chains saved as series-owned rows,
+the index re-pointed, fits and carries written back — export → delete →
+import is byte-identical on everything the store keeps; an id already
+present is left untouched); `api/series_adopt.py` — `POST
+/series/{id}/adopt-prior {laneId?, idx}`: the lane's stored fits at that
+frame are rebuilt into committed records on a detached lane state,
+`priors.capture_snapshot` freezes them (the LV row rides along as
+`lvSurface`), the prior's `dataTs` is the FRAME's instant, and the live
+state saves it (save = activate) with a governance event naming the
+series, the lane and the frame. Locks: test_series_files (4: the
+byte-identical round trip under the same id + idempotence, the envelope
+refusals, adopt → the anchoring axis reports the + Prior cell as
+production on the live smile + the LV surface carried + the refusals, the
+routes); series suite 75 green. Frontend: `lib/seriesFile.ts` (envelope
+parse, the filename), `classifyBundle` routes `volfit-series/` (a drop on
+the shell imports), **File ▸ Open series…** (`file.openSeries`, its
+command doc), the header's **Export** (file picker or download) and
+**Adopt as prior** (the production lane at the playhead's frame; a note
+names the lane, the frame and the node count) buttons, the series lists
+re-read on a `volfit:series-changed` window event, the guide's Files
+section, What's new; "Export chart as PNG" already worked on the lens (the
+stage card carries `data-chart-card`). CONNECTOR (agent E):
+`volfit_mcp/tools_series.py` + `tools_series_frame.py` — `list_series`,
+`create_series(ticker, mode, step, count, start?, presets, max_expiries?,
+fit_mode, session_only, start_job)`, `import_series(ticker, path, kind,
+…)`, `wait_for_series(id, wait_seconds)`, `series_report(id, expiry?,
+lanes?)` (the lanes table with the roughness reading + a smoothest-vs-
+lowest-rms sentence), `series_control(id, action)`, `series_frame(id,
+frame, lanes?, expiry?)` (negative frame = from the end) and
+`chart_series_frame(id, frame, expiry?, lanes?, png)` = the MCP App
+`ui/series.html` (bands + one Plotly line per lane, the instant · quote
+kind · frame i/n title, an expiry select, prev / next + a range slider
+calling `series_frame` through tools/call, per-lane rms legend, Workbench
+button) with a PNG fallback (`render_png.series_frame_png`); the Series
+section in Docs/mcp_connector.md and the connector guide; locks
+tests/test_mcp_series.py (8) — connector suites 30 green, the headless
+host harness 35 / 35 with 10 series checks. Frontend 798 / 113 green, tsc
++ build clean; LIVE CHECK `scripts/series_check.mjs` (:4197) now 9 steps
+green: Adopt lights the + Prior cell on the live smile, export → delete →
+import keeps the six frames and the three lanes' evidence. Riders: the
+export is one JSON (a 390-frame series is tens of MB — a compressed
+variant when it bites); a series-only deep link still needs `node=`.
+NEXT: S7 (perf rails, the certification case `series_replay_determinism`,
+the delete-cascade lock, the shared de-Am prep across lanes, the Help
+Center polish + walkthrough step, CLAUDE.md, the arc wrap).
 
 User ask (2026-09-10): "harvest, store and replay a time-series of smiles /
 surface for a given ticker and a given period and frequency: choose a
@@ -1916,7 +1963,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10n (resume here)
+## STATUS — updated 2026-09-10o (resume here)
 
 ### ▶ CURRENT ARC: the SERIES ARC (adopted 2026-09-10, D1–D12 RATIFIED) —
 harvest / store / replay a time-series of smiles and surfaces for one
@@ -1951,20 +1998,22 @@ summary table and the FilterTimeline cursor; 794 / 112 green; the exit
 readout on the replay-day SPY series: the hybrid prior damps the one-day
 rung's ATM path 18.4 → 17.5 bp per frame for +0.5 bp rms; the active
 filter's MAP block is not usable at intraday cadence on short rungs —
-finding widened, creation warns). On "continue the series arc" work S6 →
-S7 in order: S6 = `api/series_files.py` + `lib/seriesFile.ts`
-(`volfit-series/1` = spec + lanes + frames (chains through
-`export_inputs.export_chain`) + fits + carries; import recreates the
-series idempotently by id; File ▾ rows through the command registry +
-drop routing beside the snapshot file), `POST /series/{id}/adopt-prior
-{lane, idx}` (→ `priors.capture_snapshot` on a lane state of that frame →
-`state.save_prior_snapshot` = activate, a governance event with the
-series id), PNG export of the current frame through `lib/chartPng.ts`,
-the MCP tools `create_series` / `wait_for_series` / `series_report` /
-`chart_series_frame` (an MCP App with a scrubber over frame payloads) on
-the `volfit_mcp/jobs.py` pattern + a connector guide paragraph; exit:
-export → delete → import round-trips byte-identically; Adopt as prior
-lights the live + Prior cell for that node.
+finding widened, creation warns), **S6** (2026-09-10o: `volfit-series/1`
+export / import byte-identical under the same id, File ▸ Open series… +
+drop routing + the header's Export, Adopt as prior (the frame's fits →
+the live prior, save = activate), the connector's series tools + the
+Series frame chart app; 798 / 113 green, connector 30 green, the live
+check 9 steps). On "continue the series arc" work S7: perf rails (frame
+payload warm < 50 ms; strip < 100 ms for 390 frames × 3 lanes; the S3 rail
+as measured — free lane 28 s / 60 frames), the certification case
+`series_replay_determinism` (a stored series re-run reproduces every fit;
+`backtest.certification` case list), the retention / delete-cascade lock
+(owned snapshots only), the shared de-Am prep across lanes when their
+prep-affecting settings agree (de-Am once per frame — the prior lane's
+1.0 s per frame is mostly the calendar repair, so measure first), the
+Help Center polish (a Series walkthrough step, glossary cross-links, the
+docs catalog entry already there), CLAUDE.md, the arc wrap in the roadmap
++ the memory.
 
 ### ▶ NEXT: the 2026-09-09/10 confirm-per-item pass (wraps 2026-09-09i →
 2026-09-10f below) worked this list top to bottom — SHIPPED: the connector's

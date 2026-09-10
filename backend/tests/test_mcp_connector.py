@@ -103,7 +103,7 @@ def test_tool_surface_is_curated(pipe):
     assert {"set_universe", "fetch_quotes", "configure_fit", "calibrate", "wait_for_calibration",
             "calibration_report", "get_smile", "get_lv_surface", "get_lv_compare",
             "chart_lv_compare", "chart_smile"} <= names
-    assert len(names) < 30  # curated verbs, not the OpenAPI surface
+    assert len(names) < 40  # curated verbs (+ the eight series tools), not the OpenAPI surface
     assert pipe["tools"]["get_smile"].annotations.read_only_hint is True
     assert pipe["tools"]["set_universe"].annotations.read_only_hint is False
 

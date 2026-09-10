@@ -11,7 +11,9 @@
 //      keys: Home / ArrowRight / Space; the Frames stage lists every frame;
 //   4. the New series dialog opens and closes (Escape);
 //   5. the S5 stages: Surface sheets + the Difference toggle, the Term chart's
-//      lane paths, the Lanes table (three lanes) + the filter panel (S5).
+//      lane paths, the Lanes table (three lanes) + the filter panel (S5);
+//   6. S6: Adopt as prior lights the + Prior cell on the live smile; an
+//      export → delete → import round trip through the API keeps the frames.
 // Port 4197 — NOT 4190 (the WHATWG fetch bad-ports list). Screenshots in
 // .smoke/series-*.png. Prereqs: npm run build, Edge, ../.venv.
 import { existsSync, mkdirSync } from "node:fs";
@@ -210,6 +212,28 @@ try {
     await waitFor(page, () => !!document.querySelector('[data-testid="lanes-filter-panel"]'), "the filter panel", 20000);
     await waitFor(page, () => !!document.querySelector('[data-testid="lanes-filter-panel"] svg'), "the filter ring chart", 20000);
     await page.screenshot({ path: `${OUT}series-lanes.png` });
+  });
+
+  // 6. S6: Adopt as prior lights the + Prior cell; export → delete → import round-trips through the API.
+  await step("series-adopt-prior", async () => {
+    await stageTab("Smile");
+    const [btn] = await page.$$('xpath/.//main//button[normalize-space()="Adopt as prior"]');
+    if (!btn) throw new Error("the Adopt as prior button is missing");
+    await btn.click();
+    await waitFor(page, () => /prior adopted/.test(document.querySelector('[data-testid="series-note"]')?.textContent ?? ""), "the adopt note");
+    const expiry = universe.expiries[ticker][2].expiry;
+    const smile = await api("GET", `/smiles/${ticker}/${expiry}`);
+    if (!smile.anchoring || smile.anchoring.production !== "prior") throw new Error(`the + Prior cell is not production after the adopt (${JSON.stringify(smile.anchoring)})`);
+    await page.screenshot({ path: `${OUT}series-adopted.png` });
+  });
+  await step("series-file-round-trip", async () => {
+    const bundle = await api("POST", `/series/${created.id}/export`, {});
+    if (bundle.schema !== "volfit-series/1" || bundle.chains.length !== 6) throw new Error("the export bundle is off");
+    await api("DELETE", `/series/${created.id}`);
+    const back = await api("POST", "/series/import", bundle);
+    if (back.id !== created.id || back.frames.length !== 6) throw new Error("the import did not recreate the series");
+    const ev = await api("GET", `/series/${created.id}/evidence`);
+    if (Object.keys(ev.lanes).length !== 3) throw new Error("the evidence lost lanes across the round trip");
   });
 
   if (pageErrors.length) { failures += 1; console.error(`page errors: ${pageErrors.join(" | ")}`); }

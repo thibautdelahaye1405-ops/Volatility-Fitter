@@ -36,6 +36,7 @@ vi.mock("../state/useSeries", () => ({
   fetchPresets: vi.fn(() => Promise.resolve([])),
   estimateSeries: vi.fn(), createSeries: vi.fn(), importSeries: vi.fn(), startSeries: vi.fn(),
   resumeSeries: vi.fn(), pauseSeries: vi.fn(), cancelSeries: vi.fn(), deleteSeries: vi.fn(),
+  exportSeriesFile: vi.fn(), adoptSeriesPrior: vi.fn(), notifySeriesChanged: vi.fn(), importSeriesFile: vi.fn(),
 }));
 
 // Agent B's pieces: trivial stubs (their own tests lock them).

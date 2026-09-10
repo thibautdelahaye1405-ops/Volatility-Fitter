@@ -71,6 +71,15 @@ export const COMMAND_DOCS_FILE: CommandDoc[] = [
     guide: "data-sources",
     related: ["file.saveSnapshot", "universe.manage", "fetch.snapshot"],
   },
+  {
+    id: "file.openSeries",
+    summary: "Load a series file into the store.",
+    details: "Imports a `.volfit-series.json` (`POST /series/import`): the series document, every frame's chain, every lane's fits and the lanes' carried prior / filter state are recreated in the store under the file's own series id — an id already present is left as it is. The Series lens lists it for its ticker at once; dropping the file on the shell does the same. Export sits in the Series lens header (the **Export** button downloads the selected series).",
+    example: "Open `spy_spy-2026-08-19-15-min_20260910_1512.volfit-series.json` on another desk: Alt+6 on an SPY tab shows the 25-frame series with its three lanes, ready to replay — no harvest, no calibration.",
+    enabledWhen: "Live backend with a store (VOLFIT_DB)",
+    guide: "series",
+    related: ["lens.series", "file.openSnapshot", "file.open"],
+  },
   // -------------------------------------------------------------- Export
   {
     id: "export.surfacesJson",

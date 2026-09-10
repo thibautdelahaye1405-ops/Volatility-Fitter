@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 from importlib import resources
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from mcp.server.apps import APP_MIME_TYPE, Apps, ResourceCsp, client_supports_apps
 from mcp.server.mcpserver import Context
@@ -38,6 +38,7 @@ LV_COMPARE_URI = "ui://volfit/lv-compare.html"
 SMILE_URI = "ui://volfit/smile.html"
 VOL_SURFACE_URI = "ui://volfit/vol-surface.html"
 TERM_URI = "ui://volfit/term.html"
+SERIES_URI = "ui://volfit/series.html"  # the series frame app (tools_series_frame)
 #: Plotly is loaded from its CDN inside the sandbox; nothing else is external.
 CSP = ResourceCsp(resource_domains=["https://cdn.plot.ly"])
 
@@ -56,6 +57,7 @@ _PLOTLY = {
     "vol_surface.html": ("plotly-3.1.0.min.js", "https://cdn.plot.ly/plotly-3.1.0.min.js"),
     "smile.html": ("plotly-basic-3.1.0.min.js", "https://cdn.plot.ly/plotly-basic-3.1.0.min.js"),
     "term.html": ("plotly-basic-3.1.0.min.js", "https://cdn.plot.ly/plotly-basic-3.1.0.min.js"),
+    "series.html": ("plotly-basic-3.1.0.min.js", "https://cdn.plot.ly/plotly-basic-3.1.0.min.js"),
 }
 _TAG = '<script src="{url}" async onload="window.__plotlyLoaded()" onerror="window.__plotlyFailed()"></script>'
 _CACHE = Path(os.environ.get("VOLFIT_MCP_CACHE") or Path(__file__).resolve().parent.parent / ".cache")

@@ -93,6 +93,40 @@ export function cancelSeries(id: string): Promise<SeriesJobStatus> {
 }
 
 /** Delete the series with its fits (a running job is stopped first). */
+/** Fired on the window after a series is imported / deleted outside the lens
+ *  (File > Open series..., a drop): every mounted list re-reads. */
+export const SERIES_CHANGED_EVENT = "volfit:series-changed";
+
+export function notifySeriesChanged(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(SERIES_CHANGED_EVENT));
+}
+
+/** POST /series/{id}/export - the `volfit-series/1` bundle (S6). */
+export function exportSeriesFile(id: string): Promise<Record<string, unknown>> {
+  return api.post<Record<string, unknown>>(`/series/${encodeURIComponent(id)}/export`, { body: {}, timeoutMs: 300_000 });
+}
+
+/** POST /series/import - recreate a bundle's series (idempotent by id). */
+export function importSeriesFile(bundle: unknown): Promise<SeriesDoc> {
+  return api.post<SeriesDoc>("/series/import", { body: bundle, timeoutMs: 300_000 });
+}
+
+export interface AdoptPriorResult {
+  ticker: string;
+  laneId: string;
+  idx: number;
+  dataTs: string;
+  nodes: number;
+  lvSurface: boolean;
+  persisted: boolean;
+}
+
+/** POST /series/{id}/adopt-prior - one lane's fits at one frame become the
+ *  ticker's live prior (save = activate). */
+export function adoptSeriesPrior(id: string, laneId: string | null, idx: number): Promise<AdoptPriorResult> {
+  return api.post<AdoptPriorResult>(`/series/${encodeURIComponent(id)}/adopt-prior`, { body: { laneId, idx } });
+}
+
 export function deleteSeries(id: string): Promise<{ deleted: boolean; id: string }> {
   return unwrap(api.delete<{ deleted: boolean; id: string }>(idPath(id)));
 }
@@ -120,6 +154,11 @@ export function useSeriesList(ticker: string | null, live: boolean): SeriesListR
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
+  useEffect(() => {  // a series imported / deleted elsewhere (File menu, a drop)
+    if (typeof window === "undefined") return;
+    window.addEventListener(SERIES_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(SERIES_CHANGED_EVENT, refresh);
+  }, [refresh]);
   const enabled = live && ticker !== null && ticker !== "";
 
   useEffect(() => {

@@ -8,6 +8,8 @@
 //   smile:      light, strike axis, dark, next-expiry (tools/call round trip)
 //   surface:    3D + ATM ridge, heatmap full wings, strike axis, Workbench link
 //   term:       vol + variance, event clock, point click -> chat message, dark
+//   series:     bands + one trace per lane, expiry select, slider, next-frame
+//               (tools/call series_frame round trip), dark, Workbench link
 // No server needed: the app HTML is rendered by the Python package (Plotly
 // inlined from backend/.cache, else the CDN). Screenshots in .smoke/mcp-*.png. Prereqs:
 // ../.venv (mcp installed), Edge, puppeteer-core (npm i --no-save puppeteer-core).
@@ -28,13 +30,16 @@ mkdirSync(OUT, { recursive: true });
 const pages = JSON.parse(execFileSync(PY, ["-c", `
 import json
 from volfit_mcp.tools_charts import _html
-print(json.dumps({"lv": _html("lv_compare.html"), "smile": _html("smile.html"), "surface": _html("vol_surface.html"), "term": _html("term.html")}))
+print(json.dumps({"lv": _html("lv_compare.html"), "smile": _html("smile.html"), "surface": _html("vol_surface.html"), "term": _html("term.html"), "series": _html("series.html")}))
 `], { encoding: "utf-8", cwd: winPath(new URL("../../backend/", import.meta.url)), maxBuffer: 64 * 1024 * 1024 }));  // the pages inline Plotly (~6 MB)
+const seriesFx = JSON.parse(readFileSync(FIX + "mcp_series_frame.json", "utf-8"));  // frame 2 + frame 3 of a recorded series
 const fixtures = {
   lv: JSON.parse(readFileSync(FIX + "mcp_lv_compare.json", "utf-8")),
   smile: JSON.parse(readFileSync(FIX + "mcp_smile.json", "utf-8")),
   surface: JSON.parse(readFileSync(FIX + "mcp_vol_surface.json", "utf-8")),
   term: JSON.parse(readFileSync(FIX + "mcp_term.json", "utf-8")),
+  series: seriesFx.frame2,
+  seriesNext: seriesFx.frame3,
 };
 
 // 2. The host harness: one sandboxed iframe (srcdoc) + the protocol.
@@ -60,16 +65,16 @@ window.addEventListener("message", (ev) => {
       hostContext: { theme: window.__theme, displayMode: "inline", containerDimensions: { width: 960, maxHeight: 900 }, locale: "en-US" } } });
   } else if (m.method === "ui/notifications/initialized") {
     window.__ready = true;
-  } else if (m.method === "tools/call") {          // the smile app's prev/next expiry
+  } else if (m.method === "tools/call") {          // the smile app's prev/next expiry, the series app's next frame
     const fx = window.__fixture; const args = m.params.arguments || {};
-    const alt = Object.assign({}, fx, { expiry: args.expiry, T: fx.T * 2 });
+    const alt = m.params.name === "series_frame" ? window.__fixtureNext : Object.assign({}, fx, { expiry: args.expiry, T: fx.T * 2 });
     send({ jsonrpc: "2.0", id: m.id, result: { content: [{ type: "text", text: "ok" }], structuredContent: alt } });
   } else if (m.method === "ui/message" || m.method === "ui/request-display-mode" || m.method === "ui/open-link") {
     send({ jsonrpc: "2.0", id: m.id, result: m.method === "ui/request-display-mode" ? { mode: m.params.mode } : {} });
   }
 });
-window.__deliver = (fixture, args) => {
-  window.__fixture = fixture;
+window.__deliver = (fixture, args, next) => {
+  window.__fixture = fixture; window.__fixtureNext = next || null;
   send({ jsonrpc: "2.0", method: "ui/notifications/tool-input", params: { arguments: args } });
   send({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { content: [{ type: "text", text: "summary" }], structuredContent: fixture } });
 };
@@ -91,7 +96,8 @@ async function openApp(browser, key, theme) {
   const initError = await page.evaluate(() => window.__initError || null);
   check(`${key}: ui/initialize params valid`, !initError, initError || "");
   if (initError) throw new Error(initError);
-  await page.evaluate((fx, args) => window.__deliver(fx, args), fixtures[key], key === "lv" ? { tickers: ["SPY"] } : { ticker: "SPY", expiry: fixtures.smile.expiry });
+  const args = key === "lv" ? { tickers: ["SPY"] } : key === "series" ? { id: fixtures.series.seriesId, frame: 2 } : { ticker: "SPY", expiry: fixtures.smile.expiry };
+  await page.evaluate((fx, a, next) => window.__deliver(fx, a, next), fixtures[key], args, fixtures[key + "Next"] || null);
   const frame = page.frames().find((f) => f !== page.mainFrame());
   await frame.waitForFunction(() => document.querySelectorAll(".js-plotly-plot .plot-container").length > 0, { timeout: 40000 });
   await sleep(800);
@@ -141,6 +147,31 @@ try {
   await page.evaluate(() => window.__setTheme("dark")); await sleep(500);
   await shot(page, "smile-dark");
   check("smile: Workbench button shown", await frame.$eval("#wb", (el) => !el.hidden));
+  await page.close();
+
+  // ---- Series frame
+  ({ page, frame } = await openApp(browser, "series", "light"));
+  const sTitle = await frame.$eval("#title", (el) => el.textContent);
+  check("series: title carries name + frame i/n", sTitle.includes("SPY") && sTitle.includes("frame 3/6"), sTitle);
+  const sTraces = await frame.evaluate(() => document.querySelectorAll("#plot .scatterlayer .trace").length);
+  check("series: bands + one trace per lane", sTraces >= 1 + fixtures.series.laneOrder.length, `traces=${sTraces}`);
+  const legend = await frame.$eval("#legend", (el) => el.textContent);
+  check("series: legend carries the per-lane rms", legend.includes("bp") && legend.includes("free"), legend);
+  const opts = await frame.$$eval("#expiry option", (els) => els.length);
+  check("series: expiry select lists the frame's expiries", opts === fixtures.series.frame.expiries.length, `options=${opts}`);
+  check("series: slider spans the frames", (await frame.$eval("#slider", (el) => el.max)) === String(fixtures.series.nFrames - 1));
+  await shot(page, "series-light");
+  await frame.click("#next"); await sleep(600);
+  const sCalls = await page.evaluate(() => window.__msgs.filter((x) => x.method === "tools/call" && x.params.name === "series_frame").length);
+  check("series: next frame -> tools/call series_frame", sCalls > 0, `calls=${sCalls}`);
+  const sTitle2 = await frame.$eval("#title", (el) => el.textContent);
+  check("series: title updated after round trip", sTitle2.includes("frame 4/6"), sTitle2);
+  await shot(page, "series-next");
+  await page.evaluate(() => window.__setTheme("dark")); await sleep(500);
+  check("series: dark theme applied", (await frame.evaluate(() => document.documentElement.getAttribute("data-theme"))) === "dark");
+  await shot(page, "series-dark");
+  await frame.click("#wb"); await sleep(200);
+  check("series: Workbench -> ui/open-link", (await msgs(page, "ui/open-link")) > 0);
   await page.close();
 
   // ---- Implied-vol surface

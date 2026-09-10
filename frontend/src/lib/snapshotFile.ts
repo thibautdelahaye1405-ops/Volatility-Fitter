@@ -40,13 +40,14 @@ export function parseSnapshotBundle(raw: unknown): SnapshotParse {
   return { ok: true, summary: { schema: tag, asOf: typeof r.asOf === "string" ? r.asOf : "", tickers: names } };
 }
 
-/** Which opener a dropped JSON belongs to, by schema family (null = neither). */
-export function classifyBundle(raw: unknown): "workspace" | "snapshot" | null {
+/** Which opener a dropped JSON belongs to, by schema family (null = none). */
+export function classifyBundle(raw: unknown): "workspace" | "snapshot" | "series" | null {
   if (typeof raw !== "object" || raw === null) return null;
   const tag = (raw as { schema?: unknown }).schema;
   if (typeof tag !== "string") return null;
   if (tag.startsWith("volfit-workspace/")) return "workspace";
   if (tag.startsWith("volfit-snapshot/")) return "snapshot";
+  if (tag.startsWith("volfit-series/")) return "series";
   return null;
 }
 

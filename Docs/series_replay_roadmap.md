@@ -563,6 +563,18 @@ file), `POST /series/{id}/adopt-prior`, PNG frame export, MCP tools
 paragraph. Exit: export → delete → import round-trips byte-identically;
 Adopt as prior lights the live + Prior cell for that node.
 
+(S6 as built, 2026-09-10o: the bundle is `{schema, savedAt, app, series
+(the SeriesDoc), chains[{idx, spot, timestamp, chain}], fits[], carries{}}`;
+import keeps the file's series id and is idempotent; the adopted prior's
+`dataTs` is the frame's instant and its `asOfLabel` names the frame; the
+header carries Export and Adopt as prior, the File menu Open series…, a
+drop on the shell imports; the connector gained `list_series`,
+`create_series`, `import_series`, `wait_for_series`, `series_report`,
+`series_control`, `series_frame` and the `chart_series_frame` app with a
+PNG fallback. Both exits hold: the round trip is byte-identical on
+everything the store keeps, and Adopt lights the + Prior cell on the live
+smile — locked in the backend suite and in the live check.)
+
 ### S7 — Hardening + docs
 
 Perf rails (frame payload warm < 50 ms; strip < 100 ms for 390 frames × 3

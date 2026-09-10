@@ -60,35 +60,68 @@ def lv_compare_png(structured: dict[str, Any]) -> bytes:
     return _png(fig)
 
 
-def smile_png(sm: dict[str, Any]) -> bytes:
-    """Fit curve vs bid/ask IV bands (+ prior / LV curves when present)."""
-    plt = _plt()
-    fig, ax = plt.subplots(figsize=(7.5, 4.2))
-    q = sm.get("quotes") or []
+def _bands(ax, q: list[dict[str, Any]]) -> None:
+    """The bid/ask IV bands as error bars around the mids."""
+    ks = [p["k"] for p in q]
+    mids = [p["mid"] for p in q]
+    lo = [p["mid"] - p["bid"] for p in q]
+    hi = [p["ask"] - p["mid"] for p in q]
+    ax.errorbar(ks, mids, yerr=[lo, hi], fmt="o", ms=3, color="#555", ecolor="#999", capsize=2, label="bid/ask")
+
+
+def _frame_quoted_range(ax, q: list[dict[str, Any]]) -> None:
+    """Frame the quoted range (the model wings run far beyond it)."""
+    lo, hi = min(p["k"] for p in q), max(p["k"] for p in q)
+    pad = max(0.25 * (hi - lo), 0.02)
+    ax.set_xlim(lo - pad, hi + pad)
+    ys = [p["bid"] for p in q] + [p["ask"] for p in q]
+    ax.set_ylim(max(0.0, min(ys) - 0.02), max(ys) + 0.02)
+
+
+def _finish_smile(fig, ax, q: list[dict[str, Any]]) -> bytes:
     if q:
-        ks = [p["k"] for p in q]
-        mids = [p["mid"] for p in q]
-        lo = [p["mid"] - p["bid"] for p in q]
-        hi = [p["ask"] - p["mid"] for p in q]
-        ax.errorbar(ks, mids, yerr=[lo, hi], fmt="o", ms=3, color="#555", ecolor="#999", capsize=2, label="bid/ask")
-    for key, style, label in (("fit", "-", sm.get("model") or "fit"), ("prior", "--", "prior"), ("lv", ":", "Local Vol")):
-        c = sm.get(key)
-        if c:
-            ax.plot([p[0] for p in c], [p[1] for p in c], style, lw=1.6, label=label)
-    d = sm.get("diagnostics") or {}
-    ax.set_title(f"{sm['ticker']} {sm['expiry']} — rms {d.get('rmsBp')} bp, ATM {d.get('atmVol')}")
-    if q:  # frame the quoted range (the model wings run far beyond it)
-        lo, hi = min(p["k"] for p in q), max(p["k"] for p in q)
-        pad = max(0.25 * (hi - lo), 0.02)
-        ax.set_xlim(lo - pad, hi + pad)
-        ys = [p["bid"] for p in q] + [p["ask"] for p in q]
-        ax.set_ylim(max(0.0, min(ys) - 0.02), max(ys) + 0.02)
+        _frame_quoted_range(ax, q)
     ax.set_xlabel("k = ln(K/F)")
     ax.set_ylabel("implied vol")
     ax.grid(alpha=0.3)
     ax.legend(loc="best", fontsize=8)
     fig.tight_layout()
     return _png(fig)
+
+
+def smile_png(sm: dict[str, Any]) -> bytes:
+    """Fit curve vs bid/ask IV bands (+ prior / LV curves when present)."""
+    plt = _plt()
+    fig, ax = plt.subplots(figsize=(7.5, 4.2))
+    q = sm.get("quotes") or []
+    if q:
+        _bands(ax, q)
+    for key, style, label in (("fit", "-", sm.get("model") or "fit"), ("prior", "--", "prior"), ("lv", ":", "Local Vol")):
+        c = sm.get(key)
+        if c:
+            ax.plot([p[0] for p in c], [p[1] for p in c], style, lw=1.6, label=label)
+    d = sm.get("diagnostics") or {}
+    ax.set_title(f"{sm['ticker']} {sm['expiry']} — rms {d.get('rmsBp')} bp, ATM {d.get('atmVol')}")
+    return _finish_smile(fig, ax, q)
+
+
+def series_frame_png(doc: dict[str, Any]) -> bytes:
+    """One series frame: the bid/ask bands and every lane's smile for the
+    shown expiry (``tools_series_frame`` structured content)."""
+    plt = _plt()
+    fig, ax = plt.subplots(figsize=(7.5, 4.2))
+    sh, f = doc.get("shown") or {}, doc.get("frame") or {}
+    q = sh.get("quotes") or []
+    if q:
+        _bands(ax, q)
+    names = doc.get("laneNames") or {}
+    for lid in doc.get("laneOrder") or []:
+        c = (sh.get("curves") or {}).get(lid)
+        if c and c.get("k"):
+            rms = f" ({c['rmsBp']} bp)" if c.get("rmsBp") is not None else ""
+            ax.plot(c["k"], c["iv"], "-", lw=1.6, label=f"{names.get(lid, lid)}{rms}")
+    ax.set_title(f"{doc.get('name')} — frame {f.get('idx', 0) + 1}/{doc.get('nFrames')} {f.get('ts', '')} · {sh.get('expiry')}")
+    return _finish_smile(fig, ax, q)
 
 
 def vol_surface_png(sf: dict[str, Any]) -> bytes:

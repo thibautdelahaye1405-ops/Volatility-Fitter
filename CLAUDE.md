@@ -121,7 +121,7 @@ Key commands (Windows, repo root):
             --regime spike_aug2024 --lv` then `-m backtest.analyze --results ...json`.
             Plan/params: backend\backtest\SPEC.md; module map: backend\backtest\README.md.
 - Frontend: cd frontend ; npm run dev   (talks to :8000 if up, else mock fallback + MOCK badge)
-- Frontend tests: cd frontend ; npm test   (vitest, 794 tests / 112 files as of 2026-09-10n) ; npm run smoke:ui
+- Frontend tests: cd frontend ; npm test   (vitest, 798 tests / 113 files as of 2026-09-10o) ; npm run smoke:ui
             (headless-Edge WORKBENCH smoke; LIVE on a synthetic single-origin
             server — backend\smoke_server.py on :4188, throw-away DB — when
             ..\.venv exists, else vite preview + mock: first-run Welcome, lenses,
@@ -145,8 +145,12 @@ Key commands (Windows, repo root):
             (schemas / store / import / instants / harvest / create / jobs / lanes /
             metrics / payload) + routers\series.py; the Series lens (Alt+6) =
             frontend src\views\SeriesViewer.tsx + components\series\* + lib\series*.ts;
-            a series needs VOLFIT_DB. Backend locks tests\test_series_*.py +
-            test_store_series.py (76, ~25 s). FINDING 2026-09-10: the ACTIVE
+            a series needs VOLFIT_DB; series files = .volfit-series.json (File ▸ Open
+            series… / the header's Export); Adopt as prior = the frame's fits become
+            the live prior; the connector's series tools (list / create / import /
+            wait / report / control / frame + the chart_series_frame app) live in
+            volfit_mcp\tools_series*.py. Backend locks tests\test_series_*.py +
+            test_store_series.py (79, ~30 s) + tests\test_mcp_series.py (8). FINDING 2026-09-10: the ACTIVE
             observation filter is not usable at intraday cadence on short rungs
             (NaN fits, minutes per frame) — series creation warns; use overlay.
 - MCP connector (2026-09-09c): backend\volfit_mcp = the app's API as a Model

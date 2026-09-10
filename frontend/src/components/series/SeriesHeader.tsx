@@ -35,6 +35,10 @@ export interface SeriesHeaderProps {
   onSelect: (id: string | null) => void;
   onNew: () => void;
   onDelete: () => void;
+  /** Download the series as a .volfit-series.json (frames, lanes, fits). */
+  onExport: () => void;
+  /** Save the production lane's fits at the playhead's frame as the ticker's live prior. */
+  onAdoptPrior: () => void;
   onStart: () => void;
   onResume: () => void;
   onPause: () => void;
@@ -111,7 +115,8 @@ function LaneChip({ lane, index, hidden, onToggle }: { lane: LaneSpec; index: nu
 }
 
 export default function SeriesHeader(props: SeriesHeaderProps) {
-  const { ticker, list, seriesId, doc, progress, busy, hidden, stage, onSelect, onNew, onDelete, onToggleLane, onStage } = props;
+  const { ticker, list, seriesId, doc, progress, busy, hidden, stage, onSelect, onNew, onDelete, onExport, onAdoptPrior, onToggleLane, onStage } = props;
+  const adoptable = doc !== null && doc.frames.some((f) => f.status === "ready") && (progress?.fitsDone ?? 0) > 0;
   const unlisted = seriesId !== null && !list.some((s) => s.id === seriesId);
   return (
     <div className="flex shrink-0 flex-col gap-2">
@@ -133,6 +138,17 @@ export default function SeriesHeader(props: SeriesHeaderProps) {
         {seriesId !== null && (
           <button className={buttonClass} disabled={busy} onClick={onDelete} title="delete the series with its frames and fits">
             Delete
+          </button>
+        )}
+        {doc !== null && (
+          <button className={buttonClass} disabled={busy} onClick={onExport} title="download the series as a .volfit-series.json — frames, lanes, fits">
+            Export
+          </button>
+        )}
+        {doc !== null && (
+          <button className={buttonClass} disabled={busy || !adoptable} onClick={onAdoptPrior}
+            title="save the production lane's fits at this frame as the ticker's prior (save = activate)">
+            Adopt as prior
           </button>
         )}
         {progress && <StatusPill progress={progress} />}

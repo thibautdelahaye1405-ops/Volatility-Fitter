@@ -40,6 +40,7 @@ export const COMMANDS = [
   { id: "file.saveToServer", label: "Save workspace to server…", category: "File", arg: { placeholder: "workspace name" } },
   { id: "file.saveSnapshot", label: "Save snapshot…", category: "File", shortcut: "Ctrl+Alt+S", detail: "quotes + calibrations" },
   { id: "file.openSnapshot", label: "Open snapshot…", category: "File", detail: "becomes the File data source" },
+  { id: "file.openSeries", label: "Open series…", category: "File", detail: "a .volfit-series.json into the store" },
   // Export (A3)
   { id: "export.surfacesJson", label: "Export surfaces (JSON)", category: "Export", detail: "fitted nodes + inputs + manifest" },
   { id: "export.surfacesCsv", label: "Export surfaces (CSV)", category: "Export", detail: "one row per curve point" },
