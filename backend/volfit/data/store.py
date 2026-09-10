@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
+from volfit.data.store_series import ensure_series_schema
 from volfit.data.types import ChainSnapshot, ExpirySettlement, Instrument, OptionQuote
 
 #: v2 ([REQ 2026-06-12]): snapshots carry the contracts' exercise style so
@@ -52,7 +53,11 @@ from volfit.data.types import ChainSnapshot, ExpirySettlement, Instrument, Optio
 #: existed), so the as-of picker offers a source's own captures only — a Cboe
 #: or Yahoo auto-capture never surfaces as a replayable "moment" under another
 #: feed, and a synthetic run's captures stay with Synthetic.
-SCHEMA_VERSION = 10
+#: v11 (SERIES ARC S0, 2026-09-10): the four series tables (``store_series``
+#: — series / lanes / frames / fits) and ``snapshots.series_id`` (NULL on
+#: every capture; set on a series FRAME so the as-of picker's listing skips
+#: it — ``list_snapshots`` / ``snapshot_at`` default to captures only).
+SCHEMA_VERSION = 11
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS instruments (
@@ -69,7 +74,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     zero_carry      INTEGER NOT NULL DEFAULT 0,
     tick_size       REAL,
     settlement_json TEXT,
-    source          TEXT
+    source          TEXT,
+    series_id       TEXT
 );
 CREATE TABLE IF NOT EXISTS quotes (
     snapshot_id   INTEGER NOT NULL REFERENCES snapshots(id),
@@ -197,6 +203,8 @@ class VolStore:
         v9 -> v10: the `snapshots` table gains `source` — the data source that
         produced the capture; NULL on rows captured before the tag existed
         (those are never offered by a source-filtered listing).
+        v10 -> v11: the `snapshots` table gains `series_id` (NULL on every
+        capture) and the series tables are created (`store_series`).
 
         Fast path: a store is opened on *every* capture/persist/load, so once the
         file is already at `SCHEMA_VERSION` we return immediately — skipping the
@@ -228,6 +236,9 @@ class VolStore:
             self.conn.execute("ALTER TABLE snapshots ADD COLUMN settlement_json TEXT")
         if 1 <= version <= 9:  # pre-v10 file: add the producing data source
             self.conn.execute("ALTER TABLE snapshots ADD COLUMN source TEXT")
+        if 1 <= version <= 10:  # pre-v11 file: add the series-frame tag
+            self.conn.execute("ALTER TABLE snapshots ADD COLUMN series_id TEXT")
+        ensure_series_schema(self.conn)  # needs snapshots.series_id (its index)
         self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self.conn.commit()
 
@@ -260,10 +271,17 @@ class VolStore:
 
     # -- snapshots ---------------------------------------------------------
 
-    def save_snapshot(self, snapshot: ChainSnapshot, source: str | None = None) -> int:
+    def save_snapshot(
+        self,
+        snapshot: ChainSnapshot,
+        source: str | None = None,
+        series_id: str | None = None,
+    ) -> int:
         """Persist one chain snapshot; returns the new snapshot id. ``source`` is
         the data-source id that produced it (the as-of picker lists a source's
-        own captures only); None = unattributed (legacy)."""
+        own captures only); None = unattributed (legacy). ``series_id`` marks a
+        series FRAME (schema v11): such a row is skipped by the capture
+        listings unless asked for, and addressed by id from the series layer."""
         settlement_json = None
         if snapshot.settlement is not None:
             settlement_json = json.dumps(
@@ -278,7 +296,8 @@ class VolStore:
             )
         cur = self.conn.execute(
             "INSERT INTO snapshots (ticker, spot, ts, exercise_style, zero_carry, "
-            "tick_size, settlement_json, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "tick_size, settlement_json, source, series_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 snapshot.ticker,
                 snapshot.spot,
@@ -288,6 +307,7 @@ class VolStore:
                 snapshot.tick_size,
                 settlement_json,
                 source,
+                series_id,
             ),
         )
         snapshot_id = int(cur.lastrowid)
@@ -373,14 +393,19 @@ class VolStore:
         return self.load_snapshot(int(row[0])) if row else None
 
     def list_snapshots(
-        self, tickers: list[str] | None = None, source: str | None = None
+        self,
+        tickers: list[str] | None = None,
+        source: str | None = None,
+        include_series: bool = False,
     ) -> list[tuple[str, int, datetime]]:
         """(ticker, id, timestamp) for stored snapshots, newest first.
 
         Restricted to ``tickers`` when given (the active universe) and, when
         ``source`` is given, STRICTLY to captures that source produced — legacy
         untagged rows are not listed, so the as-of picker never offers another
-        feed's (or an unattributable) capture as a replayable moment.
+        feed's (or an unattributable) capture as a replayable moment. Series
+        FRAMES (``series_id`` set, v11) are skipped unless ``include_series``:
+        a listing of captures is not a listing of a series' instants.
         """
         sql = "SELECT ticker, id, ts FROM snapshots"
         where: list[str] = []
@@ -392,6 +417,8 @@ class VolStore:
         if source is not None:
             where.append("source = ?")
             args.append(source)
+        if not include_series:
+            where.append("series_id IS NULL")
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY ts DESC, id DESC"
@@ -401,16 +428,25 @@ class VolStore:
         ]
 
     def snapshot_at(
-        self, ticker: str, ts: datetime, source: str | None = None
+        self,
+        ticker: str,
+        ts: datetime,
+        source: str | None = None,
+        include_series: bool = False,
     ) -> ChainSnapshot | None:
         """The ticker's snapshot nearest at-or-before ``ts`` (None if none).
         With ``source``, LENIENTLY that source's captures or legacy untagged
-        ones — a saved workspace / an old captured selection still replays."""
+        ones — a saved workspace / an old captured selection still replays.
+        Series frames are skipped unless ``include_series`` (a captured
+        replay must land on the capture the picker listed, never on a frame
+        a series harvested a minute later)."""
         sql = "SELECT id FROM snapshots WHERE ticker = ? AND ts <= ?"
         args: list = [ticker, ts.isoformat()]
         if source is not None:
             sql += " AND (source = ? OR source IS NULL)"
             args.append(source)
+        if not include_series:
+            sql += " AND series_id IS NULL"
         row = self.conn.execute(sql + " ORDER BY ts DESC, id DESC LIMIT 1", args).fetchone()
         return self.load_snapshot(int(row[0])) if row else None
 

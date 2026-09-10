@@ -389,6 +389,13 @@ export const DOCS_CATALOG: DocEntry[] = [
     abstract: "Fifteen proposals surveyed against the codebase and ordered into implementation phases — the current plan of record.",
     markdown: { root: "docs", name: "forward_roadmap_v3.md" },
   },
+  {
+    id: "docs_series_replay", kind: "guide", topic: "Roadmap",
+    title: "Series — harvest, store and replay a time-series of smiles and surfaces",
+    abstract: "The Series arc: one ticker's instants harvested and calibrated under several model lanes (each a temporal chain on its own detached state), stored beside the captures and replayed frame by frame; the contract, the data model, the twelve ratified decisions and phases S0–S7.",
+    markdown: { root: "docs", name: "series_replay_roadmap.md" },
+    related: ["docs_forward_roadmap", "docs_prior_persistence"],
+  },
 ];
 
 const BY_ID: Record<string, DocEntry> = Object.fromEntries(DOCS_CATALOG.map((d) => [d.id, d]));

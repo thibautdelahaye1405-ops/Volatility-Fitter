@@ -320,12 +320,19 @@ series_lanes  (series_id FK, lane_id TEXT, ord, name, colour, family,
 series_frames (series_id FK, idx INT, ts TEXT, snapshot_id FK snapshots.id NULL,
                spot, quote_kind, n_quotes, expiries_json, status, error,
                harvested_ts, PRIMARY KEY (series_id, idx))
-series_fits   (series_id FK, lane_id, idx INT, expiry TEXT NULL,   -- NULL = LV surface
+series_fits   (series_id FK, lane_id, idx INT, expiry TEXT DEFAULT '',  -- '' = LV surface
                model, params_json, display_json, diagnostics_json,
                metrics_json, fit_ms, status, error,
                PRIMARY KEY (series_id, lane_id, idx, expiry))
 snapshots     + series_id TEXT NULL (additive ALTER; excluded from the as-of picker)
 ```
+
+(S0 as built, 2026-09-10i: the LV row stores `expiry = ''` rather than NULL
+because SQLite treats NULLs as distinct inside a primary key; the wire
+`LaneFitDoc.expiry` is `None` for that row and the store maps between the
+two. The child tables cascade on the series' delete. The tables live in
+`data/store_series.py`; the shapes in `api/schemas_series.py` with the
+presets in `api/series_presets.py`.)
 
 `params_json` / `display_json` follow the snapshot-file calibration shape
 (`snapshot_files.py:121-146`: `lqd{L,R,a,alphaL,alphaR}`, `display`,

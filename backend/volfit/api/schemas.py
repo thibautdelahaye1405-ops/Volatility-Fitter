@@ -37,6 +37,10 @@ from volfit.dynamics.ssr import Regime
 #: fit to bid-ask, or fit to a haircut bid-ask).
 FitMode = Literal["mid", "bidask", "haircut"]
 
+# The series schemas (SERIES ARC S0) import FitSettings / OptionsSettings from
+# here to validate lane patches, so they are re-exported at the END of this
+# module (see the bottom) rather than in this import block.
+
 
 # ------------------------------------------------------------- fit settings
 class FitSettings(BaseModel):
@@ -2599,3 +2603,22 @@ class StackedDensityResponse(BaseModel):
 
     ticker: str
     expiries: list[StackedDensityItem]
+
+
+# The series schemas (SERIES ARC S0) live in schemas_series.py, which imports
+# FitSettings / OptionsSettings from this module to validate lane patches —
+# hence the re-export sits after those classes, at the end of the file.
+from volfit.api.schemas_series import (  # noqa: E402, F401  (re-export)
+    FrameDoc,
+    FramePayload,
+    LaneFitDoc,
+    LaneSpec,
+    SeriesClock,
+    SeriesDoc,
+    SeriesEstimate,
+    SeriesLadder,
+    SeriesProgress,
+    SeriesSpec,
+    SeriesSummary,
+    StripPayload,
+)

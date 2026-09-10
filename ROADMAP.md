@@ -237,7 +237,32 @@ half-life/update-rule/D6 sweeps; §16.3 adoption gate) then Phase 6
 
 ---
 
-## SERIES ARC — drafted 2026-09-10 (awaiting ratification; spec + phases in Docs/series_replay_roadmap.md)
+## SERIES ARC — adopted 2026-09-10 (D1–D12 RATIFIED by the user the same day; spec + phases in Docs/series_replay_roadmap.md; S0 SHIPPED 2026-09-10i)
+
+**S0 — contract SHIPPED 2026-09-10i.** `api/schemas_series.py` (the wire +
+storage shapes: SeriesClock / SeriesLadder / LaneSpec — patches validated
+against the settings models' fields, the family pinning `patchFit.model`,
+`temporal` = prior or filter on — / SeriesSpec — one ticker in v1, unique
+lane ids, exactly one production lane defaulting to the first, the live
+15 s and historical 60 s floors, the seed rules — / SeriesProgress /
+FrameDoc / LaneFitDoc (expiry None = the LV surface row) / SeriesDoc /
+SeriesSummary / SeriesEstimate / FramePayload / StripPayload; re-exported
+at the END of `schemas.py` since it imports FitSettings from there),
+`api/series_presets.py` (the eight dialog presets resolved against the
+frozen base: `lane_preset`), store **schema v11** (`data/store_series.py`
+DDL: series / series_lanes / series_frames / series_fits with ON DELETE
+CASCADE, `series_fits.expiry = ''` on the LV row so the primary key stays
+total; `snapshots.series_id` additive; `save_snapshot(series_id=)`;
+`list_snapshots` / `snapshot_at` skip series frames unless
+`include_series=True`, so `asof._captures_by_date` needed no change), the
+Docs catalog entry `docs_series_replay`. Locks: `tests/test_series_schema.py`
+(15) + `tests/test_store_series.py` (5: fresh v11, v10 → v11 migration
+keeping rows + the fast path, frame exclusion from both listings, the
+picker payload never lists a frame, the delete cascade); the v10 lock in
+test_asof_captures reads SCHEMA_VERSION. No Options field moved
+(`gen_help_schema.py --check` clean); help vitest 43 green; ruff clean.
+NEXT: S1 (series_store CRUD + import from captures / backtest stores /
+fixtures + the read router).
 
 User ask (2026-09-10): "harvest, store and replay a time-series of smiles /
 surface for a given ticker and a given period and frequency: choose a
@@ -1643,16 +1668,20 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10h (resume here)
+## STATUS — updated 2026-09-10i (resume here)
 
-### ▶ DRAFTED 2026-09-10h, AWAITING RATIFICATION: the SERIES ARC —
+### ▶ CURRENT ARC: the SERIES ARC (adopted 2026-09-10, D1–D12 RATIFIED) —
 harvest / store / replay a time-series of smiles and surfaces for one
-ticker under several model lanes (user ask of 2026-09-10). Spec, the
-what-exists survey, the data model, the API, the twelve decisions D1–D12
-and phases S0–S7 are in **Docs/series_replay_roadmap.md**; the arc header
-sits above the LV operator arc. Nothing is built yet: on "continue the
-series arc" ratify (or veto) D1–D12 first, then work S0 → S7 in order (S0
-is the one-commit shared contract of the parallel-wave convention).
+ticker under several model lanes. Spec, survey, data model, API, decisions
+and phases S0–S7: **Docs/series_replay_roadmap.md**; the arc header (with
+the per-phase wrap) sits above the LV operator arc. **S0 SHIPPED
+2026-09-10i** (schemas_series + series_presets, store v11 with the frame
+exclusion, docs catalog entry, 20 locks). On "continue the series arc"
+work S1 → S7 in order: S1 = `api/series_store.py` CRUD + `series_import.py`
+(the app's captures / a backtest VolStore / the intraday and daily fixture
+shapes through ONE loader) + `routers/series.py` (list / get / delete /
+import-store); the 0DTE campaign store and the V3.8 replay-day store
+become series on day one.
 
 ### ▶ NEXT: the 2026-09-09/10 confirm-per-item pass (wraps 2026-09-09i →
 2026-09-10f below) worked this list top to bottom — SHIPPED: the connector's
