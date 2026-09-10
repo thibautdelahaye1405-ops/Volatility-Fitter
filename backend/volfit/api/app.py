@@ -20,6 +20,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from volfit.api.routers import ALL_ROUTERS
 from volfit.api.scheduler import Scheduler
+from volfit.api.series_jobs import SeriesJobs
 from volfit.api.state import AppState
 from volfit.data.provider import OptionChainProvider
 
@@ -65,15 +66,23 @@ def create_app(
     #: the modes) but the thread runs only when enabled (serve.py turns it on;
     #: the test app and offline mode never fetch in the background).
     state.scheduler = Scheduler(state)
+    #: The series job slot (SERIES ARC S2) — separate from the Calibrate job.
+    state.series_jobs = SeriesJobs(state)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         if enable_scheduler:
             state.scheduler.start()
+        # A series the previous process left running is paused, never lost.
+        try:
+            state.series_jobs.recover()
+        except Exception:  # noqa: BLE001 — a store hiccup never blocks startup
+            pass
         try:
             yield
         finally:
             state.scheduler.stop()
+            state.series_jobs.stop()
 
     app = FastAPI(title="volfit", lifespan=lifespan)
     app.state.volfit = state

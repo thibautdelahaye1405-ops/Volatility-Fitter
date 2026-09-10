@@ -1,24 +1,41 @@
-"""Series routes (SERIES ARC S1: list / get / delete / import-store).
+"""Series routes (SERIES ARC S1 + S2).
 
+S1: list / get / delete / import-store. S2: estimate, create, the job
+controls (start / pause / resume / cancel), the status and its SSE stream
+(the ``/calibration/stream`` pattern: push on change, keep-alive comments).
 Every route opens the app's VolStore for the request (the ``asof`` /
 ``history`` idiom) and answers 409 when the app runs without a store
 (``VOLFIT_DB`` unset — series are persistent objects by definition). The
-harvest / job routes (S2) and the frame / strip payloads (S4) join this
-router in their phases; the roadmap §6 table is the contract.
+frame / strip payloads (S4) join in their phase; the roadmap §6 table is
+the contract.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+import asyncio
+from time import monotonic
 
-from volfit.api.schemas_series import SeriesDoc, SeriesListResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
+
+from volfit.api.schemas_series import (
+    SeriesCreateResponse,
+    SeriesDoc,
+    SeriesEstimate,
+    SeriesListResponse,
+    SeriesSpec,
+)
+from volfit.api.series_create import SeriesSpecError, create_series, estimate
 from volfit.api.series_import import ImportError_, SeriesImportRequest, import_series
+from volfit.api.series_jobs import SeriesJobStatus, series_jobs_of
 from volfit.api.series_store import SeriesStore
 from volfit.data.store import VolStore
 
 router = APIRouter(tags=["series"])
 
 _NO_STORE = "series need a store: start the app with VOLFIT_DB set"
+_SSE_TICK = 0.25
+_SSE_HEARTBEAT = 15.0
 
 
 def _state(request: Request):
@@ -27,6 +44,14 @@ def _state(request: Request):
         raise HTTPException(status_code=409, detail=_NO_STORE)
     return state
 
+
+def _known(state, series_id: str) -> None:
+    with VolStore(state.store_path) as store:
+        if not SeriesStore(store).exists(series_id):
+            raise HTTPException(status_code=404, detail=f"unknown series {series_id!r}")
+
+
+# ---------------------------------------------------------------- S1 reads
 
 @router.get("/series", response_model=SeriesListResponse)
 def list_series(request: Request, ticker: str | None = None) -> SeriesListResponse:
@@ -48,6 +73,8 @@ def get_series(series_id: str, request: Request) -> SeriesDoc:
 @router.delete("/series/{series_id}")
 def delete_series(series_id: str, request: Request) -> dict:
     state = _state(request)
+    jobs = series_jobs_of(state)
+    jobs.cancel(series_id)  # a running / queued series is stopped first
     with VolStore(state.store_path) as store:
         ok = SeriesStore(store).delete(series_id)
     if not ok:
@@ -67,3 +94,86 @@ def import_store(req: SeriesImportRequest, request: Request) -> SeriesDoc:
                     payload={"ticker": doc.spec.ticker, "frames": len(doc.frames),
                              "kind": req.source.kind})
     return doc
+
+
+# ------------------------------------------------------- S2 create + jobs
+
+@router.post("/series/estimate", response_model=SeriesEstimate)
+def estimate_series(spec: SeriesSpec, request: Request) -> SeriesEstimate:
+    state = request.app.state.volfit  # an estimate needs no store
+    try:
+        return estimate(state, spec)
+    except (SeriesSpecError, KeyError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+@router.post("/series", response_model=SeriesCreateResponse)
+def post_series(spec: SeriesSpec, request: Request) -> SeriesCreateResponse:
+    state = _state(request)
+    try:
+        return create_series(state, spec)
+    except (SeriesSpecError, KeyError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+@router.post("/series/{series_id}/start", response_model=SeriesJobStatus)
+@router.post("/series/{series_id}/resume", response_model=SeriesJobStatus)
+def start_series(series_id: str, request: Request) -> SeriesJobStatus:
+    state = _state(request)
+    _known(state, series_id)
+    outcome = series_jobs_of(state).start(series_id)
+    if outcome == "busy":
+        raise HTTPException(status_code=409, detail="the series is not in a startable state")
+    state.log_event("series_start", scope=series_id, payload={"outcome": outcome})
+    return series_jobs_of(state).status(series_id)
+
+
+@router.post("/series/{series_id}/pause", response_model=SeriesJobStatus)
+def pause_series(series_id: str, request: Request) -> SeriesJobStatus:
+    state = _state(request)
+    _known(state, series_id)
+    series_jobs_of(state).pause(series_id)
+    return series_jobs_of(state).status(series_id)
+
+
+@router.post("/series/{series_id}/cancel", response_model=SeriesJobStatus)
+def cancel_series(series_id: str, request: Request) -> SeriesJobStatus:
+    state = _state(request)
+    _known(state, series_id)
+    series_jobs_of(state).cancel(series_id)
+    return series_jobs_of(state).status(series_id)
+
+
+@router.get("/series/{series_id}/status", response_model=SeriesJobStatus)
+def series_status(series_id: str, request: Request) -> SeriesJobStatus:
+    state = _state(request)
+    _known(state, series_id)
+    return series_jobs_of(state).status(series_id)
+
+
+@router.get("/series/stream/{series_id}")
+async def stream_series(series_id: str, request: Request) -> StreamingResponse:
+    """Server-Sent Events of one series' job status: pushed on change, a
+    keep-alive comment otherwise (the calibration stream's shape)."""
+    state = _state(request)
+    _known(state, series_id)
+    jobs = series_jobs_of(state)
+
+    async def gen():
+        last: str | None = None
+        last_beat = monotonic()
+        while True:
+            if await request.is_disconnected():
+                break
+            payload = jobs.status(series_id).model_dump_json()
+            now = monotonic()
+            if payload != last:
+                last, last_beat = payload, now
+                yield f"data: {payload}\n\n"
+            elif now - last_beat >= _SSE_HEARTBEAT:
+                last_beat = now
+                yield ": keepalive\n\n"
+            await asyncio.sleep(_SSE_TICK)
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

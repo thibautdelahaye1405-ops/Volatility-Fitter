@@ -290,8 +290,59 @@ frame, 12 expiries, 7 MB); `replay_day.sqlite` (V3.8, 2026-08-19) → 25 SPY
 frames in 0.3 s (6 expiries, 2.9 MB). Not done by design: daily-fixture
 hygiene at import (`backtest.fixture_hygiene` lives outside the package —
 a rider for the daily shape; the intraday captures never had the
-two-root defect). NEXT: S2 (instants resolver, historical + live harvest,
-`SeriesJobs`, estimate, start / pause / resume / cancel, status + stream).
+two-root defect).
+
+**S2 — harvest engine + job slot SHIPPED 2026-09-10k.**
+`api/series_instants.py` (the clock resolver: naive-UTC instants on the
+NYSE session calendar — a historical series without `start` ends at the
+latest servable instant and walks BACKWARD, with `start` forward, live
+forward from now; `sessionOnly` skips the overnight gap; `session_close` /
+`daily` (at `timeOfDay`) / `weekly` land on trading days only; warm-up
+frames prepended and flagged; the three ladders `pinned` / `term` / `0dte`
++ the nearest-first crop; `frame_asof` / `servable` by provider capability
+— intraday instants need `intraday_capable`, a calendar step on an EOD-only
+source becomes that day's EOD chain when listed, a live frame is always a
+fetch; the estimate from the rails: Massive 14 s / Bloomberg 5 s / else
+3 s per frame, live = the wait + 2 s per frame, parametric 50 ms per
+expiry, LV 3 s per frame, + warnings), `api/series_harvest.py` (one frame:
+historical through the provider's `AsOf` with the download narrated into
+the activity gauge, live through `state.refresh_chain` — quotes AND spot
+from one snapshot, the book when streaming — stamped when taken; cropped to
+the ladder, saved as a series-OWNED row, checkpointed; a failure lands on
+the frame, never raises), `api/series_create.py` (`/series/estimate` and
+`POST /series` share one resolution: the ticker must be in the universe,
+the pinned ladder fills from `state.selected_expiries` (new, resolves the
+default selection), the base settings freeze, unservable instants are
+written as `skipped` frames so the index keeps the clock's shape),
+`api/series_jobs.py` (`SeriesJobs`: ONE running series + a FIFO queue,
+separate from `CalibrationJobs`; a daemon thread per run harvests the
+pending / failed frames in order — a live frame waits until due on a 1 s
+wake-able wait — checkpoints each frame, then hands the doc to
+`calibrate_hook` (None in S2; S3 plugs the lanes in); pause / cancel are
+cooperative and persisted; `recover()` at startup flips a series left
+running to `paused`; `stop()` at shutdown pauses the running one; the
+thread is published only after it started — a join raced an unstarted
+thread once), the routes (`POST /series/estimate`, `POST /series`,
+`/series/{id}/start|resume|pause|cancel`, `GET /series/{id}/status`, SSE
+`GET /series/stream/{id}` on the calibration-stream pattern; delete cancels
+first), `create_app` owns `state.series_jobs` (recover in the lifespan
+startup, stop at shutdown). Locks: test_series_instants (9) +
+test_series_jobs (10: create + refusals + skipped frames, a historical run
+AS OF each instant into owned rows the picker never lists, a failed frame
+recorded and retried alone on re-start, pause → checkpoint → resume at the
+next frame, cancel queued / running, the queue advancing, recover, a live
+series of due frames through the app refresh, the wait clock, the routes);
+the series suite + the app-level suites 140 green; ruff clean; every module
+< 300 lines. LIVE CHECK on the user's Massive key (throw-away store): SPY
+historical 15 m × 2 → the resolver picked 2026-09-09 15:45 + 16:00 ET (the
+latest completed session), estimate 28 s, done in 32.7 s, both frames real
+NBBO (`quotes`, 762 quotes each on the three nearest dailies), the capture
+listing untouched. Deviation from the plan recorded in the doc: the live
+runner waits in its own thread (no scheduler hook needed). Riders: the
+`term` / `0dte` ladders crop AFTER the fetch (the provider's natural
+ladder is requested); a Bloomberg daily series is untested live
+(workflow-review gate). NEXT: S3 (lane calibration on detached states,
+chaining, metrics, LV lanes, the three locks).
 
 User ask (2026-09-10): "harvest, store and replay a time-series of smiles /
 surface for a given ticker and a given period and frequency: choose a
@@ -1697,27 +1748,36 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10j (resume here)
+## STATUS — updated 2026-09-10k (resume here)
 
 ### ▶ CURRENT ARC: the SERIES ARC (adopted 2026-09-10, D1–D12 RATIFIED) —
 harvest / store / replay a time-series of smiles and surfaces for one
 ticker under several model lanes. Spec, survey, data model, API, decisions
 and phases S0–S7: **Docs/series_replay_roadmap.md**; the arc header (with
-the per-phase wraps) sits above the LV operator arc. **S0 SHIPPED
-2026-09-10i** (schemas_series + series_presets, store v11 with the frame
-exclusion, docs catalog entry) and **S1 SHIPPED 2026-09-10j**
-(`series_store` CRUD, `series_import` — captures referenced, campaign
-stores and fixtures copied as owned frames, derived clock, D6 ladder —
-`routers/series.py` list / get / delete / import-store; the 0DTE campaign
-store imports 60 SPY frames in 1.2 s). On "continue the series arc" work
-S2 → S7 in order: S2 = `api/series_instants.py` (step grid, session
-calendar, servability from the as-of payload, floors) + `series_harvest.py`
-(historical through the provider's as-of path per instant with progress;
-live as a `SeriesSchedule` on the scheduler tick reading the book
-synchronously when streaming) + `series_jobs.py` (`SeriesJobs`: one running
-series, a queue, pause / resume / cancel, per-frame checkpoints, restart
-recovery → paused) + the routes `/series/estimate`, `/start` … `/cancel`,
-`/status`, `/stream`.
+the per-phase wraps) sits above the LV operator arc. SHIPPED: **S0**
+(2026-09-10i: schemas_series + series_presets, store v11 with the frame
+exclusion, docs catalog entry), **S1** (2026-09-10j: `series_store` CRUD,
+`series_import` — captures referenced, campaign stores and fixtures copied
+as owned frames — `routers/series.py` list / get / delete / import-store),
+**S2** (2026-09-10k: `series_instants` resolver + ladders + servability +
+estimate, `series_harvest` historical / live, `series_create`,
+`series_jobs` — one slot + queue, pause / resume / cancel, restart recovery,
+`calibrate_hook` seam — the job routes + SSE; live-checked on the user's
+Massive key: 2 real SPY NBBO frames in 32.7 s). On "continue the series
+arc" work S3 → S7 in order: S3 = `api/series_lanes.py` (one detached
+`AppState` per lane over a `_SeriesChains` provider — generalize
+`replay_report._StoredChains`; the lane's patches applied with
+`model_copy(update=)`; prior chaining = the lane's own previous frame via
+`priors.capture_snapshot` → `set_active_prior` on the lane state; filter
+states + rings carried frame to frame; commit → `series_fits` with
+metrics; per-frame checkpoints; LV lanes through
+`affine_fit.calibrate_affine_surface`; lanes concurrent, free lanes
+frame-parallel through the shared pool) + `series_metrics.py` (rms / max /
+arb / pull vs the free lane / ζ / gain / roughness) plugged into
+`SeriesJobs.calibrate_hook`; the three locks (free-lane byte-identity with
+`POST /calibrate/{ticker}`, prior lane ≡ a manual roll, filter lane ≡
+`backtest/filter_replay` on the same store) + cancel / resume at the frame
++ the 60-frame × 2-lane < 60 s rail.
 
 ### ▶ NEXT: the 2026-09-09/10 confirm-per-item pass (wraps 2026-09-09i →
 2026-09-10f below) worked this list top to bottom — SHIPPED: the connector's

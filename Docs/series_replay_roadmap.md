@@ -452,6 +452,15 @@ key in under 6 minutes; a kill mid-harvest resumes at the next frame; a live
 5-frame × 15 s series on the synthetic source runs green in the suite; the
 as-of picker's listing is unchanged by a 60-frame series.
 
+(S2 as built, 2026-09-10k: the live runner waits for each frame's instant
+in its own daemon thread — a 1 s wake-able wait — instead of a
+`SeriesSchedule` on the scheduler tick (same effect, no coupling to the
+Auto-update timer); the stream route is `GET /series/stream/{id}`; the
+`term` / `0dte` ladders crop after the fetch of the provider's natural
+ladder; unservable instants are stored as `skipped` frames. Live check on
+the user's Massive key: SPY 15 m × 2 on the latest completed session, done
+in 32.7 s against a 28 s estimate, both frames real NBBO.)
+
 ### S3 — Lane calibration
 
 `api/series_lanes.py` (detached `AppState` per lane over a `_SeriesChains`

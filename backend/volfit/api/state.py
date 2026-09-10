@@ -853,6 +853,15 @@ class AppState(SourcesMixin, UniverseMixin):
                 return self._snapshots[ticker]
         return self._fetch_and_cache(ticker)
 
+    def selected_expiries(self, ticker: str) -> list[date]:
+        """The ticker's SELECTED expiries (the universe ladder the fetch and
+        the fit use), resolving the default selection on first use like a
+        read does; UnknownNodeError off the universe. Read-only copy."""
+        self._require_active(ticker)
+        self._ensure_selection(ticker)
+        with self._lock:
+            return list(self._selected.get(ticker, []))
+
     def _fetch_and_cache(self, ticker: str) -> ChainSnapshot:
         """Pull the chain from the active provider for the SELECTED expiries and
         cache it (the explicit-fetch path). Degrades a feed failure / empty chain
