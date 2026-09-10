@@ -65,20 +65,21 @@ def resolve(state, spec: SeriesSpec, now_utc: datetime | None = None):
 
 
 def lane_warnings(state, spec: SeriesSpec) -> list[str]:
-    """What a lane combination is known to cost (recorded findings): the
-    ACTIVE observation filter under the calendar-coupled solver on a sub-day
-    series — its per-node predictions are not calendar-consistent across a
-    dense ladder, so the symmetric repair grinds through its escalations
-    (minutes per frame, 2026-09-10 on the 0DTE store)."""
+    """What a lane combination is known to cost (recorded findings, 2026-09-10
+    on the 0DTE and replay-day stores): the ACTIVE observation filter on a
+    sub-day series over a ladder with short rungs — the MAP block's predicted
+    variances collapse on a one-day rung, the block dominates the quotes,
+    fits blow up (NaN, minutes per frame, absurd rms) and, under the
+    calendar-coupled solver, the repair grinds through its escalations. The
+    overlay filter keeps the ring evidence without touching the fit."""
     out: list[str] = []
     base = state.options()
     for lane in spec.lanes:
         opts = {**base.model_dump(), **lane.patchOptions}
-        if (opts.get("observationFilterMode") == "active" and opts.get("enforceCalendar")
-                and spec.clock.step_seconds is not None):
-            out.append(f"lane {lane.name!r}: the active filter under the calendar-coupled "
-                       "solver can take minutes per frame on a dense intraday ladder "
-                       "(set enforceCalendar off on the lane, or use the overlay filter)")
+        if opts.get("observationFilterMode") == "active" and spec.clock.step_seconds is not None:
+            out.append(f"lane {lane.name!r}: the active filter is not usable at intraday "
+                       "cadence on short rungs today (NaN fits, minutes per frame — a "
+                       "recorded finding); use the overlay filter for the ring evidence")
     return out
 
 

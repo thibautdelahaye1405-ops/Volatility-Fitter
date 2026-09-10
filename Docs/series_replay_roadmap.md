@@ -536,6 +536,23 @@ three lanes Free / + Prior / + Filter on the V3.8 replay-day store show the
 damping and its rms cost in one screen; the roughness table matches the
 metrics endpoint (vitest + a backend lock on a synthetic series).
 
+(S5 as built, 2026-09-10n: the evidence is a backend route
+(`GET /series/{id}/evidence`) derived from the strip; the lane filter
+ring route carries `frameIdx` per step (matched by order — a step's `ts`
+is a local-clock epoch); `FilterTimeline` gained an optional `cursor`;
+the difference surface reuses the LV compare's diverging heatmap (axis
+K/F, outside the shared crop); the term lanes sit on the calendar clock.
+Exit readout on the replay-day SPY series (25 × 15 min, six expiries),
+one-day rung: free rms 4.66 bp / roughness ATM 18.36 bp per frame;
++ prior 5.20 bp / 17.49 bp, |pull| 3.57 bp; the overlay filter leaves the
+fit untouched and adds the ring (ζ std 0.82). The "+ Filter" lane of the
+exit had to be the OVERLAY filter: the active MAP block is not usable at
+intraday cadence on short rungs today (313 s on one frame, 10 failed
+slices, 299 bp median rms with calendar coupling off) — the finding of S3
+widened; creation warns for any active-filter lane on a sub-day series.
+The evidence check `frontend/scripts/series_evidence_check.mjs` (:4198)
+serves the prepared store through `smoke_server.py --db … --tickers SPY`.)
+
 ### S6 — Files, adopt, connector
 
 `volfit-series/1` export / import (`api/series_files.py`, `lib/seriesFile.ts`,

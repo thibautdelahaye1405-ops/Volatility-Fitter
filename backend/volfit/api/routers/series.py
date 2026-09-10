@@ -29,6 +29,14 @@ from volfit.api.schemas_series import (
     StripPayload,
 )
 from volfit.api.series_create import SeriesSpecError, create_series, estimate
+from volfit.api.series_evidence import (
+    EvidencePayload,
+    LaneFilterIndex,
+    LaneFilterPayload,
+    evidence_payload,
+    lane_filter_index,
+    lane_filter_ring,
+)
 from volfit.api.series_import import ImportError_, SeriesImportRequest, import_series
 from volfit.api.series_jobs import SeriesJobStatus, series_jobs_of
 from volfit.api.series_payload import UnknownSeriesError, frame_payload, strip_payload
@@ -194,6 +202,42 @@ def series_strip(series_id: str, request: Request, lanes: str | None = None,
         return strip_payload(state, series_id, _lane_ids(lanes), expiry)
     except UnknownSeriesError:
         raise HTTPException(status_code=404, detail=f"unknown series {series_id!r}") from None
+
+
+@router.get("/series/{series_id}/evidence", response_model=EvidencePayload)
+def series_evidence(series_id: str, request: Request, lanes: str | None = None,
+                    expiry: str | None = None) -> EvidencePayload:
+    """The Lanes stage's summary per lane over the ready frames (S5)."""
+    state = _state(request)
+    try:
+        return evidence_payload(state, series_id, _lane_ids(lanes), expiry)
+    except UnknownSeriesError:
+        raise HTTPException(status_code=404, detail=f"unknown series {series_id!r}") from None
+
+
+@router.get("/series/{series_id}/lanes/{lane_id}/filter", response_model=LaneFilterIndex)
+def series_lane_filter_index(series_id: str, lane_id: str, request: Request) -> LaneFilterIndex:
+    state = _state(request)
+    try:
+        return lane_filter_index(state, series_id, lane_id)
+    except UnknownSeriesError:
+        raise HTTPException(status_code=404, detail=f"unknown series {series_id!r}") from None
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"unknown lane {lane_id!r}") from None
+
+
+@router.get("/series/{series_id}/lanes/{lane_id}/filter/{expiry}",
+            response_model=LaneFilterPayload)
+def series_lane_filter_ring(series_id: str, lane_id: str, expiry: str,
+                            request: Request) -> LaneFilterPayload:
+    """The lane's observation-filter ring for one node, in the live wire shape."""
+    state = _state(request)
+    try:
+        return lane_filter_ring(state, series_id, lane_id, expiry)
+    except UnknownSeriesError:
+        raise HTTPException(status_code=404, detail=f"unknown series {series_id!r}") from None
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"unknown lane {lane_id!r}") from None
 
 
 @router.get("/series/stream/{series_id}")

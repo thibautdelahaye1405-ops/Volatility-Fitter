@@ -31,6 +31,10 @@ import {
 import { timeAxisValue } from "../lib/timeAxis";
 import type { TimeAxisMode } from "../lib/timeAxis";
 import { clocksDiffer, forwardLadder } from "../lib/termLadder";
+import LaneTermLayer, { LaneTermLegendItems, laneTermExtent } from "./term/LaneTermLayer";
+import type { TermLane } from "./term/LaneTermLayer";
+
+export type { TermLane, TermLanePoint } from "./term/LaneTermLayer";
 
 /** Stroke of the calendar-day reading (dashed amber, the events' colour). */
 const CALENDAR_STROKE = "rgb(251 191 36 / 0.75)";
@@ -48,6 +52,10 @@ interface TermChartProps {
   selectedExpiry?: string | null;
   /** Select an expiry by clicking its ATM marker (var-swap editing). */
   onSelectExpiry?: (expiry: string) => void;
+  /** Overlaid term structures (the Series stage's other lanes), drawn on the
+   *  CALENDAR clock through components/term/LaneTermLayer and listed in the
+   *  legend; null / absent = none. */
+  lanes?: TermLane[] | null;
 }
 
 const MARGIN = { top: 14, right: 14, bottom: 44, left: 56 } as const;
@@ -97,6 +105,7 @@ export default function TermChart({
   dividends,
   selectedExpiry = null,
   onSelectExpiry,
+  lanes = null,
 }: TermChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -123,11 +132,17 @@ export default function TermChart({
   const botH = Math.max(0, innerH - PANEL_GAP - topH);
   const botY0 = topH + PANEL_GAP;
 
+  // Overlaid lanes widen both domains; they sit on the calendar clock
+  // whatever the axis clock (a series carries no dilation).
+  const laneList = lanes ?? [];
+  const laneExt = laneTermExtent(laneList);
+
   // ---- domains. Tiny arrays (~80 curve samples): recomputed per render ----
   let xLo = Infinity;
   let xHi = -Infinity;
   for (const x of curveX) { xLo = Math.min(xLo, x); xHi = Math.max(xHi, x); }
   for (const p of points) { xLo = Math.min(xLo, xOf(p)); xHi = Math.max(xHi, xOf(p)); }
+  if (laneExt !== null) { xLo = Math.min(xLo, laneExt.tLo); xHi = Math.max(xHi, laneExt.tHi); }
   if (!Number.isFinite(xLo)) { xLo = 0; xHi = 1; }
   if (xLo === xHi) { xLo -= 0.5; xHi += 0.5; }
 
@@ -143,6 +158,7 @@ export default function TermChart({
       vHi = Math.max(vHi, p.varSwapQuote);
     }
   }
+  if (laneExt !== null) { vLo = Math.min(vLo, laneExt.vLo); vHi = Math.max(vHi, laneExt.vHi); }
   if (!Number.isFinite(vLo)) { vLo = 0; vHi = 1; }
   const vPad = Math.max(1e-4, (vHi - vLo) * 0.1);
 
@@ -299,6 +315,7 @@ export default function TermChart({
             <span className="h-3 w-0 border-l border-dashed border-emerald-400/70" /> Dividends
           </span>
         )}
+        <LaneTermLegendItems lanes={laneList} />
         {/* Maturity-axis scaling toggle: linear T vs √T */}
         <div className="ml-auto flex overflow-hidden rounded border border-slate-700">
           {(["linear", "sqrt"] as const).map((m) => (
@@ -389,6 +406,12 @@ export default function TermChart({
                 {calVolPath !== "" && (
                   <path d={calVolPath} fill="none" stroke={CALENDAR_STROKE}
                     strokeWidth={1.4} strokeDasharray="4 3" strokeLinejoin="round" />
+                )}
+
+                {/* Overlaid lanes on the calendar clock (ATM polylines +
+                    markers, var-swap thinner and dashed), under the fit */}
+                {laneList.length > 0 && (
+                  <LaneTermLayer lanes={laneList} toX={X} toY={(v) => volScale.map(v)} />
                 )}
 
                 {/* Dense ATM-vol fit + per-expiry markers (clickable to select

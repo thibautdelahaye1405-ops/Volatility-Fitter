@@ -227,4 +227,50 @@ export interface StripPayload {
 }
 
 /** Metric names the strip carries per lane (backend series_payload.STRIP_METRICS). */
-export const STRIP_METRICS = ["rmsBp", "maxIvBp", "pullAtmBp", "zetaAtm", "fitMs"] as const;
+export const STRIP_METRICS = [
+  "rmsBp", "maxIvBp", "pullAtmBp", "zetaAtm", "fitMs", "skew", "curvature",
+] as const;
+export type StripMetric = (typeof STRIP_METRICS)[number];
+
+/** GET /series/{id}/evidence — the Lanes stage's summary per lane over the
+ *  ready frames of the shown expiry (backend series_payload.evidence_payload). */
+export interface LaneEvidence {
+  nFrames: number;
+  nFailed: number;
+  meanRmsBp: number | null;
+  meanMaxIvBp: number | null;
+  worstFrame: { idx: number; ts: string; rmsBp: number } | null;
+  /** Mean |Δ σ_atm| between consecutive frames, in vol bp (the damping a prior
+   *  or a filter buys, at the rms cost above). */
+  roughnessAtmBp: number | null;
+  /** Mean |Δ skew| between consecutive frames. */
+  roughnessSkew: number | null;
+  meanPullAtmBp: number | null;
+  meanAbsPullAtmBp: number | null;
+  meanFitMs: number | null;
+  zetaAtmStd: number | null;
+}
+
+export interface EvidencePayload {
+  seriesId: string;
+  expiry: string | null;
+  lanes: Record<string, LaneEvidence>;
+}
+
+/** GET /series/{id}/lanes/{lane}/filter — the expiries the lane keeps a
+ *  filter ring for; /filter/{expiry} — that ring's steps in the
+ *  FilterStepWire shape (empty when the lane runs no filter). */
+export interface LaneFilterIndex {
+  laneId: string;
+  expiries: string[];
+}
+
+export interface LaneFilterPayload {
+  laneId: string;
+  expiry: string;
+  steps: Record<string, unknown>[];
+  /** Per step (same order): the series FRAME index the step was committed
+   *  on — the Lanes stage's cursor matches steps to frames by this, never by
+   *  clock (a step's `ts` is a local-clock epoch of a naive stamp). */
+  frameIdx: (number | null)[];
+}

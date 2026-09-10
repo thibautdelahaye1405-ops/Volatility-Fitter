@@ -1,10 +1,12 @@
-// Series lens shell locks (SERIES ARC S4): the live-only empty state, the
-// "no series yet" state with its New series… entry, the picker listing the
-// ticker's series (newest first, "name · mode · n frames"), and the stage
-// composition once a document is in. The data hooks (state/useSeries) and
-// the playback / frame / strip pieces are stubbed so the shell renders on
-// its own; no WorkbenchProvider is mounted (view memory falls back to local
-// state, the node scope is the mocked session).
+// Series lens shell locks (SERIES ARC S4 + S5): the live-only empty state,
+// the "no series yet" state with its New series… entry, the picker listing
+// the ticker's series (newest first, "name · mode · n frames"), the stage
+// composition once a document is in, and the five stage tabs (Surface ·
+// Term · Lanes lit in S5, the Surface stage's Sheets | Difference toggle).
+// The data hooks (state/useSeries) and the playback / frame / strip /
+// evidence / filter pieces are stubbed so the shell renders on its own; no
+// WorkbenchProvider is mounted (view memory falls back to local state, the
+// node scope is the mocked session).
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import SeriesViewer from "./SeriesViewer";
@@ -45,11 +47,32 @@ vi.mock("../state/useSeriesFrames", () => ({
   useSeriesFrames: () => ({ frame: null, loading: false, peek: () => null }),
 }));
 vi.mock("../state/useSeriesStrip", () => ({ useSeriesStrip: () => ({ strip: null }) }));
+vi.mock("../state/useSeriesEvidence", () => ({ useSeriesEvidence: () => ({ evidence: null }) }));
+vi.mock("../state/useSeriesLaneFilter", () => ({
+  useSeriesLaneFilterIndexes: () => ({ index: {}, loaded: true }),
+  useSeriesLaneFilterIndex: () => ({ expiries: [] }),
+  useSeriesLaneFilter: () => ({ steps: [], frameIdx: [] }),
+}));
 vi.mock("../lib/seriesPlayback", () => ({ keyAction: () => null }));
 vi.mock("../lib/seriesLanes", () => ({ laneStyle: () => ({ colour: "#7dd3fc", dash: "" }) }));
 vi.mock("../components/series/TransportBar", () => ({ default: () => <div data-testid="transport" /> }));
 vi.mock("../components/series/Filmstrip", () => ({ default: () => <div data-testid="filmstrip" /> }));
 vi.mock("../components/series/SmileStage", () => ({ default: () => <div data-testid="smile-stage" /> }));
+// The S5 stages (agent C's Surface / Term, the Lanes evidence): stubs that
+// echo the props the switch hands them.
+vi.mock("../components/series/SurfaceStage", () => ({
+  default: (p: { mode: string; ticker: string; seriesId: string }) => (
+    <div data-testid="surface-stage" data-mode={p.mode} data-ticker={p.ticker} data-series={p.seriesId} />
+  ),
+}));
+vi.mock("../components/series/TermStage", () => ({
+  default: (p: { expiry: string | null }) => <div data-testid="term-stage" data-expiry={p.expiry ?? ""} />,
+}));
+vi.mock("../components/series/LanesStage", () => ({
+  default: (p: { seriesId: string; epoch: string; index: number }) => (
+    <div data-testid="lanes-stage" data-series={p.seriesId} data-epoch={p.epoch} data-index={p.index} />
+  ),
+}));
 
 function summary(over: Partial<SeriesSummary> = {}): SeriesSummary {
   return {
@@ -132,5 +155,40 @@ describe("SeriesViewer", () => {
     expect(screen.getByTestId("frames-table")).toBeTruthy();
     fireEvent.click(screen.getByText("501.40"));
     expect(update).toHaveBeenCalledWith({ index: 1 });
+  });
+
+  it("lights the Surface · Term · Lanes tabs and switches the stage on each (S5)", () => {
+    listState = { ...emptyList(), series: [summary()] };
+    docState = { doc: doc(), loading: false, error: null, refresh: vi.fn() };
+    render(<SeriesViewer />);
+    for (const name of ["Surface", "Term", "Lanes"]) {
+      const tab = screen.getByRole("tab", { name }) as HTMLButtonElement;
+      expect(tab.disabled).toBe(false);
+      expect(tab.getAttribute("title")).toBeNull();
+    }
+    // Surface: the stage mounts with the Sheets | Difference toggle in the control row.
+    fireEvent.click(screen.getByRole("tab", { name: "Surface" }));
+    const surface = screen.getByTestId("surface-stage");
+    expect(surface.getAttribute("data-mode")).toBe("sheets");
+    expect(surface.getAttribute("data-ticker")).toBe("SPY");
+    expect(surface.getAttribute("data-series")).toBe("s1");
+    expect(screen.getByRole("tab", { name: "Surface" }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Difference" }));
+    expect(screen.getByTestId("surface-stage").getAttribute("data-mode")).toBe("difference");
+    expect(screen.getByRole("button", { name: "Difference" }).getAttribute("aria-pressed")).toBe("true");
+    // Term: the toggle leaves with the Surface stage; the stage gets the shown expiry.
+    fireEvent.click(screen.getByRole("tab", { name: "Term" }));
+    expect(screen.getByTestId("term-stage").getAttribute("data-expiry")).toBe("2026-12-18");
+    expect(screen.queryByRole("button", { name: "Difference" })).toBeNull();
+    // Lanes: the evidence stage gets the series id, the playhead and the caches' epoch.
+    fireEvent.click(screen.getByRole("tab", { name: "Lanes" }));
+    const lanes = screen.getByTestId("lanes-stage");
+    expect(lanes.getAttribute("data-series")).toBe("s1");
+    expect(lanes.getAttribute("data-index")).toBe("0");
+    expect(lanes.getAttribute("data-epoch")).toContain("s1|");
+    expect(screen.queryByTestId("smile-stage")).toBeNull();
+    // And back to the Smile stage.
+    fireEvent.click(screen.getByRole("tab", { name: "Smile" }));
+    expect(screen.getByTestId("smile-stage")).toBeTruthy();
   });
 });

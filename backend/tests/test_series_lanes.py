@@ -342,9 +342,12 @@ def test_creation_warns_about_the_active_filter_under_calendar_coupling(tmp_path
     spec = SeriesSpec(name="x", ticker="ALPHA", clock=SeriesClock(step="15m", count=3),
                       lanes=[FREE, active])
     warn = lane_warnings(state, spec)
-    assert len(warn) == 1 and "+ filter" in warn[0] and "calendar" in warn[0]
+    assert len(warn) == 1 and "+ filter" in warn[0] and "active filter" in warn[0]
     daily = spec.model_copy(update={"clock": SeriesClock(step="daily", count=3)})
     assert lane_warnings(state, daily) == []
+    # calendar coupling off does not lift it: the MAP block itself is the finding
     relaxed = active.model_copy(update={"patchOptions": {"observationFilterMode": "active",
                                                           "enforceCalendar": False}})
-    assert lane_warnings(state, spec.model_copy(update={"lanes": [relaxed]})) == []
+    assert len(lane_warnings(state, spec.model_copy(update={"lanes": [relaxed]}))) == 1
+    overlay = active.model_copy(update={"patchOptions": {"observationFilterMode": "overlay"}})
+    assert lane_warnings(state, spec.model_copy(update={"lanes": [overlay]})) == []

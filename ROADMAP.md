@@ -443,9 +443,74 @@ frame 2, the Frames stage lists 6 rows, the dialog opens and closes, no
 page errors — screenshots `.smoke/series-*.png`. Riders: the stage tabs
 Surface · Term · Lanes are disabled until S5; the live frame `ts` is the
 chain's own timestamp (identical across frames on the synthetic source);
-a series deep link still needs `node=`; no walkthrough step. NEXT: S5
-(Surface · Term · Lanes stages, ghost trails on the surface, the evidence
-table, the FilterTimeline fed by the lane ring).
+a series deep link still needs `node=`; no walkthrough step.
+
+**S5 — Surface · Term · Lanes stages SHIPPED 2026-09-10n.** Backend:
+`api/series_evidence.py` — `GET /series/{id}/evidence?lanes=&expiry=` =
+per lane over the ready frames, DERIVED FROM THE STRIP (one source): mean
+rms / max bp, the worst frame, the HANDLE-PATH ROUGHNESS (mean |Δσ_atm|
+in bp and mean |Δskew| between consecutive frames — what a prior or a
+filter damps, read beside the rms it costs), mean (and mean absolute)
+pull, mean fit ms, the ATM ζ spread; `GET /series/{id}/lanes/{lane}/filter`
+(the expiries a lane keeps a ring for) and `…/filter/{expiry}` (the ring's
+steps in the live `/filter/history` wire shape + `frameIdx` per step —
+matched by ORDER, never by clock: a step's `ts` is the app's local-clock
+epoch of a naive stamp); the strip gained `skew` / `curvature`. Locks:
+test_series_evidence (3: the evidence checked by hand against the strip,
+the rings + frameIdx, the routes); series suite 71 green. Frontend (two
+write-only agents): Surface stage (`lib/seriesSurface.ts`: a lane's σ(k, τ)
+grid → `SurfaceMeshData` with τ per frame; one `SurfaceMesh` sheet per
+visible lane sharing camera / crop window / crosshair under
+`series:<id>`; "Difference" = the production sheet beside one signed
+lane − production sheet per other lane drawn with the LV compare's
+diverging heatmap in vol bp), Term stage (`TermChart` gains a `lanes`
+slot through `components/term/LaneTermLayer.tsx` — ATM polylines +
+dashed var-swap polylines + markers + legend, placed by calendar t; the
+production lane's points / forward-variance curve built by
+`lib/seriesTerm.ts` mirroring the backend's curve), Lanes stage
+(`components/series/LanesStage.tsx` + `LanesTable` + `LanesFilterPanel`:
+a metric chip row rms · max · pull · ζ · fit ms · ATM σ · skew ·
+curvature over `OverlayCurvesChart` across frames with the playhead as
+a dashed vertical series + per-lane markers; the summary table with the
+best value per column highlighted, the worst frame clickable → scrub, the
+roughness caption; the filter panel — lane / expiry / handle selects —
+drawing `FilterTimeline` with a NEW optional `cursor` prop (off by
+default, the live Filter view untouched) at the ring step of the
+playhead's frame), the three stage tabs enabled, a Sheets | Difference
+toggle, `views/series/StageSwitch.tsx`. Locks: 54 new vitest cases; the
+whole frontend 794 / 112 green, tsc + build clean. `smoke_server.py`
+gained `--db` / `--tickers` (serve a PREPARED store). LIVE CHECKS:
+`scripts/series_check.mjs` (:4197) extended with the three stages (7
+steps green; the third lane runs the OVERLAY filter so the ring panel
+shows); NEW `scripts/series_evidence_check.mjs` (:4198) on the prepared
+store `backtest/results/series_evidence.sqlite` = the V3.8 replay-day SPY
+series (25 frames × 15 min, six expiries) under LQD free / + prior /
++ prior + overlay filter — built in 63 s (free 340 ms per frame, prior
+1,017 ms, overlay 1,069 ms; 450 fits, 0 failures) — screenshots of the
+Smile / Surface (sheets + difference) / Term / Lanes stages,
+`.smoke/series-evidence-*.png`. **THE EXIT READOUT on the one-day rung
+2026-08-20 at 15 min:** free rms 4.66 bp, roughness ATM 18.36 bp per
+frame; + prior rms 5.20 bp, roughness 17.49 bp, |pull| 3.57 bp — the
+hybrid prior damps the ATM path by ~5 % for +0.5 bp of rms; the overlay
+filter leaves the fit untouched (identical numbers) and adds the ring
+(ζ_ATM std 0.82). On the far rung 2026-10-16 the three lanes agree
+(roughness 4.2 bp, rms 4.7 vs 5.2). **FINDING WIDENED (2026-09-10n):**
+the ACTIVE filter's MAP block itself is not usable at intraday cadence on
+a ladder with short rungs — with calendar coupling OFF the
+`lqd_prior_filter` lane on the replay-day store took 313 s on one frame,
+failed 10 slices and fit at a 299 bp median rms (the predicted variances
+collapse on a one-day rung, the block dominates the quotes); the free
+and prior lanes are fine (340 / 1,017 ms, 4.6 / 5.3 bp). The creation
+warning now fires for ANY active-filter lane on a sub-day series; the
+preset keeps the desk's semantics (active) for the observation-filter
+arc to fix. Riders: `TermChart` sits at 549 lines (pre-existing; the
+lane layer added 23); the difference sheet's axis is K/F whatever the
+lens axis and it ignores the shared crop (the LV compare precedent); a
+τ crop resets per frame (τ shrinks); the Lanes chart does not scrub on
+click (`OverlayCurvesChart` has no pointer-with-x). NEXT: S6
+(`volfit-series/1` export / import, Adopt as prior, PNG frame export, the
+MCP tools `create_series` / `wait_for_series` / `series_report` /
+`chart_series_frame`).
 
 User ask (2026-09-10): "harvest, store and replay a time-series of smiles /
 surface for a given ticker and a given period and frequency: choose a
@@ -1851,7 +1916,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10m (resume here)
+## STATUS — updated 2026-09-10n (resume here)
 
 ### ▶ CURRENT ARC: the SERIES ARC (adopted 2026-09-10, D1–D12 RATIFIED) —
 harvest / store / replay a time-series of smiles and surfaces for one
@@ -1878,21 +1943,28 @@ lens registration + Help Center pieces; `useSeries`; SeriesViewer with
 the header, the New series dialog + lane composer, the Frames table, the
 transport bar, the filmstrip, the Smile stage through the new
 `SmileChart.lanes` slot; 63 vitest locks, 740 / 104 green, tsc + build
-clean; live-checked on :4197 with screenshots). On "continue the series
-arc" work S5 → S7 in order: S5 = the Surface stage (N `SurfaceMesh` sheets
-from `FramePayload.lanes[*].surface` with a shared camera / crop / hover
-— the `LvCompareView` precedent — plus a signed difference sheet vs the
-production lane; τ per frame), the Term stage (`TermChart` gains a lanes
-slot: ATM vol + var-swap vol per expiry per lane from `lanes[*].term`,
-both clocks), the Lanes stage (`OverlayCurvesChart` over the strip
-metrics across frames; the summary table: mean rms, worst frame, the
-handle-path roughness = mean |Δσ_atm| and |Δskew| between consecutive
-frames; the lane's FilterTimeline ring from
-`GET /series/{id}/lanes/{lane}/filter/{expiry}` — a new route reading
-`series_lanes.filter_json` — with the playhead as its cursor), ghost
-trails on the surface (rider if the SVG cost bites); exit: the three
-lanes Free / + Prior / + Filter on the V3.8 replay-day store show the
-damping and its rms cost on one screen.
+clean; live-checked on :4197 with screenshots), **S5** (2026-09-10n: the
+Surface · Term · Lanes stages — `series_evidence` (the roughness table +
+the lane filter rings by frame order), sheets + difference surfaces, the
+term chart's lane layer, the Lanes stage with the metric chart, the
+summary table and the FilterTimeline cursor; 794 / 112 green; the exit
+readout on the replay-day SPY series: the hybrid prior damps the one-day
+rung's ATM path 18.4 → 17.5 bp per frame for +0.5 bp rms; the active
+filter's MAP block is not usable at intraday cadence on short rungs —
+finding widened, creation warns). On "continue the series arc" work S6 →
+S7 in order: S6 = `api/series_files.py` + `lib/seriesFile.ts`
+(`volfit-series/1` = spec + lanes + frames (chains through
+`export_inputs.export_chain`) + fits + carries; import recreates the
+series idempotently by id; File ▾ rows through the command registry +
+drop routing beside the snapshot file), `POST /series/{id}/adopt-prior
+{lane, idx}` (→ `priors.capture_snapshot` on a lane state of that frame →
+`state.save_prior_snapshot` = activate, a governance event with the
+series id), PNG export of the current frame through `lib/chartPng.ts`,
+the MCP tools `create_series` / `wait_for_series` / `series_report` /
+`chart_series_frame` (an MCP App with a scrubber over frame payloads) on
+the `volfit_mcp/jobs.py` pattern + a connector guide paragraph; exit:
+export → delete → import round-trips byte-identically; Adopt as prior
+lights the live + Prior cell for that node.
 
 ### ▶ NEXT: the 2026-09-09/10 confirm-per-item pass (wraps 2026-09-09i →
 2026-09-10f below) worked this list top to bottom — SHIPPED: the connector's

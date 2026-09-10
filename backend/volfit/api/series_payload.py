@@ -47,7 +47,7 @@ from volfit.models.lqd.calibrate import CalibrationResult
 from volfit.models.lqd.quadrature import build_slice
 
 #: The filmstrip's per-lane metrics (frontend seriesTypes.STRIP_METRICS).
-STRIP_METRICS = ("rmsBp", "maxIvBp", "pullAtmBp", "zetaAtm", "fitMs")
+STRIP_METRICS = ("rmsBp", "maxIvBp", "pullAtmBp", "zetaAtm", "fitMs", "skew", "curvature")
 #: The Surface stage's k grid (log-moneyness), shared by every expiry.
 SURFACE_K = np.linspace(-0.6, 0.4, 61)
 _CACHE_SIZE = 96
@@ -251,6 +251,9 @@ def strip_payload(state, series_id: str, lane_ids: list[str] | None = None,
             metrics[lane.id]["pullAtmBp"].append(pick.metrics.get("pullAtmBp") if pick else None)
             metrics[lane.id]["zetaAtm"].append(zeta[0] if isinstance(zeta, list) and zeta else None)
             metrics[lane.id]["fitMs"].append(pick.fitMs if pick else None)
+            metrics[lane.id]["skew"].append(pick.metrics.get("skew") if pick else None)
+            metrics[lane.id]["curvature"].append(
+                pick.diagnostics.get("curvature") if pick else None)
     return StripPayload(
         seriesId=series_id, idx=[f.idx for f in frames], ts=[f.ts for f in frames],
         spot=[f.spot for f in frames], atmVol=atm, lanes=metrics,

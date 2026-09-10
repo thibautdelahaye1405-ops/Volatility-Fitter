@@ -75,11 +75,15 @@ function stepTitle(s: FilterStepWire, h: number, multiDay: boolean): string {
   );
 }
 
-/** The stacked evidence charts for one handle. Pure render — no fetching. */
-export function FilterTimeline({ steps, handle }: { steps: FilterStepWire[]; handle: number }) {
+/** The stacked evidence charts for one handle. Pure render — no fetching.
+ *  `cursor` (optional, off by default — the live Filter view never passes
+ *  it) is a step index the Series lens's playhead sits on: a violet line
+ *  through every strip at that step. */
+export function FilterTimeline({ steps, handle, cursor }: { steps: FilterStepWire[]; handle: number; cursor?: number | null }) {
   const { ref, size } = useElementSize();
   const innerW = Math.max(0, size.width - ML - MR);
   const n = steps.length;
+  const cursorX = cursor != null && Number.isInteger(cursor) && cursor >= 0 && cursor < n ? cursor : null;
   const multiDay = spansDays(steps);
   const xScale = linearScale([0, Math.max(n - 1, 1)], [0, innerW]);
   const xs = steps.map((_, i) => xScale.map(i));
@@ -117,10 +121,25 @@ export function FilterTimeline({ steps, handle }: { steps: FilterStepWire[]; han
 
   const xTicks = tickIndices(n);
 
+  const svgH = bandH + zH + gH + qH + 58;
+
   if (size.width === 0) return <div ref={ref} className="h-2 w-full" />;
   return (
     <div ref={ref} className="w-full">
-      <svg width={size.width} height={bandH + zH + gH + qH + 58} className="block select-none">
+      <svg width={size.width} height={svgH} className="block select-none">
+        {/* ---- the Series playhead's step (optional) ---- */}
+        {cursorX !== null && (
+          <line
+            x1={ML + xs[cursorX]}
+            x2={ML + xs[cursorX]}
+            y1={0}
+            y2={svgH - 20}
+            stroke="rgb(167 139 250 / 0.95)"
+            strokeWidth={1.5}
+            pointerEvents="none"
+            data-testid="filter-cursor"
+          />
+        )}
         {/* ---- bands: prediction / observation / posterior ---- */}
         <g transform={`translate(${ML},4)`}>
           {bTicks.map((t) => (

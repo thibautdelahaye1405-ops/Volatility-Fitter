@@ -30,19 +30,26 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--port", type=int, default=4188)
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--db", default=None,
+                    help="serve a PREPARED store instead of a throw-away one (a series "
+                         "evidence check: the store already holds the series)")
+    ap.add_argument("--tickers", default=None,
+                    help="comma-separated synthetic universe (default: the provider's own)")
     args = ap.parse_args()
 
     tmp = Path(tempfile.mkdtemp(prefix="volfit_smoke_"))
-    provider = SyntheticProvider(reference_date=REF_DATE)
+    tickers = tuple(t.strip().upper() for t in args.tickers.split(",")) if args.tickers else None
+    provider = (SyntheticProvider(reference_date=REF_DATE, tickers=tickers) if tickers
+                else SyntheticProvider(reference_date=REF_DATE))
     app = create_app(
         reference_date=REF_DATE,
         providers={"synthetic": provider},
         active_source="synthetic",
-        store_path=str(tmp / "smoke.sqlite"),
+        store_path=args.db or str(tmp / "smoke.sqlite"),
     )
     if not mount_frontend(app):
         raise SystemExit("no frontend/dist bundle — run `npm run build` in frontend/ first")
-    print(f"smoke server: frontend={find_frontend_dist()} db={tmp} port={args.port}", flush=True)
+    print(f"smoke server: frontend={find_frontend_dist()} db={args.db or tmp} port={args.port}", flush=True)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 

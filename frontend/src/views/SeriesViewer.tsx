@@ -3,29 +3,30 @@
 // lens: the ticker and expiry come from the enclosing scope (the tab),
 // never from selectors of its own. Layout, top to bottom: SeriesHeader
 // (picker · job verbs · lane chips · stage tabs) / a control row (axis ·
-// ghost trail · the expiry note) / the stage (SmileStage or FramesTable) /
-// Filmstrip / TransportBar sticky at the bottom. Keys with the lens focused:
-// Space, ← / →, Shift+← / →, Home / End, L (lib/seriesPlayback keyAction).
-// The data plumbing lives in views/series/useSeriesSelection, the per-tab
-// view memory in useSeriesViewState, the pure selectors in seriesSelectors.
-// Live server with a store only (VOLFIT_DB) — the empty states say so.
+// ghost trail · the Surface stage's Sheets | Difference · the expiry note) /
+// the stage (views/series/StageSwitch: Smile · Frames · Surface · Term ·
+// Lanes) / Filmstrip / TransportBar sticky at the bottom. Keys with the lens
+// focused: Space, ← / →, Shift+← / →, Home / End, L (lib/seriesPlayback
+// keyAction). The data plumbing lives in views/series/useSeriesSelection,
+// the per-tab view memory in useSeriesViewState, the pure selectors in
+// seriesSelectors. Live server with a store only (VOLFIT_DB) — the empty
+// states say so.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import SeriesHeader from "../components/series/SeriesHeader";
-import FramesTable from "../components/series/FramesTable";
 import NewSeriesDialog from "../components/series/NewSeriesDialog";
 import TransportBar from "../components/series/TransportBar";
 import Filmstrip from "../components/series/Filmstrip";
-import SmileStage from "../components/series/SmileStage";
 import { useSeriesPlayback } from "../state/useSeriesPlayback";
 import { useSeriesFrames } from "../state/useSeriesFrames";
 import { useSeriesStrip } from "../state/useSeriesStrip";
 import { keyAction } from "../lib/seriesPlayback";
 import { useSmileSession } from "../state/smileSession";
 import type { FrameDoc, LaneSpec } from "../lib/seriesTypes";
-import { buttonClass, cardClass, chartMessageClass, primaryButtonClass, selectClass } from "../lib/ui";
+import { buttonClass, cardClass, chartMessageClass, chipClass, primaryButtonClass, selectClass } from "../lib/ui";
+import StageSwitch from "./series/StageSwitch";
 import { useSeriesSelection } from "./series/useSeriesSelection";
-import { AXIS_OPTIONS, GHOST_OPTIONS, useSeriesViewState } from "./series/useSeriesViewState";
+import { AXIS_OPTIONS, GHOST_OPTIONS, SURFACE_MODES, useSeriesViewState } from "./series/useSeriesViewState";
 import { ghostTrail, pickExpiry, productionLane } from "./series/seriesSelectors";
 
 const EMPTY_FRAMES: FrameDoc[] = [];
@@ -61,7 +62,7 @@ export default function SeriesViewer() {
   const { ticker, expiry: tabExpiry, source, fitMode: sessionFitMode } = useSmileSession();
   const live = source === "live";
   const view = useSeriesViewState();
-  const { seriesId, stage, hidden, axisMode, ghost, kWindow, patch, toggleLane } = view;
+  const { seriesId, stage, hidden, axisMode, ghost, kWindow, surfaceMode, patch, toggleLane } = view;
   const sel = useSeriesSelection(ticker, live, seriesId, (id) => patch({ seriesId: id }));
   const { doc, progress, epochKey, pendingActive, pendingFrame, clearPending } = sel;
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -155,6 +156,15 @@ export default function SeriesViewer() {
               {GHOST_OPTIONS.map((g) => <option key={g} value={g}>{g === 0 ? "off" : `${g} frame${g > 1 ? "s" : ""}`}</option>)}
             </select>
           </label>
+          {stage === "surface" && (
+            <span className="flex items-center gap-1" role="group" aria-label="Surface mode">
+              {SURFACE_MODES.map((m) => (
+                <button key={m.id} type="button" aria-pressed={surfaceMode === m.id} className={chipClass(surfaceMode === m.id)} onClick={() => patch({ surfaceMode: m.id })}>
+                  {m.label}
+                </button>
+              ))}
+            </span>
+          )}
           {shownExpiry !== null && rolled && (
             <span className="text-amber-400/80" data-testid="expiry-note">
               Expiry {tabExpiry} is not in this frame — showing the nearest later expiry {shownExpiry}.
@@ -163,22 +173,27 @@ export default function SeriesViewer() {
           {sel.error && <span className="text-rose-400">{sel.error}</span>}
         </div>
         <div className={`${cardClass} flex min-h-0 flex-1 flex-col p-3`} data-chart-card="">
-          {stage === "frames" ? (
-            <FramesTable frames={frames} index={playback.index} onJump={(idx) => update({ index: idx })} />
-          ) : (
-            <SmileStage
-              frame={frame}
-              lanes={lanes}
-              hidden={hidden}
-              expiry={shownExpiry}
-              axisMode={axisMode}
-              kWindow={kWindow}
-              onKWindowChange={(w) => patch({ kWindow: w })}
-              ghostCurves={ghostCurves}
-              fitMode={doc.spec.fitMode}
-              loading={frameLoading}
-            />
-          )}
+          <StageSwitch
+            stage={stage}
+            seriesId={doc.id}
+            ticker={ticker}
+            frame={frame}
+            frames={frames}
+            index={playback.index}
+            strip={strip}
+            lanes={lanes}
+            hidden={hidden}
+            expiry={shownExpiry}
+            axisMode={axisMode}
+            surfaceMode={surfaceMode}
+            kWindow={kWindow}
+            onKWindowChange={(w) => patch({ kWindow: w })}
+            ghostCurves={ghostCurves}
+            fitMode={doc.spec.fitMode}
+            loading={frameLoading}
+            epoch={epoch}
+            onScrub={(idx) => update({ index: idx })}
+          />
         </div>
         <div className="shrink-0">
           <Filmstrip strip={strip} lanes={lanes} hidden={hidden} index={playback.index} onScrub={(idx) => update({ index: idx })} />

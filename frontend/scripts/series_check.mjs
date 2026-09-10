@@ -9,7 +9,9 @@
 //      list the series, the transport bar and a smile with the lanes drawn;
 //   3. play: the readout's frame index advances; scrub to the last frame;
 //      keys: Home / ArrowRight / Space; the Frames stage lists every frame;
-//   4. the New series dialog opens and closes (Escape).
+//   4. the New series dialog opens and closes (Escape);
+//   5. the S5 stages: Surface sheets + the Difference toggle, the Term chart's
+//      lane paths, the Lanes table (three lanes) + the filter panel (S5).
 // Port 4197 — NOT 4190 (the WHATWG fetch bad-ports list). Screenshots in
 // .smoke/series-*.png. Prereqs: npm run build, Edge, ../.venv.
 import { existsSync, mkdirSync } from "node:fs";
@@ -85,7 +87,10 @@ try {
   const universe = await api("GET", "/universe");
   const ticker = universe.tickers[0];
   const presets = await api("GET", "/series/presets");
-  const lanes = presets.filter((p) => p.id === "lqd_free" || p.id === "lqd_prior");
+  const lanes = presets.filter((p) => p.id === "lqd_free" || p.id === "lqd_prior" || p.id === "lqd_prior_filter")
+    .map((p) => (p.id === "lqd_prior_filter"
+      ? { ...p, name: "LQD-16 + filter", patchOptions: { ...p.patchOptions, observationFilterMode: "overlay" } }
+      : p));
   const start = new Date(Date.now() - 6 * 60 * 1000).toISOString();
   const created = await api("POST", "/series", {
     name: `${ticker} smoke series`, ticker, mode: "live",
@@ -175,6 +180,36 @@ try {
     await page.screenshot({ path: `${OUT}series-dialog.png` });
     await page.keyboard.press("Escape");
     await sleep(400);
+  });
+
+  // 5. The S5 stages: Surface (sheets + difference), Term (lane paths), Lanes (table + filter ring).
+  const stageTab = async (label) => {
+    const [tab] = await page.$$(`xpath/.//main//button[normalize-space()="${label}"]`);
+    if (!tab) throw new Error(`the ${label} stage tab is missing`);
+    await tab.click();
+    await sleep(700);
+  };
+  await step("series-surface-stage", async () => {
+    await stageTab("Surface");
+    await waitFor(page, () => document.querySelectorAll('[data-testid="series-surface-sheet"]').length >= 2, "two surface sheets");
+    await page.screenshot({ path: `${OUT}series-surface.png` });
+    const [diff] = await page.$$('xpath/.//main//button[normalize-space()="Difference"]');
+    if (!diff) throw new Error("the Difference toggle is missing");
+    await diff.click();
+    await waitFor(page, () => !!document.querySelector('[data-testid="series-surface-diff"]'), "a difference sheet");
+    await page.screenshot({ path: `${OUT}series-surface-diff.png` });
+  });
+  await step("series-term-stage", async () => {
+    await stageTab("Term");
+    await waitFor(page, () => !!document.querySelector('[data-testid="series-term-stage"] path[data-lane]'), "a lane path on the term chart");
+    await page.screenshot({ path: `${OUT}series-term.png` });
+  });
+  await step("series-lanes-stage", async () => {
+    await stageTab("Lanes");
+    await waitFor(page, () => document.querySelectorAll("main table tbody tr").length >= 3, "the three lane rows");
+    await waitFor(page, () => !!document.querySelector('[data-testid="lanes-filter-panel"]'), "the filter panel", 20000);
+    await waitFor(page, () => !!document.querySelector('[data-testid="lanes-filter-panel"] svg'), "the filter ring chart", 20000);
+    await page.screenshot({ path: `${OUT}series-lanes.png` });
   });
 
   if (pageErrors.length) { failures += 1; console.error(`page errors: ${pageErrors.join(" | ")}`); }

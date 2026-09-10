@@ -5,15 +5,21 @@
 // Start; paused / failed / cancelled → Resume; queued / harvesting /
 // calibrating → Pause + Cancel), the lane chips (a colour swatch from the
 // lane style, ★ on the production lane, click = visibility) and the stage
-// tabs — Smile · Frames live, Surface · Term · Lanes muted until the next
-// phase. Pure presentation: every verb is a prop.
+// tabs — Smile · Frames · Surface · Term · Lanes (S5 lit the last three).
+// Pure presentation: every verb is a prop.
 import type { LaneSpec, SeriesDoc, SeriesProgress, SeriesSummary } from "../../lib/seriesTypes";
 import { laneStyle } from "../../lib/seriesLanes";
 import { statusTone } from "../../lib/seriesFormat";
 import { badgeClass, buttonClass, chipClass, primaryButtonClass, selectClass } from "../../lib/ui";
 
-export type SeriesStage = "smile" | "frames";
-const NEXT_PHASE = ["Surface", "Term", "Lanes"] as const;
+export type SeriesStage = "smile" | "frames" | "surface" | "term" | "lanes";
+export const SERIES_STAGES: readonly { id: SeriesStage; label: string }[] = [
+  { id: "smile", label: "Smile" },
+  { id: "frames", label: "Frames" },
+  { id: "surface", label: "Surface" },
+  { id: "term", label: "Term" },
+  { id: "lanes", label: "Lanes" },
+];
 
 export interface SeriesHeaderProps {
   ticker: string;
@@ -142,11 +148,9 @@ export default function SeriesHeader(props: SeriesHeaderProps) {
             ))}
           </div>
           <div className="ml-auto flex items-center gap-1" role="tablist" aria-label="Stage">
-            <button role="tab" aria-selected={stage === "smile"} className={chipClass(stage === "smile")} onClick={() => onStage("smile")}>Smile</button>
-            <button role="tab" aria-selected={stage === "frames"} className={chipClass(stage === "frames")} onClick={() => onStage("frames")}>Frames</button>
-            {NEXT_PHASE.map((n) => (
-              <button key={n} role="tab" aria-selected={false} disabled title="next phase" className={`${chipClass(false)} cursor-not-allowed opacity-50`}>
-                {n}
+            {SERIES_STAGES.map((s) => (
+              <button key={s.id} role="tab" aria-selected={stage === s.id} className={chipClass(stage === s.id)} onClick={() => onStage(s.id)}>
+                {s.label}
               </button>
             ))}
           </div>
