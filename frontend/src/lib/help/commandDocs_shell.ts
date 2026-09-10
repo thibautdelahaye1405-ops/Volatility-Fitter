@@ -48,6 +48,14 @@ export const COMMAND_DOCS_SHELL: CommandDoc[] = [
     guide: "quality",
     related: ["export.report", "export.surfacesJson", "lens.graph"],
   },
+  {
+    id: "lens.series",
+    summary: "Switch to the Series lens (Alt+6).",
+    details: "Shows the active tab's ticker as a time-series: the picker of its stored series (newest first), the **New series…** dialog (Historical / Live / Import, the clock, the ladder, the lane presets, an estimate before Start), the job's status pill with Start · Resume · Pause · Cancel, the lane chips (click = visibility, ★ = the production lane), and the Smile stage replayed frame by frame with the filmstrip and the transport bar (Space, ← / →, Shift+← / →, Home / End, L). A lane is a settings patch evaluated through time: its prior is its own previous frame, its filter state carries over. Needs the live server started with a store (VOLFIT_DB).",
+    example: "Alt+6 on SPY 18-Dec-26, New series… → Historical, 15 min × 20, lanes LQD free and LQD + prior, Estimate, Start: the pill counts frames harvested then fits done; press Space to watch the smile move through the afternoon, the free lane in one colour and the prior lane in another.",
+    guide: "series",
+    related: ["lens.parametric", "help:guides:series", "help:glossary:series"],
+  },
   // -------------------------------------------------------------- Layout
   {
     id: "layout.nodesPane",

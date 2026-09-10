@@ -104,7 +104,7 @@ describe("LvCompareChips", () => {
 
   it("shows no strip before the first payload", () => {
     render(
-      <LvCompareChips tInterp="buckets" onTInterpChange={() => {}} mode="smiles" onModeChange={() => {}} data={null} loading />,
+      <LvCompareChips tInterp="buckets" onTInterpChange={() => {}} tails="model" onTailsChange={() => {}} mode="smiles" onModeChange={() => {}} data={null} loading />,
     );
     expect(screen.queryByText(/round trip/)).toBeNull();
     expect(pressed(/^Buckets/)).toBe("true");

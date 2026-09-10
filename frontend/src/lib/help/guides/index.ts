@@ -3,14 +3,15 @@
 // the sibling modules (≤ 400 lines each): workbench.ts (getting-started,
 // workbench, files), universe.ts (universe, data-sources, workflow),
 // lenses_a.ts (graph, forwards), lenses_b.ts (parametric, localvol, quality),
-// options.ts (options, priors, filter), connector.ts (the MCP connector).
-// PURE DATA — vitest-testable.
+// series.ts (the Series lens, SERIES ARC S4), options.ts (options, priors,
+// filter), connector.ts (the MCP connector). PURE DATA — vitest-testable.
 import type { Activity } from "../../../state/workbenchPersist";
 import type { GuideId, GuidePage } from "../types";
 import { FILES, GETTING_STARTED, WORKBENCH } from "./workbench";
 import { DATA_SOURCES, UNIVERSE, WORKFLOW } from "./universe";
 import { FORWARDS, GRAPH } from "./lenses_a";
 import { LOCALVOL, PARAMETRIC, QUALITY } from "./lenses_b";
+import { SERIES } from "./series";
 import { FILTER, OPTIONS, PRIORS } from "./options";
 import { CONNECTOR } from "./connector";
 
@@ -26,6 +27,7 @@ export const GUIDES: GuidePage[] = [
   PARAMETRIC,
   LOCALVOL,
   QUALITY,
+  SERIES,
   OPTIONS,
   PRIORS,
   FILTER,
@@ -49,6 +51,7 @@ const LENS_GUIDE: Record<Activity, GuideId> = {
   parametric: "parametric",
   localvol: "localvol",
   quality: "quality",
+  series: "series",
 };
 
 /** The guide F1 opens for the active lens. */

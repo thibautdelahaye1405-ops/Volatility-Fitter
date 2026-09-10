@@ -33,6 +33,10 @@ import type { AutoScaleToggles } from "../lib/autoScaleY";
 import QuoteLayer from "./QuoteLayer";
 import RangeBrush from "./RangeBrush";
 import ZoomOverlay from "./charts/ZoomOverlay";
+import LaneCurvesLayer, { LaneLegendItems } from "./smile/LaneCurvesLayer";
+import type { LaneCurve } from "./smile/LaneCurvesLayer";
+
+export type { LaneCurve } from "./smile/LaneCurvesLayer";
 
 interface SmileChartProps {
   /** The PREVAILING market frame (layers 1 + 3): quotes + target and the fit
@@ -105,6 +109,11 @@ interface SmileChartProps {
   fitMode?: FitMode;
   /** Draw the fit-target overlay (mid polyline + bid-ask/haircut ribbons). */
   showTarget?: boolean;
+  /** The LANES overlay slot (Series lens, roadmap §3.4): named curves in the
+   *  market frame's moneyness drawn above the fit through the chart's own
+   *  transform (components/smile/LaneCurvesLayer); labelled ones join the
+   *  legend. Faintest first — the layer draws in the given order. */
+  lanes?: LaneCurve[] | null;
   /** Optional strip rendered between the plot and the RangeBrush (the V3.4
    *  weight strip mounts here). A render function: it receives the plot's
    *  LIVE x view and k → display transform, so the strip shares the chart's
@@ -192,6 +201,7 @@ export default function SmileChart({
   degraded = null,
   fitMode = "mid",
   showTarget = false,
+  lanes = null,
   footer = null,
   autoScaleY = DEFAULT_AUTOSCALE,
   onToggleAutoScale,
@@ -278,13 +288,14 @@ export default function SmileChart({
     if (filterBandLo) scan(filterBandLo);
     if (filterBandHi) scan(filterBandHi);
     if (filterPred) scan(filterPred);
+    if (lanes) for (const lane of lanes) scan(lane.points);
     for (const q of quotes) if (inView(q.k)) { yMin = Math.min(yMin, q.bid); yMax = Math.max(yMax, q.ask); }
     if (varSwapLevel !== null) { yMin = Math.min(yMin, varSwapLevel); yMax = Math.max(yMax, varSwapLevel); }
     if (!Number.isFinite(yMin)) { yMin = 0; yMax = 1; }
     const pad = Math.max(1e-4, (yMax - yMin) * 0.08);
     const yView = zoom.viewY([yMin - pad, yMax + pad]);
     return { xScale: xs, yScale: linearScale(yView, [plotH, 0]), xView: view };
-  }, [model, prior, scenario, calib, showCalibFit, showCalibQuotes, graphPost, graphBandLo, graphBandHi, inferred, filterPost, filterBandLo, filterBandHi, filterPred, quotes, varSwapLevel, kLo, kHi, plotW, plotH, tx, zoom]);
+  }, [model, prior, scenario, calib, showCalibFit, showCalibQuotes, graphPost, graphBandLo, graphBandHi, inferred, filterPost, filterBandLo, filterBandHi, filterPred, lanes, quotes, varSwapLevel, kLo, kHi, plotW, plotH, tx, zoom]);
 
   /** Build an SVG path for a curve in display coordinates (clip handles overflow). */
   const pathOf = (curve: SmilePoint[], txf: (k: number) => number = tx): string => {
@@ -490,6 +501,7 @@ export default function SmileChart({
             <span className="h-0 w-5 border-t-2 border-dashed border-teal-300" /> Filter pred
           </span>
         )}
+        {lanes !== null && lanes.length > 0 && <LaneLegendItems lanes={lanes} />}
         <span className="ml-auto text-[10px] text-slate-600">scroll: zoom · drag: pan · dbl-click: reset</span>
       </div>
 
@@ -662,6 +674,12 @@ export default function SmileChart({
                 {/* Market frame: the fit rolled to the prevailing spot (accent) */}
                 <path d={modelPath} fill="none" stroke="var(--color-accent-400)"
                   strokeWidth={2} strokeLinejoin="round" />
+
+                {/* The LANES slot (Series lens): other lanes + ghost frames,
+                    above the fit, through the same pixel maps. */}
+                {lanes !== null && lanes.length > 0 && (
+                  <LaneCurvesLayer lanes={lanes} toX={toX} toY={toY} />
+                )}
 
                 {/* Trigger-gated cue: no model curve yet — never calibrated,
                     or a NAMED degraded-market condition (unfittable data:

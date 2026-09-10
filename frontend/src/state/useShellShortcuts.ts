@@ -51,8 +51,9 @@ export function useShellShortcuts(): void {
         return;
       }
 
-      // Alt+1…5 — lens switch (Ctrl+digits are browser-reserved).
-      if (e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-5]$/.test(e.code)) {
+      // Alt+1…6 — lens switch, one digit per ACTIVITIES entry (Ctrl+digits
+      // are browser-reserved).
+      if (e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-6]$/.test(e.code)) {
         const idx = Number(e.code.slice(5)) - 1;
         const a = ACTIVITIES[idx];
         if (a) {

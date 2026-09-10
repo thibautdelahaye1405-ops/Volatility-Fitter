@@ -6,6 +6,16 @@ import type { WhatsNewEntry } from "./types";
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-09-10",
+    title: "The Series lens: a ticker's chains through time, calibrated under model lanes and replayed frame by frame",
+    items: [
+      "A sixth lens (Alt+6). **New series…** harvests one ticker's chains at a sequence of instants — historical through the source's as-of path, live one frame per tick, or imported from the app's captures, a backtest store or a fixture directory — and calibrates every frame under the lanes you tick: LQD free, LQD + prior, LQD + prior + filter, SVI-JW free, MCS free, LV affine free, LV affine + prior, or the current Options verbatim. A lane is evaluated through time: its prior is its own previous frame, its filter state carries over. The dialog estimates the harvest and calibration time before Start.",
+      "Replay with a transport bar (play / pause, ±1 and ±10 frames, first / last, loop, 0.25× … 8×) and the keys Space, ← / →, Shift+← / →, Home / End, L; a filmstrip of spot, ATM vol and fit error per lane across the frames; the playhead always names the instant and the quote kind, and nothing is interpolated between frames.",
+      "The Smile stage draws the frame's quotes and every visible lane's smile in the lane's colour, with a ghost trail of the production lane over the previous frames; the Frames table lists every instant (click = jump). Surface, Term and the Lanes evidence page arrive in the next phase.",
+      "Series live in the store: the lens needs the live server started with VOLFIT_DB. Help ▸ Guides ▸ *Series lens* has the details; a Workbench link can open a series at a frame (`?series=<id>&frame=<n>`).",
+    ],
+  },
+  {
     date: "2026-09-09",
     title: "Drive the desk from a Claude chat: the MCP connector, the routine in one call, four inline charts",
     items: [

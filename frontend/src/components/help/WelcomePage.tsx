@@ -17,7 +17,7 @@ const STEPS: { n: string; title: string; body: string; link: string }[] = [
   { n: "1", title: "Pick a universe", body: "Universe ▾ Manage universe… (Ctrl+Shift+U): add tickers, choose expiries, light the nodes you have quotes for, pick the data source. Save it under a name.", link: "help:guides:universe" },
   { n: "2", title: "Fetch a snapshot", body: "Fetch ▾ Snapshot pulls quotes + spot for every ticker at the chosen as-of (live, previous close, or a past moment).", link: "help:guides:workflow" },
   { n: "3", title: "Calibrate", body: "Calibrate ▾ fits every lit node — parametric smiles, the local-vol surface, or both — in the background; the status bar narrates progress.", link: "help:guides:workflow" },
-  { n: "4", title: "Read the surfaces", body: "Open nodes from the Nodes pane into tabs; switch lenses with Alt+1…5 — Graph, Forwards, Parametric, Local Vol, Quality — and publish from Quality.", link: "help:guides:workbench" },
+  { n: "4", title: "Read the surfaces", body: "Open nodes from the Nodes pane into tabs; switch lenses with Alt+1…6 — Graph, Forwards, Parametric, Local Vol, Quality, Series — and publish from Quality.", link: "help:guides:workbench" },
 ];
 
 const FAST: { icon: LucideIcon; title: string; body: string; command: string; label: string }[] = [

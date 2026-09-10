@@ -65,7 +65,7 @@ export const TOUR_STEPS: TourStep[] = [
     id: "activity",
     anchor: "activity",
     title: "Lenses",
-    body: "Five lenses, Alt+1 to Alt+5: Graph, Forwards, Parametric, Local Vol, Quality. A lens is a way of looking at the open tabs — switch it and every tab re-renders.\n\nGraph and Quality are universe-level: they render without a tab and highlight the active one.",
+    body: "Six lenses, Alt+1 to Alt+6: Graph, Forwards, Parametric, Local Vol, Quality, Series. A lens is a way of looking at the open tabs — switch it and every tab re-renders.\n\nGraph and Quality are universe-level: they render without a tab and highlight the active one.",
     placement: "right",
   },
   {

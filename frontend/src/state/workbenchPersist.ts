@@ -9,8 +9,9 @@ import type { ViewMemory } from "../lib/workbenchTabs";
 import { EMPTY_GROUPS, allTabs, restoreGroups } from "../lib/editorGroups";
 import type { GroupsState } from "../lib/editorGroups";
 
-/** The five activity-bar lenses, in bar order (user spec 2026-08-26). */
-export type Activity = "graph" | "forwards" | "parametric" | "localvol" | "quality";
+/** The six activity-bar lenses, in bar order (user spec 2026-08-26; Series
+ *  added by the SERIES ARC S4 — a node lens replaying a stored time-series). */
+export type Activity = "graph" | "forwards" | "parametric" | "localvol" | "quality" | "series";
 
 export const ACTIVITIES: { id: Activity; label: string; hint: string }[] = [
   { id: "graph", label: "Graph", hint: "Smile universe — propagate observations through the graph" },
@@ -18,6 +19,7 @@ export const ACTIVITIES: { id: Activity; label: string; hint: string }[] = [
   { id: "parametric", label: "Parametric", hint: "Per-node parametric smile fit (LQD / SVI-JW / MCS)" },
   { id: "localvol", label: "Local Vol", hint: "Direct local-volatility surface per ticker" },
   { id: "quality", label: "Quality", hint: "Fit-quality dashboard & publish readiness" },
+  { id: "series", label: "Series", hint: "Replay a harvested time-series of smiles and surfaces under model lanes" },
 ];
 
 export const ACTIVITY_IDS: readonly Activity[] = ACTIVITIES.map((a) => a.id);

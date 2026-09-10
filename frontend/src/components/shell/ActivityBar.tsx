@@ -1,10 +1,10 @@
 // Left activity bar (UI SHELL v2, S2; VS Code grammar): one icon per lens —
-// Graph · Forwards · Parametric · Local Vol · Quality — applied to every open
-// node tab. Alt+1…5 switch lenses. The bottom holds the two "manage" entries
-// (Universe dialog, Settings dialog) exactly where VS Code keeps Accounts /
-// Manage. The Local-Vol icon is inert while the Options master switch is
-// off (tooltip explains).
-import { Gauge, Settings, TrendingUp } from "lucide-react";
+// Graph · Forwards · Parametric · Local Vol · Quality · Series — applied to
+// every open node tab. Alt+1…6 switch lenses. The bottom holds the two
+// "manage" entries (Universe dialog, Settings dialog) exactly where VS Code
+// keeps Accounts / Manage. The Local-Vol icon is inert while the Options
+// master switch is off (tooltip explains).
+import { Film, Gauge, Settings, TrendingUp } from "lucide-react";
 import type { ComponentType } from "react";
 import { GraphIcon, LocalVolIcon, SmileIcon, UniverseIcon } from "./LensIcons";
 import { ACTIVITIES, useWorkbench } from "../../state/workbench";
@@ -12,7 +12,8 @@ import type { Activity } from "../../state/workbench";
 import { useWorkflowContext } from "../../state/workflowContext";
 
 /** Icon component per lens: custom drawings (LensIcons) where a generic
- *  glyph would not say what the lens is; lucide for Forwards and Quality. */
+ *  glyph would not say what the lens is; lucide for Forwards, Quality and
+ *  Series (a film strip: frames replayed in order). */
 type IconComponent = ComponentType<{ size?: number; strokeWidth?: number }>;
 const ICONS: Record<Activity, IconComponent> = {
   graph: GraphIcon,
@@ -20,6 +21,7 @@ const ICONS: Record<Activity, IconComponent> = {
   parametric: SmileIcon,
   localvol: LocalVolIcon,
   quality: Gauge,
+  series: Film,
 };
 
 function BarButton({

@@ -12,7 +12,7 @@ import { useOptionalWorkbench } from "./workbench";
 import { useNodeScope } from "./nodeScope";
 
 export function useLensViewMemory<T extends object>(
-  lens: "parametric" | "localvol",
+  lens: "parametric" | "localvol" | "series",
   defaults: T | (() => T),
 ): [T, (patch: Partial<T>) => void] {
   const wb = useOptionalWorkbench();

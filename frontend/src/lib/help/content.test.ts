@@ -17,7 +17,7 @@ const commandIds = new Set<string>(COMMANDS.map((c) => c.id));
 const glossaryIds = new Set(GLOSSARY.map((g) => g.id));
 const docIds = new Set(DOCS_CATALOG.map((d) => d.id));
 const settingKeys = new Set(SETTING_DOCS.map((s) => s.key));
-const GUIDE_IDS: GuideId[] = ["getting-started", "workbench", "universe", "data-sources", "workflow", "graph", "forwards", "parametric", "localvol", "quality", "options", "priors", "filter", "files", "connector"];
+const GUIDE_IDS: GuideId[] = ["getting-started", "workbench", "universe", "data-sources", "workflow", "graph", "forwards", "parametric", "localvol", "quality", "series", "options", "priors", "filter", "files", "connector"];
 
 /** A help: link must parse and its anchor must exist in the target corpus. */
 function expectLinkResolves(link: string, where: string) {
@@ -74,7 +74,7 @@ describe("tips", () => {
 describe("guides", () => {
   it("covers every GuideId once, maps every lens, and links resolve", () => {
     expect(GUIDES.map((g) => g.id).sort()).toEqual([...GUIDE_IDS].sort());
-    for (const lens of ["graph", "forwards", "parametric", "localvol", "quality"] as const) {
+    for (const lens of ["graph", "forwards", "parametric", "localvol", "quality", "series"] as const) {
       expect(guideForLens(lens)).toBe(lens);
       expect(guide(guideForLens(lens)).lens).toBe(lens);
     }

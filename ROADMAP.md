@@ -391,9 +391,61 @@ series creation now WARNS for that lane combination (`lane_warnings`:
 active + enforceCalendar + sub-day step) and the run keeps the phase-A
 fits. Riders: the prior lane's repair grind (profile the 44 s frame);
 shared de-Am prep across lanes (S7); free-lane frame parallelism; a
-resume retries failed (lane, frame) rows only on request. NEXT: S4 (the
-Series lens v1: registration, playback algebra, transport + filmstrip, the
-Smile stage with a `lanes` slot, the frame payload route, smoke on :4197).
+resume retries failed (lane, frame) rows only on request.
+
+**S4 — the Series lens v1 SHIPPED 2026-09-10m.** Backend:
+`api/series_payload.py` — `GET /series/{id}/frame/{idx}?lanes=` = the
+frame's market per expiry (the prepared quote bands with strikes and the
+fit-target edges, prepared on a detached state of the production lane) +
+per requested lane the slice curves sampled by `service.model_curve` on a
+record REBUILT from the stored doc (never a refit), a σ(k, τ) grid on a
+shared 61-point k grid for the Surface stage, the term points and the lane
+metrics, memoized on the app state per (series, frame, lanes, stored
+fits); `GET /series/{id}/strip?lanes=&expiry=` = the filmstrip (spot per
+frame; per lane atmVol of the shown expiry and rmsBp / maxIvBp / pullAtmBp
+/ zetaAtm / fitMs per frame); `GET /series/presets` (declared before the
+id routes). Locks: test_series_payload (5). Frontend (two write-only
+agents, the lead verifying): the lens registered in the six files
+(`Activity` "series", `Film` icon, `lensFor`, `lens.series` on Alt+6 with
+the shortcut doc widened, the deep link `&series=<id>&frame=<n>` consumed
+once through `state/seriesDeepLink.ts`, `useLensViewMemory("series")`),
+the Help Center pieces (guide `series` + LENS_GUIDE, the command doc,
+glossary `series` / `lane` / `frame`, What's new), `state/useSeries.ts`
+(list / doc / SSE status with a poll backstop / the verbs / presets),
+`views/SeriesViewer.tsx` (+ `views/series/*`: selection reconcile, doc
+re-read on the status counters, the shown expiry = the tab's or the
+nearest later one, the ghost trail through the cache's `peek`, keyboard
+Space / ← → / Shift / Home / End / L), `components/series/*` (SeriesHeader:
+picker · New series… · Delete · status pill · Start / Resume / Pause /
+Cancel by status · lane chips with the production ★ · stage tabs;
+NewSeriesDialog + LaneComposer: Historical / Live / Import, the clock, the
+ladder, the fit target, the presets as lanes with colour / rename /
+production, Estimate before Start; FramesTable; TransportBar: ⏮ ◀ ▶ ▶ ⏭,
+speed 0.25×–8× (1× = 500 ms per frame), loop, the scrubber with
+session-gap and warm-up marks, the readout `instant UTC · frame i/n ·
+NBBO|marks`; Filmstrip: spot · ATM σ · rms bp sparklines with the playhead,
+click / drag scrubs; SmileStage: the frame's quotes + the production
+lane as the fit, the other lanes through the NEW `SmileChart.lanes` slot
+(`components/smile/LaneCurvesLayer.tsx`, paths tagged `data-lane`), the
+ghost trail fading, the lane legend), the pure algebra
+`lib/seriesPlayback.ts` (a series NEVER autoplays; the terminal frame is
+absorbing unless loop), `lib/seriesFrameCache.ts` (LRU 48 + a prefetch
+plan, ±24 in the play direction, 2 in flight), `lib/seriesLanes.ts`
+(family colour + ordinal dash), `lib/filmstrip.ts`. Locks: 63 new vitest
+cases; the whole frontend 740 / 104 green, tsc clean, build green (a
+pre-existing LvCompareChips test render lacked the two tail props since
+0d6e89d — fixed). LIVE CHECK `scripts/series_check.mjs` (:4197): a live
+series created through the API on the synthetic source (6 frames due at
+once, LQD free + LQD prior), harvested + calibrated (36 fits), the lens
+opens with the series in the picker and the lane curves on the smile,
+Play advances the readout, the scrubber reaches 6/6, Home + → lands on
+frame 2, the Frames stage lists 6 rows, the dialog opens and closes, no
+page errors — screenshots `.smoke/series-*.png`. Riders: the stage tabs
+Surface · Term · Lanes are disabled until S5; the live frame `ts` is the
+chain's own timestamp (identical across frames on the synthetic source);
+a series deep link still needs `node=`; no walkthrough step. NEXT: S5
+(Surface · Term · Lanes stages, ghost trails on the surface, the evidence
+table, the FilterTimeline fed by the lane ring).
 
 User ask (2026-09-10): "harvest, store and replay a time-series of smiles /
 surface for a given ticker and a given period and frequency: choose a
@@ -1799,7 +1851,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10l (resume here)
+## STATUS — updated 2026-09-10m (resume here)
 
 ### ▶ CURRENT ARC: the SERIES ARC (adopted 2026-09-10, D1–D12 RATIFIED) —
 harvest / store / replay a time-series of smiles and surfaces for one
@@ -1820,18 +1872,27 @@ and checkpointed, the desk's own Calibrate items, `run_lanes` as the hook
 — `series_metrics`; the three D11 locks hold; measured 60 real SPY frames:
 free lane 28 s, hybrid-prior lane 160 s; FINDING: the active filter under
 the calendar-coupled solver grinds on a dense intraday ladder — creation
-warns, the run keeps the phase-A fits). On "continue the series arc" work
-S4 → S7 in order: S4 = the Series lens v1 — lens registration (the six
-files + guide + command docs + Alt+6 + deep link + `useLensViewMemory`),
-`lib/seriesPlayback.ts` (pure, vitest-locked, generalizing `lvTrace`),
-`state/useSeries.ts` + `useSeriesFrames.ts` (LRU + prefetch),
-`components/series/*` (header, lane chips, transport bar, filmstrip,
-frames table, the New series dialog with the estimate + lane composer),
-`views/SeriesViewer.tsx` with the Smile stage first (`SmileChart` gains a
-`lanes` slot), and the backend frame / strip payload routes (`GET
-/series/{id}/frame/{idx}`, `GET /series/{id}/strip` — curves evaluated
-from the stored params through the snapshot-file record rebuild, cached
-per (series, frame, lanes)); smoke `scripts/series_check.mjs` on :4197.
+warns, the run keeps the phase-A fits), **S4** (2026-09-10m: the Series
+lens v1 on Alt+6 — `series_payload` frame / strip / presets routes; the
+lens registration + Help Center pieces; `useSeries`; SeriesViewer with
+the header, the New series dialog + lane composer, the Frames table, the
+transport bar, the filmstrip, the Smile stage through the new
+`SmileChart.lanes` slot; 63 vitest locks, 740 / 104 green, tsc + build
+clean; live-checked on :4197 with screenshots). On "continue the series
+arc" work S5 → S7 in order: S5 = the Surface stage (N `SurfaceMesh` sheets
+from `FramePayload.lanes[*].surface` with a shared camera / crop / hover
+— the `LvCompareView` precedent — plus a signed difference sheet vs the
+production lane; τ per frame), the Term stage (`TermChart` gains a lanes
+slot: ATM vol + var-swap vol per expiry per lane from `lanes[*].term`,
+both clocks), the Lanes stage (`OverlayCurvesChart` over the strip
+metrics across frames; the summary table: mean rms, worst frame, the
+handle-path roughness = mean |Δσ_atm| and |Δskew| between consecutive
+frames; the lane's FilterTimeline ring from
+`GET /series/{id}/lanes/{lane}/filter/{expiry}` — a new route reading
+`series_lanes.filter_json` — with the playhead as its cursor), ghost
+trails on the surface (rider if the SVG cost bites); exit: the three
+lanes Free / + Prior / + Filter on the V3.8 replay-day store show the
+damping and its rms cost on one screen.
 
 ### ▶ NEXT: the 2026-09-09/10 confirm-per-item pass (wraps 2026-09-09i →
 2026-09-10f below) worked this list top to bottom — SHIPPED: the connector's

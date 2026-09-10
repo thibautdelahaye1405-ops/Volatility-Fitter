@@ -19,15 +19,20 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from volfit.api.schemas_series import (
+    FramePayload,
+    LaneSpec,
     SeriesCreateResponse,
     SeriesDoc,
     SeriesEstimate,
     SeriesListResponse,
     SeriesSpec,
+    StripPayload,
 )
 from volfit.api.series_create import SeriesSpecError, create_series, estimate
 from volfit.api.series_import import ImportError_, SeriesImportRequest, import_series
 from volfit.api.series_jobs import SeriesJobStatus, series_jobs_of
+from volfit.api.series_payload import UnknownSeriesError, frame_payload, strip_payload
+from volfit.api.series_presets import LANE_PRESET_IDS, lane_preset
 from volfit.api.series_store import SeriesStore
 from volfit.data.store import VolStore
 
@@ -58,6 +63,15 @@ def list_series(request: Request, ticker: str | None = None) -> SeriesListRespon
     state = _state(request)
     with VolStore(state.store_path) as store:
         return SeriesListResponse(series=SeriesStore(store).list(ticker))
+
+
+@router.get("/series/presets", response_model=list[LaneSpec])
+def series_presets(request: Request) -> list[LaneSpec]:
+    """The eight dialog presets resolved against the LIVE fit settings (S4;
+    declared before the id routes so "presets" is never read as an id)."""
+    state = request.app.state.volfit
+    base = state.fit_settings()
+    return [lane_preset(p, base) for p in LANE_PRESET_IDS]
 
 
 @router.get("/series/{series_id}", response_model=SeriesDoc)
@@ -149,6 +163,37 @@ def series_status(series_id: str, request: Request) -> SeriesJobStatus:
     state = _state(request)
     _known(state, series_id)
     return series_jobs_of(state).status(series_id)
+
+
+def _lane_ids(lanes: str | None) -> list[str] | None:
+    if lanes is None or not lanes.strip():
+        return None
+    return [x.strip() for x in lanes.split(",") if x.strip()]
+
+
+@router.get("/series/{series_id}/frame/{idx}", response_model=FramePayload)
+def series_frame(series_id: str, idx: int, request: Request,
+                 lanes: str | None = None) -> FramePayload:
+    """One frame's market + every requested lane's curves, grid, term points
+    and metrics (S4 §3.4; memoized per series / frame / lanes / stored fits)."""
+    state = _state(request)
+    try:
+        return frame_payload(state, series_id, idx, _lane_ids(lanes))
+    except UnknownSeriesError:
+        raise HTTPException(status_code=404, detail=f"unknown series {series_id!r}") from None
+    except IndexError:
+        raise HTTPException(status_code=404, detail=f"no frame {idx} in series {series_id!r}") from None
+
+
+@router.get("/series/{series_id}/strip", response_model=StripPayload)
+def series_strip(series_id: str, request: Request, lanes: str | None = None,
+                 expiry: str | None = None) -> StripPayload:
+    """The filmstrip: per frame scalars + per lane per metric one value per frame."""
+    state = _state(request)
+    try:
+        return strip_payload(state, series_id, _lane_ids(lanes), expiry)
+    except UnknownSeriesError:
+        raise HTTPException(status_code=404, detail=f"unknown series {series_id!r}") from None
 
 
 @router.get("/series/stream/{series_id}")

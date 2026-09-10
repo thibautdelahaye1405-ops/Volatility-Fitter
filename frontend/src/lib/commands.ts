@@ -69,6 +69,7 @@ export const COMMANDS = [
   { id: "lens.parametric", label: "Lens: Parametric", category: "Lens", shortcut: "Alt+3" },
   { id: "lens.localvol", label: "Lens: Local Vol", category: "Lens", shortcut: "Alt+4" },
   { id: "lens.quality", label: "Lens: Quality", category: "Lens", shortcut: "Alt+5" },
+  { id: "lens.series", label: "Lens: Series", category: "Lens", shortcut: "Alt+6", detail: "replay a time-series under model lanes" },
   // Layout
   { id: "layout.nodesPane", label: "Nodes pane", category: "Layout", shortcut: "Ctrl+B" },
   { id: "layout.aside", label: "Diagnostics aside", category: "Layout", detail: "fit / config side panels" },

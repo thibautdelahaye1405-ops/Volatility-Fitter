@@ -511,6 +511,20 @@ on 4197 (import a stored series on the smoke server, play, scrub, keys,
 screenshots). Exit: play / pause / scrub / step at 8× without a fetch stall on
 a 60-frame series; the walkthrough gains a Series step.
 
+(S4 as built, 2026-09-10m: the frame payload is `GET /series/{id}/frame/
+{idx}?lanes=` with `market[expiry] = {expiry, t, tau, forward, discount,
+spot, quotes: QuoteBand[]}` and per lane `{slices[{expiry, t, forward, k[],
+iv[], atmVol, skew, curvature, metrics}], surface{k[], tau[], expiries[],
+sigma[][]}, term[{expiry, t, atmVol, varSwapVol}], metrics, status}`,
+memoized per (series, frame, lanes, stored fits); the strip carries
+`atmVol[lane][]` of the shown expiry and `lanes[lane][rmsBp | maxIvBp |
+pullAtmBp | zetaAtm | fitMs][]`; `GET /series/presets` resolves the eight
+presets against the live settings. The lens: a series never autoplays;
+1× = 500 ms per frame; the smoke check creates a LIVE series through the
+API (the synthetic source has no history) rather than importing a stored
+one; the walkthrough step is deferred; the Surface · Term · Lanes tabs are
+disabled until S5.)
+
 ### S5 — Surface · Term · Lanes stages
 
 Surface stage (N `SurfaceMesh` sheets with shared camera / crop / hover, the

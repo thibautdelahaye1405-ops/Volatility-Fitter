@@ -121,7 +121,7 @@ Key commands (Windows, repo root):
             --regime spike_aug2024 --lv` then `-m backtest.analyze --results ...json`.
             Plan/params: backend\backtest\SPEC.md; module map: backend\backtest\README.md.
 - Frontend: cd frontend ; npm run dev   (talks to :8000 if up, else mock fallback + MOCK badge)
-- Frontend tests: cd frontend ; npm test   (vitest, 677 tests / 97 files as of 2026-09-10) ; npm run smoke:ui
+- Frontend tests: cd frontend ; npm test   (vitest, 740 tests / 104 files as of 2026-09-10l) ; npm run smoke:ui
             (headless-Edge WORKBENCH smoke; LIVE on a synthetic single-origin
             server — backend\smoke_server.py on :4188, throw-away DB — when
             ..\.venv exists, else vite preview + mock: first-run Welcome, lenses,
@@ -133,7 +133,16 @@ Key commands (Windows, repo root):
             scripts\lv_compare_check.mjs (the Local Vol Compare tab, :4194),
             scripts\surface_crop_check.mjs (the 3D surfaces' crop / zoom, :4195),
             scripts\weight_strip_check.mjs (the Weights strip on the smile's axis
-            + the Uniform scheme, :4196).
+            + the Uniform scheme, :4196), scripts\series_check.mjs (the Series lens:
+            a live series created through the API on the synthetic source, the
+            picker, play / scrub / keys, the Frames stage, the dialog, :4197).
+- Series (SERIES ARC, 2026-09-10): Docs\series_replay_roadmap.md = the spec (D1–D12
+            ratified) + per-phase as-built notes; backend volfit\api\series_*.py
+            (schemas / store / import / instants / harvest / create / jobs / lanes /
+            metrics / payload) + routers\series.py; the Series lens (Alt+6) =
+            frontend src\views\SeriesViewer.tsx + components\series\* + lib\series*.ts;
+            a series needs VOLFIT_DB. Backend locks tests\test_series_*.py +
+            test_store_series.py (~73, ~25 s).
 - MCP connector (2026-09-09c): backend\volfit_mcp = the app's API as a Model
             Context Protocol server for Claude Desktop / claude.ai (Docs\mcp_connector.md).
             `.venv\Scripts\python -m volfit_mcp` (stdio; registered in

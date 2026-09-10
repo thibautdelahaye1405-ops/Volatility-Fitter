@@ -21,6 +21,7 @@ import LocalVolViewer from "../../views/LocalVolViewer";
 import ForwardsViewer from "../../views/ForwardsViewer";
 import GraphViewer from "../../views/GraphViewer";
 import QualityViewer from "../../views/QualityViewer";
+import SeriesViewer from "../../views/SeriesViewer";
 import { ACTIVITIES, UNIVERSE_ACTIVITIES, useWorkbench } from "../../state/workbench";
 import type { Activity } from "../../state/workbench";
 import { useSmileSession } from "../../state/smileSession";
@@ -58,6 +59,7 @@ function lensFor(activity: Activity, onGraphSmile: () => void) {
   if (activity === "parametric") return <SmileViewer />;
   if (activity === "localvol") return <LocalVolViewer />;
   if (activity === "forwards") return <ForwardsViewer />;
+  if (activity === "series") return <SeriesViewer />; // node lens (SERIES ARC S4)
   if (activity === "graph") return <GraphViewer onNavigateToSmile={onGraphSmile} />;
   return <QualityViewer />;
 }

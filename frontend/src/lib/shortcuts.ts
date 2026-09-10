@@ -4,7 +4,7 @@
 //
 // Browser-reserved chords are avoided on purpose: Chrome/Edge keep Ctrl+1…9,
 // Ctrl+T/N/W and Ctrl+PageUp/PageDown for their own tabs, so the lens
-// switch rides Alt+1…5 and tab cycling rides Alt+←/→ (intercepted).
+// switch rides Alt+1…6 and tab cycling rides Alt+←/→ (intercepted).
 
 export interface Shortcut {
   keys: string;
@@ -23,7 +23,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "Ctrl+P", label: "Quick open — fuzzy-find a node, Enter opens its tab (Shift+Enter pins)" },
       { keys: "Ctrl+K", label: "Command palette — every menu row and verb (also Ctrl+Shift+P, or type > in quick open)" },
       { keys: "Ctrl+B", label: "Show / hide the Nodes pane" },
-      { keys: "Alt+1 … Alt+5", label: "Lens: Graph · Forwards · Parametric · Local Vol · Quality" },
+      { keys: "Alt+1 … Alt+6", label: "Lens: Graph · Forwards · Parametric · Local Vol · Quality · Series" },
       { keys: "Alt+← / Alt+→", label: "Previous / next node tab" },
       { keys: "Ctrl+\\", label: "Split the editor — adds a group after the focused one (up to three side by side); at three, folds them back into one (drag a tab or a node onto the right 20 % of the pane also splits)" },
       { keys: "Ctrl+Shift+\\", label: "Split the editor DOWN — two groups stacked (from a single group; drag onto the bottom 20 % of the pane also works)" },
