@@ -206,7 +206,7 @@ These fold into the LV *affine key* only — they never invalidate parametric fi
 | Field | Type | Default | Role |
 |---|---|---|---|
 | `rate` | float | 0.0 | Flat risk-free rate override. |
-| `dividendMode` | `continuous` \| `discrete` \| `mixed` \| (manual policies) | `continuous` | Dividend policy. |
+| `dividendMode` | `continuous` \| `discrete_absolute` \| `discrete_proportional` \| `mixed` | `continuous` | Dividend policy: a flat yield, a cash schedule, a proportional schedule, or discrete before `switchYears` and continuous after. |
 | `dividendYield` | float | 0.0 | Continuous yield. |
 | `dividends` | list | [] | Discrete dividend schedule (ex-date, amount). |
 | `switchYears` | float | 1.0 | Mixed-mode horizon: discrete before, continuous after. |

@@ -200,14 +200,14 @@ export const FILTER_DOCS: SettingDoc[] = [
       "`overlay` gates on today's innovation. `active` prices the surprise before the fit: " +
       "the level row through a fit-free ATM probe of the prepared mids, the shape rows " +
       "through the previous step's innovation. Measured on the spike fixtures: shock win rate " +
-      "0.42 → 1.00, ζ std 3.8 → 0.8. Not shown in the dialog.",
+      "0.42 → 1.00, ζ std 3.8 → 0.8.",
     example:
       "Set it to 0 and refetch after a 5-point jump: K(ATM) stays near its clock value and " +
       "the filtered ATM lags the market by most of the jump for several steps; at 3 the gate " +
       "fires on the first step and the posterior lands within a fraction of a point.",
     activation: "Read while the filter is `overlay` or `active`.",
     cacheEffect: "filter-version",
-    surfaced: false,
+    surfaced: true,
     related: ["filterProcessVolBpSqrtDay", "filterResidualInflation", "filterMaxGain"],
     docs: ["15_kalman_computed_trust"],
   },
@@ -275,14 +275,14 @@ export const FILTER_DOCS: SettingDoc[] = [
       "It is the sub-day workflow's setting. Do not confuse it with the maturity clock " +
       "(`intradayClock`, `sessionVarShare`, `nonTradingWeight`) — that one prices time to " +
       "expiry and carries different defaults for a nesting property. `filterResetHours` " +
-      "stays on calendar hours. Not shown in the dialog.",
+      "stays on calendar hours.",
     example:
       "Switch to `session` with `filterProcessVolBpSqrtDay = 90` on a 30-minute fetch " +
       "cadence: the Monday-morning prediction band is as wide as one overnight's, not three " +
       "days', and K(ATM) after the weekend matches the overnight value instead of ~1.",
     activation: "Read while the filter is `overlay` or `active`.",
     cacheEffect: "filter-version",
-    surfaced: false,
+    surfaced: true,
     related: ["filterSessionShare", "filterNonTradingWeight", "filterProcessVolBpSqrtDay",
       "intradayClock", "filterResetHours"],
     docs: ["15_kalman_computed_trust", "11_event_market_clock"],
@@ -297,14 +297,14 @@ export const FILTER_DOCS: SettingDoc[] = [
     details:
       "0.60 is the filter's own measured value from the 0DTE campaign — the remaining 0.40 is " +
       "the overnight. It is deliberately not the maturity clock's `sessionVarShare` (6.5/24), " +
-      "which is tuned so the legacy day convention nests. Not shown in the dialog.",
+      "which is tuned so the legacy day convention nests.",
     example:
       "Set 0.9: nearly all of a day's variance accrues during the session, so the intraday " +
       "bands widen and the overnight prediction band shrinks — the 55 bp overnight move then " +
       "reads as a ~3σ surprise and trips the adaptive gate.",
     activation: "Read only while `filterClock` is `session`.",
     cacheEffect: "filter-version",
-    surfaced: false,
+    surfaced: true,
     related: ["filterClock", "filterNonTradingWeight", "sessionVarShare"],
     docs: ["15_kalman_computed_trust", "11_event_market_clock"],
   },
@@ -319,13 +319,13 @@ export const FILTER_DOCS: SettingDoc[] = [
       "0.0 is the measured answer: a whole weekend moved the ATM handle ~55 bp, the same as " +
       "one overnight, so closed days should add no process variance. 1.0 recovers the " +
       "calendar behaviour where a 3-day weekend costs three full days of variance. Distinct " +
-      "from the maturity clock's `nonTradingWeight` (default 1.0). Not shown in the dialog.",
+      "from the maturity clock's `nonTradingWeight` (default 1.0).",
     example:
       "Set 1.0 with the session clock: the Monday prediction band is three times an " +
       "overnight's and the weekend ζ drops toward 0.23 — error bars four times too wide.",
     activation: "Read only while `filterClock` is `session`.",
     cacheEffect: "filter-version",
-    surfaced: false,
+    surfaced: true,
     related: ["filterClock", "filterSessionShare", "nonTradingWeight"],
     docs: ["15_kalman_computed_trust", "11_event_market_clock"],
   },

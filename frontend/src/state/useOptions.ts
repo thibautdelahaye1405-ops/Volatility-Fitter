@@ -136,6 +136,14 @@ export interface OptionsSettings {
   /** Innovation-gated adaptive process noise: surprises beyond this many
    *  sigmas raise the gain instead of lagging (0 = off). */
   filterAdaptiveSigma: number;
+  /** Clock the process noise accrues on: wall-clock calendar days (legacy,
+   *  byte-identical) or the intraday session variance clock — the sub-day
+   *  workflow's setting (distinct from the maturity clock `intradayClock`). */
+  filterClock: "calendar" | "session";
+  /** Session clock: share of a day's process variance inside the session. */
+  filterSessionShare: number;
+  /** Session clock: variance weight of a closed calendar day (0 = none). */
+  filterNonTradingWeight: number;
   /** Pilot safety cap on per-handle gains (1 = not binding). */
   filterMaxGain: number;
   /** Max data gap (hours) predicted across; longer resets the state. */
@@ -147,6 +155,9 @@ export interface OptionsSettings {
   gridStrikeMode: "delta" | "linear";
   gridXNodes: number;
   gridTNodes: number;
+  /** LV strike axis: guarantee at least this many vertices inside each
+   *  expiry's own traded range (the widest in-range gaps are split; 0 = off). */
+  gridXMinPerExpiry: number;
   gridRegLambda: number;
   gridRegRho: number;
   /** Force local vol sigma(x,t) convex in x below the 5Δ-put strike (soft hinge). */
@@ -288,12 +299,16 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   filterTransportNoiseScale: 0.1,
   filterResidualInflation: true,
   filterAdaptiveSigma: 3.0,
+  filterClock: "calendar",
+  filterSessionShare: 0.6,
+  filterNonTradingWeight: 0.0,
   filterMaxGain: 1.0,
   filterResetHours: 96.0,
   filterDataOnlyPrepass: false,
   gridStrikeMode: "delta",
   gridXNodes: 12,
   gridTNodes: 10,
+  gridXMinPerExpiry: 8,
   gridRegLambda: 1e-2,
   gridRegRho: 1.0,
   convexWing: false,

@@ -112,13 +112,13 @@ export const LV_GRID_DOCS: SettingDoc[] = [
       "Only under-resolved short-front expiries gain vertices; well-covered expiries are " +
       "untouched, often byte-identically. Even gap-filling was chosen over clustering the " +
       "expiry's own delta nodes, which left wing gaps and stalled at 37 bp. `0` disables the " +
-      "rule (legacy axis). Not surfaced in the dialog — set it through the API or the palette.",
+      "rule (legacy axis).",
     example:
       "Set it to 0 on a universe with a 6-day SPY weekly: that expiry lands ~3 vertices on " +
       "its curvature and its LV RMS jumps from ~28 bp (at 8) to ~108 bp, while the monthly " +
       "expiries fit exactly as before.",
     cacheEffect: "lv-affine-key",
-    surfaced: false,
+    surfaced: true,
     related: ["gridXNodes", "gridStrikeMode", "frontTie", "help:guides:localvol"],
     docs: ["04_local_volatility_forward"],
   },

@@ -99,6 +99,35 @@ export default function ObservationFilterPanel({
             disabled={disabled} onChange={(v) => patch({ filterMaxGain: v })} />
           <NumberRow label="Reset after (hours)" value={draft.filterResetHours} step={12}
             disabled={disabled} onChange={(v) => patch({ filterResetHours: v })} />
+          {/* The innovation gate and the process-noise clock (surfaced 2026-09-10;
+              API-only before): the two clock companions read only under the
+              session clock, so they dim on the calendar clock. */}
+          <NumberRow label="Adaptive gate (σ; 0 = off)" value={draft.filterAdaptiveSigma} step={0.5}
+            disabled={disabled} onChange={(v) => patch({ filterAdaptiveSigma: v })} />
+          <div className="flex items-center justify-between">
+            <span
+              className={rowLabel}
+              title="Clock the process noise accrues on: wall-clock calendar days (legacy, byte-identical) or the intraday session variance clock — the sub-day workflow's setting. Not the maturity clock."
+            >
+              Process-noise clock
+            </span>
+            <select
+              value={draft.filterClock}
+              disabled={disabled}
+              onChange={(e) => patch({ filterClock: e.target.value as "calendar" | "session" })}
+              className={`${numInput} w-32`}
+              data-testid="filter-clock"
+            >
+              <option value="calendar">Calendar</option>
+              <option value="session">Session</option>
+            </select>
+          </div>
+          <NumberRow label="Session share (of a day's variance)" value={draft.filterSessionShare} step={0.05}
+            disabled={disabled || draft.filterClock !== "session"}
+            onChange={(v) => patch({ filterSessionShare: v })} />
+          <NumberRow label="Non-trading day weight" value={draft.filterNonTradingWeight} step={0.1}
+            disabled={disabled || draft.filterClock !== "session"}
+            onChange={(v) => patch({ filterNonTradingWeight: v })} />
           <Toggle label="Residual inflation"
             hint="Inflate R by the realized fit inconsistency χ²/(m−d) (clipped), so an internally inconsistent fit is trusted less."
             checked={draft.filterResidualInflation} disabled={disabled}

@@ -1583,7 +1583,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-09k (resume here)
+## STATUS — updated 2026-09-10a (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -1709,16 +1709,21 @@ below) — every recorded rider is closed except the ones listed here:
    remote (bearer key + URL secret + allowed hosts + run script + tunnel
    recipe; OAuth server as the follow-on) was laid out and DEFERRED the same
    day.
-4. HELP CENTER riders (wrap 2026-08-31c below; none are gates): surface the
+4. HELP CENTER riders (wrap 2026-08-31c below; none are gates): ~~surface the
    API-only Options fields in the dialog (gridXMinPerExpiry,
    filterAdaptiveSigma, filterClock, filterSessionShare,
-   filterNonTradingWeight — streamRefitSeconds DONE 2026-09-02f: shown under
-   Spot prices while Stream live book is on + Real-time; the same commit dims
-   the options-quotes timer while streaming, user request) and align the
-   useOptions.ts mirror; lazy-load the
-   help corpus if the 1.30 MB bundle matters; try Ask's Claude tier against a
-   real key once ($env:VOLFIT_ANTHROPIC_KEY on the server); fix the stale
-   `mixed` dividend sentence in Docs/handoff/SETTINGS_REFERENCE.md §3.
+   filterNonTradingWeight) and align the useOptions.ts mirror~~ **DONE
+   2026-09-10a** (wrap below: four rows in the Observation filter card — the
+   clock companions dim on the calendar clock — one in the Local Vol grid,
+   the mirror carries the four missing keys, the five SettingDocs are
+   `surfaced`; streamRefitSeconds was DONE 2026-09-02f); ~~try Ask's Claude
+   tier against a real key once~~ DONE 2026-09-01 (tested live, raw SSE +
+   headless UI — the memory note); ~~fix the stale `mixed` dividend sentence
+   in Docs/handoff/SETTINGS_REFERENCE.md §3~~ DONE 2026-09-10a (the row lists
+   the four real modes). Still recorded: lazy-load the help corpus if the
+   1.30 MB bundle matters; five fields stay API-only by design (jointCarry,
+   jointCarryEngageBp, bellyRepair, the retired autoLoadPrior,
+   priorOperatorCovarianceMode).
 5. MARKET-DATA FETCH riders (wraps 2026-09-02c/d/e below; none are gates):
    the Bloomberg chain recipe is now LIVE-VERIFIED (wrap 2026-09-02e: OPT_CHAIN
    + CHAIN_TICKERS per series with `CHAIN_EXP_DT_OVRD=ALL`; SPY 32 rungs, SX5E
@@ -1828,6 +1833,36 @@ source`) on first open; existing stores default the new gates. A saved
 universe holding "SPX INDEX" / "^SPX" restores as the portable "SPX". First
 launch after this commit opens the Help Center's Welcome page once (Esc
 closes it; Help ▾ Welcome brings it back).
+
+### 🧭 SESSION WRAP (2026-09-10a) — OPTIONS DIALOG: THE FIVE API-ONLY FIELDS ARE SURFACED (HELP CENTER RIDERS CLOSED)
+
+Item 7 of the confirm-per-item pass (the STATUS item-4 riders).
+
+- **The dialog.** Observation filter card (`ObservationFilterPanel.tsx`,
+  shown while the filter is overlay / active): *Adaptive gate (σ; 0 = off)*,
+  *Process-noise clock* (Calendar / Session, `data-testid="filter-clock"`),
+  *Session share (of a day's variance)* and *Non-trading day weight* — the
+  two companions dim unless the clock is Session (they are read only then).
+  Local Vol card: *Min strike vertices per expiry (0 = off)* beside the
+  strike / time node counts. The rows are the cards' own `NumberRow` /
+  select helpers, no new component.
+- **The mirror.** `useOptions.ts` gains `filterClock`, `filterSessionShare`,
+  `filterNonTradingWeight`, `gridXMinPerExpiry` (typed + defaults =
+  calendar / 0.6 / 0 / 8, the schema's); the draft was already a spread of
+  the server payload, so nothing was lost before — the dialog just could
+  not show them.
+- **The docs.** The five SettingDocs flip to `surfaced: true` and lose their
+  "not shown in the dialog" sentences; the handoff SETTINGS_REFERENCE §3
+  `dividendMode` row now lists `continuous | discrete_absolute |
+  discrete_proportional | mixed` (there were never "manual policies").
+- **Locks.** `ObservationFilterPanel.test.tsx` (3: defaults + dimming on the
+  calendar clock + patches; the session clock enables the companions;
+  nothing while off); SmallSections, settingsDocs and content locks green
+  (28); `tsc --noEmit` clean.
+- USER-side: the `_lvop` benchmark pack finished 2026-09-09 20:36
+  (`benchmark_report_lvop.html` / `benchmark_pack_lvop.json` beside the
+  2026-07-09 baseline) — the adjudication readout of the queued default
+  flips is the next analysis item.
 
 ### 🧭 SESSION WRAP (2026-09-09k) — LV PRIOR PATH: THE DEEP-TAIL ANCHOR SURVIVES AN ACTIVE FILTER (THE 2026-08-28a DECISION, TAKEN)
 

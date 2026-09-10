@@ -65,6 +65,11 @@ export default function LocalVolSection({
               onChange={(v) => patch({ gridXNodes: v })} />
             <NumberRow label="Time nodes (floor; 0 = per expiry)" value={draft.gridTNodes} step={1} disabled={!live}
               onChange={(v) => patch({ gridTNodes: v })} />
+            {/* Surfaced 2026-09-10 (API-only before): after the shared delta axis is
+                built, the widest in-range gaps are split until every expiry holds
+                at least this many strike vertices — the short front's resolution. */}
+            <NumberRow label="Min strike vertices per expiry (0 = off)" value={draft.gridXMinPerExpiry} step={1}
+              disabled={!live} onChange={(v) => patch({ gridXMinPerExpiry: v })} />
             <NumberRow label="Roughness λ" value={draft.gridRegLambda} step={0.001} disabled={!live}
               onChange={(v) => patch({ gridRegLambda: v })} />
             <NumberRow label="Roughness ρ (t vs x)" value={draft.gridRegRho} step={0.1} disabled={!live}
