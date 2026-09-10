@@ -237,6 +237,66 @@ half-life/update-rule/D6 sweeps; §16.3 adoption gate) then Phase 6
 
 ---
 
+## SERIES ARC — drafted 2026-09-10 (awaiting ratification; spec + phases in Docs/series_replay_roadmap.md)
+
+User ask (2026-09-10): "harvest, store and replay a time-series of smiles /
+surface for a given ticker and a given period and frequency: choose a
+ticker, a frequency and a number of snapshots to fetch in succession, and a
+set of {model, model options} (e.g. LQD-24 with prior and Kalman filtering,
+SVI-JW free, LV native with prior); press Start; the app harvests and
+calibrates all; then store the series and cinematically replay the
+time-series of smiles and surfaces."
+
+**Refined contract (the doc's §2–§3).** A **Series** = one ticker × an
+ordered set of instants × a set of **lanes**; a **frame** = one instant's
+stored chain + every lane's fits; a lane = a settings PATCH over the live
+settings frozen at creation, evaluated THROUGH TIME (its prior at frame i is
+its own frame i−1 fit; its Kalman state carried frame to frame with dt from
+the snapshot timestamps; a free lane has no temporal state). Frames come
+three ways — historical (the Massive per-contract NBBO history, marks
+fallback labelled per frame), live (one frame per tick, the 2026-09-02g
+data model: spot + quotes from one snapshot, 15 s floor), import (the app's
+captures, a backtest store, a fixture) — into the same VolStore (schema
+v11: `series`, `series_lanes`, `series_frames`, `series_fits`, additive
+`snapshots.series_id` so the as-of picker never lists frames). Every lane
+runs on its OWN detached AppState (the `filter_replay` / `instant_state`
+pattern) in a separate `SeriesJobs` slot: the live workspace, priors,
+filter states, pointers and governance log are never written; the live
+Calibrate stays usable. The **Series lens** (Alt+6) replays with a transport
+bar (play / pause / step / speed 0.25×–8× / loop / keyboard), a
+frame-indexed scrubber with session gaps, a filmstrip of spot · ATM vol ·
+rms per lane, and five stages — Smile (lanes overlaid, fixed-strike axis,
+ghost trail of the production lane), Surface (one sheet per lane with a
+shared camera, or the difference vs production), Term (lanes slot), Lanes
+(rms / arb / pull / ζ / gain per frame + the handle-path roughness table +
+the lane's FilterTimeline ring — the temporal "Free lane" the anchoring
+axis rider asked for), Frames (table). Faithful replay: no interpolation
+between instants, the playhead names the instant and the quote kind,
+crossfade ≤ 150 ms visual only. Export `volfit-series/1`, "Adopt as prior"
+(explicit, save = activate), MCP tools.
+
+**Decisions proposed for ratification** (doc §7, D1–D12): names / Alt+6;
+one ticker per series in v1 (`tickers[]` in the spec); lanes never in
+Options; cold-start chaining with `warmup` / `seed from live prior`
+options; isolation + shared fit pool; `pinned` ladder default (`term` /
+`0dte` optional); sources per capability (Bloomberg daily only, Yahoo live
+only); faithful-replay rules; fixed-strike axis; evidence metrics; the
+three locks (free-lane byte-identity with live Calibrate, filter lane ≡
+`backtest/filter_replay` on the same store, stored-series re-run
+determinism as a certification case); files + connector in S6.
+
+**Phases.** S0 contract (schemas_series + store v11 + picker exclusion) →
+S1 store + import + read API (the 0DTE campaign and V3.8 replay-day stores
+become series on day one) → S2 harvest engine + `SeriesJobs` (historical /
+live, estimate, pause / resume / cancel, restart recovery) → S3 lane
+calibration (detached states, chaining, metrics, LV lanes, the locks) → S4
+Series lens v1 (registration, playback algebra, transport, filmstrip, Smile
+stage with a `lanes` slot on SmileChart, smoke on :4197) → S5 Surface ·
+Term · Lanes stages → S6 `volfit-series/1` + adopt-prior + PNG + MCP tools
+→ S7 rails, certification case, retention lock, shared prep, Help Center,
+CLAUDE.md. Rails: LQD-16 slice 13.5 ms, LV 1.2–25 s per frame, Massive NBBO
+~14 s per chain — the dialog shows the estimate before Start.
+
 ## LV OPERATOR ARC — adopted 2026-09-08 (the user's pick from the rider list: "Local Vol: do the front operator and the graded strike lattice"; both change the calibration operator, so the default flips ride the fixture evidence here and the benchmark-pack run stays the user's)
 
 The two Local Vol riders left after the Dupire-twin arc come from ONE design
@@ -1583,7 +1643,16 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10g (resume here)
+## STATUS — updated 2026-09-10h (resume here)
+
+### ▶ DRAFTED 2026-09-10h, AWAITING RATIFICATION: the SERIES ARC —
+harvest / store / replay a time-series of smiles and surfaces for one
+ticker under several model lanes (user ask of 2026-09-10). Spec, the
+what-exists survey, the data model, the API, the twelve decisions D1–D12
+and phases S0–S7 are in **Docs/series_replay_roadmap.md**; the arc header
+sits above the LV operator arc. Nothing is built yet: on "continue the
+series arc" ratify (or veto) D1–D12 first, then work S0 → S7 in order (S0
+is the one-commit shared contract of the parallel-wave convention).
 
 ### ▶ NEXT: the 2026-09-09/10 confirm-per-item pass (wraps 2026-09-09i →
 2026-09-10f below) worked this list top to bottom — SHIPPED: the connector's
