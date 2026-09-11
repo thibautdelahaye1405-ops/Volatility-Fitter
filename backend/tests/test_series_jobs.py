@@ -171,6 +171,101 @@ def test_frame_budget_field_defaults_and_bounds():
         _spec(frameBudgetSeconds=2)
 
 
+class SlowProvider(HistoryProvider):
+    """A fetch that takes ``delay`` s of I/O (a sleep releases the GIL like a
+    socket wait) and records when each starts and ends."""
+
+    def __init__(self, *a, delay: float = 0.25, **kw):
+        super().__init__(*a, **kw)
+        self.delay = delay
+        self.events: list[tuple[str, float]] = []
+
+    def fetch_chain(self, ticker, expiries=None, as_of=None):
+        self.events.append(("fetch_start", time.perf_counter()))
+        time.sleep(self.delay)
+        out = super().fetch_chain(ticker, expiries, as_of)
+        self.events.append(("fetch_end", time.perf_counter()))
+        return out
+
+
+def test_lanes_fit_while_the_harvest_continues(tmp_path, monkeypatch):
+    """Interleaving (2026-09-11b): the lane thread fits a frame as soon as it
+    lands while the harvest thread keeps fetching, and an ongoing fit never
+    holds the next fetch. Four frames, a 0.25 s fetch, a 0.5 s fit: frame 0
+    is fitting before the third fetch ends, the harvest's span stays the
+    four fetches' (not the fetches plus the fits), the frames are fitted in
+    index order (the temporal chain), and the run still ends done."""
+    import volfit.api.series_lanes as lanes_mod
+
+    state = _state(tmp_path / "i.sqlite", cls=SlowProvider)
+    prov = state.provider
+    real = lanes_mod.calibrate_frame
+    fits: list[tuple[str, int, float]] = []
+
+    def slow_fit(doc, lane, frame, *a, **kw):
+        fits.append(("fit_start", frame.idx, time.perf_counter()))
+        time.sleep(0.5)
+        out = real(doc, lane, frame, *a, **kw)
+        fits.append(("fit_end", frame.idx, time.perf_counter()))
+        return out
+
+    monkeypatch.setattr(lanes_mod, "calibrate_frame", slow_fit)
+    sid = create_series(state, _spec(clock=SeriesClock(step="15m", count=4),
+                                     ladder=SeriesLadder(maxExpiries=2)), NOW).id
+    jobs = series_jobs_of(state)
+    assert jobs.start(sid) == "started"
+    _wait(jobs, 60)
+    doc = _doc(state, sid)
+    assert doc.progress.status == "done" and doc.progress.fitsDone == 8
+    assert doc.progress.fitsTotal == 8 and doc.progress.current is None
+    starts = [t for k, t in prov.events if k == "fetch_start"]
+    ends = [t for k, t in prov.events if k == "fetch_end"]
+    assert len(ends) == 4
+    first_fit = next(t for k, idx, t in fits if k == "fit_start" and idx == 0)
+    assert first_fit < ends[2]  # frame 0 fitting while frames 2 and 3 are still to fetch
+    assert ends[-1] - starts[0] < 4 * 0.25 + 1.0  # the fits never held the harvest
+    assert [idx for k, idx, _t in fits if k == "fit_start"] == [0, 1, 2, 3]
+
+
+def test_run_feed_orders_frames_and_merges_both_threads_progress(tmp_path):
+    """RunFeed: frames come out in index order as they land (a later frame
+    landing first waits), failed ones are passed over, the harvest-over flag
+    ends the stream; expected fits settle as frames land; the two threads'
+    progress fields and labels merge into one checkpointed document."""
+    from volfit.api.series_feed import RunFeed, expected_fits
+
+    state = _state(tmp_path / "f.sqlite")
+    doc = _doc(state, create_series(state, _spec(), NOW).id)  # three pending frames
+    saved: list = []
+    feed = RunFeed(doc, checkpoint=saved.append)
+    got: list = []
+    t = threading.Thread(target=lambda: got.extend(feed.frames_as_ready()), daemon=True)
+    t.start()
+
+    def ready(i):
+        return doc.frames[i].model_copy(update={"status": "ready",
+                                                "expiries": ["2026-06-19", "2026-07-17"]})
+
+    feed.land(ready(1))  # out of order: frame 0 has not landed yet
+    time.sleep(0.15)
+    assert got == []
+    feed.land(ready(0))
+    failed = doc.frames[2].model_copy(update={"status": "failed", "error": "gap"})
+    feed.land(failed)
+    feed.harvest_over()
+    t.join(5)
+    assert [f.idx for f in got] == [0, 1]
+    assert expected_fits(doc, {0: ready(0)}) == 6  # 2 rungs known, the two pending frames assume 2
+    assert expected_fits(doc, {0: ready(0), 1: ready(1), 2: failed}) == 4
+    p = feed.advance(harvest="Harvesting 1/3", framesReady=1)
+    p = feed.advance(fit="Calibrating frame 1/3 · free", fitsDone=2)
+    assert p.current == "Harvesting 1/3 · Calibrating frame 1/3 · free"
+    assert p.framesReady == 1 and p.fitsDone == 2
+    assert feed.advance(harvest=None).current == "Calibrating frame 1/3 · free"
+    assert feed.advance(fit=None).current is None
+    assert saved[-1] is feed.progress
+
+
 def test_failed_frame_is_recorded_and_the_run_ends_done(tmp_path):
     state = _state(tmp_path / "f.sqlite")
     sid = create_series(state, _spec(), NOW).id

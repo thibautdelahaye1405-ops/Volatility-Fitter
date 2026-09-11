@@ -2,15 +2,18 @@
 pause / resume / cancel, per-frame checkpoints, restart recovery.
 
 Separate from ``CalibrationJobs`` on purpose: the live Calibrate button keeps
-its single slot, a series never takes it. The runner is one daemon thread
-per run: it harvests the pending frames in order (a live frame waits until
-its instant is due), checkpoints each frame in the store as it lands, then
-hands the document to ``calibrate_hook`` (S3 plugs the lane calibration in;
-None = the run ends after the harvest). Pause and cancel are cooperative —
-the loop checks between frames and while waiting — and every state the
-runner leaves is persisted (``series.progress``), so a page reload or a
-server restart finds the truth in the store: ``recover()`` marks a series
-that was running when the process died ``paused`` (the user resumes it).
+its single slot, a series never takes it. A run is TWO daemon threads
+(2026-09-11b, ``series_feed.RunFeed``): the harvest thread fetches the
+pending frames in order (a live frame waits until its instant is due) and
+checkpoints each in the store as it lands; the lane thread runs
+``calibrate_hook`` (S3's lane calibration; None = harvest only), which pulls
+the frames from the feed in index order as they land — a frame's fits start
+as soon as it lands and an ongoing fit never holds the next fetch. Pause
+and cancel are cooperative — both loops check between frames — and every
+state the runner leaves is persisted (``series.progress``), so a page
+reload or a server restart finds the truth in the store: ``recover()``
+marks a series that was running when the process died ``paused`` (the user
+resumes it).
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from typing import Callable
 from pydantic import BaseModel
 
 from volfit.api.schemas_series import SeriesDoc, SeriesProgress
+from volfit.api.series_feed import RunFeed
 from volfit.api.series_harvest import harvest_frame
 from volfit.api.series_store import SeriesStore, now_iso
 from volfit.data.store import VolStore
@@ -60,6 +64,10 @@ class SeriesJobs:
         self._pause: set[str] = set()
         self._cancel: set[str] = set()
         self._stopping = False
+        #: The running series' feed (frames landing + merged progress) and
+        #: the lane thread's failure, if any — set by ``_run`` per run.
+        self._feed: RunFeed | None = None
+        self._consumer_error: str | None = None
         #: The lane calibration run after the harvest (``series_lanes.run_lanes``;
         #: ``hook(jobs, doc) -> None``). None = harvest only (tests, scripts).
         from volfit.api.series_lanes import run_lanes  # lazy: lanes pull the fit stack
@@ -218,51 +226,79 @@ class SeriesJobs:
                 return None
             self._wake.wait(min(remaining, 1.0))
 
+    def feed(self, doc: SeriesDoc) -> RunFeed:
+        """The feed the lane hook consumes: the running series' own, else a
+        static one over the document (every landed frame at once, harvest
+        over — a hook called outside a run, e.g. a script)."""
+        feed = self._feed
+        if feed is not None and feed.series_id == doc.id:
+            return feed
+        return RunFeed(doc, checkpoint=lambda p: self._checkpoint(doc.id, p), harvest_over=True)
+
+    def _consume(self, series_id: str, doc: SeriesDoc) -> None:
+        """The lane thread: the hook pulls frames from the feed as they land."""
+        try:
+            self.calibrate_hook(self, doc)  # type: ignore[misc]  (only started when set)
+        except Exception as exc:  # noqa: BLE001 — recorded, the run ends failed
+            self._consumer_error = str(exc)[:300]
+
     def _run(self, series_id: str) -> None:
         final = "done"
         error: str | None = None
+        consumer: threading.Thread | None = None
+        self._consumer_error = None
         try:
             doc = self._load(series_id)
             if doc is None:
                 return
+            feed = RunFeed(doc, checkpoint=lambda p: self._checkpoint(series_id, p))
+            self._feed = feed
             # startedTs on the store's local clock, like createdTs / updatedTs /
             # harvestedTs (it was UTC until 2026-09-11 — every run read an
             # hour long on a UTC+1 desk); frame instants stay UTC-naive.
-            progress = doc.progress.model_copy(update={
-                "status": "harvesting", "framesTotal": len(doc.frames),
-                "framesReady": sum(1 for f in doc.frames if f.status == "ready"),
-                "startedTs": doc.progress.startedTs or now_iso(), "error": None,
-            })
-            self._checkpoint(series_id, progress)
+            feed.advance(status="harvesting", framesTotal=len(doc.frames),
+                         framesReady=sum(1 for f in doc.frames if f.status == "ready"),
+                         startedTs=doc.progress.startedTs or now_iso(), error=None)
+            if self.calibrate_hook is not None:
+                consumer = threading.Thread(target=self._consume, args=(series_id, doc),
+                                            name=f"series-{series_id}-lanes", daemon=True)
+                consumer.start()
             pending = [f for f in doc.frames if f.status in ("pending", "failed")]
-            for frame in pending:
-                if doc.spec.mode == "live":
-                    stop = self._wait_until(series_id, datetime.fromisoformat(frame.ts))
+            try:
+                for frame in pending:
+                    if doc.spec.mode == "live":
+                        stop = self._wait_until(series_id, datetime.fromisoformat(frame.ts))
+                    else:
+                        stop = self._interrupted(series_id)
+                    if stop:
+                        final = stop
+                        break
+                    label = (f"Harvesting {doc.spec.ticker} frame {frame.idx + 1}/{len(doc.frames)}"
+                             f" · {frame.ts}")
+                    feed.advance(harvest=label)
+                    done = harvest_frame(self._state, doc, frame, label)
+                    doc.frames[frame.idx] = done
+                    feed.land(done)  # the lane thread picks it up at once
+                    feed.advance(framesReady=sum(1 for f in doc.frames if f.status == "ready"),
+                                 **({"error": done.error} if done.status == "failed" else {}))
                 else:
-                    stop = self._interrupted(series_id)
-                if stop:
-                    final = stop
-                    break
-                label = (f"Harvesting {doc.spec.ticker} frame {frame.idx + 1}/{len(doc.frames)}"
-                         f" · {frame.ts}")
-                progress = progress.model_copy(update={"current": label})
-                self._checkpoint(series_id, progress)
-                done = harvest_frame(self._state, doc, frame, label)
-                doc.frames[frame.idx] = done
-                progress = progress.model_copy(update={
-                    "framesReady": sum(1 for f in doc.frames if f.status == "ready"),
-                    "error": done.error if done.status == "failed" else progress.error,
-                })
-                self._checkpoint(series_id, progress)
-            else:
-                if self.calibrate_hook is not None:
-                    progress = progress.model_copy(update={"status": "calibrating", "current": None})
-                    self._checkpoint(series_id, progress)
-                    self.calibrate_hook(self, self._load(series_id) or doc)
-                    final = self._interrupted(series_id) or "done"
+                    if consumer is not None and not self._interrupted(series_id):
+                        feed.advance(status="calibrating", harvest=None)
+                    else:
+                        feed.advance(harvest=None)
+            finally:
+                feed.harvest_over()  # however the harvest ended, the lanes stop waiting
+            if consumer is not None:
+                consumer.join()
+                if self._consumer_error is not None:
+                    final, error = "failed", self._consumer_error
+            final = self._interrupted(series_id) or final
         except Exception as exc:  # noqa: BLE001 — the run ends, the store says why
             final, error = "failed", str(exc)[:300]
         finally:
+            if consumer is not None and consumer.is_alive():
+                consumer.join()
+            self._feed = None
             try:
                 doc = self._load(series_id)
                 if doc is not None:

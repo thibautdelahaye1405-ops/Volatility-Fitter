@@ -1990,7 +1990,58 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-11a (resume here)
+## STATUS — updated 2026-09-11b (resume here)
+
+### 🧭 SESSION WRAP (2026-09-11b) — SERIES: THE HARVEST AND THE LANE FITS RUN SIDE BY SIDE
+
+User: "interleave the harvest and the lane fits, if an ongoing fit does not
+prevent the harvesting of the next snapshots to occur" — so not a strict
+alternation (that would make every fetch wait for a fit) but a producer and
+a consumer: the harvest keeps its own pace, the lanes work on what has
+landed.
+
+- **Design.** A run is two daemon threads (`series_jobs._run`): the harvest
+  thread fetches the pending frames in order (a live frame waits for its
+  instant) and lands each in the run's `series_feed.RunFeed`; the lane
+  thread runs `calibrate_hook` = `run_lanes`, which pulls frames from the
+  feed in INDEX order as they land (`frames_as_ready`) — the temporal
+  chain is untouched, a frame's fits start the moment its chain is stored,
+  a fit in progress never holds the next fetch. The feed merges the two
+  threads' progress under one lock (`advance`: the harvest writes
+  `framesReady` + "Harvesting …", the lanes `fitsTotal` / `fitsDone` +
+  "Calibrating …"; `current` composes both labels, so the pill reads
+  "Harvesting NVDA frame 4/4 · Calibrating NVDA frame 3/4 · LQD-16 + prior")
+  and `expected_fits` settles the bar's total as frames land (a pending
+  frame assumes the last ready frame's rungs, else the pinned ladder under
+  its `maxExpiries` crop). Pause / cancel: both loops check between frames;
+  the harvest signals "over" however it ends so the lane thread never waits
+  for a frame that will not come; resume re-harvests pending frames and
+  skips stored (lane, frame) rows as before; a hook called outside a run
+  (`jobs.feed(doc)`) gets a static feed with every landed frame. The
+  store's SQLite connections take a 30 s busy timeout (two writers now).
+  Status stays `harvesting` while the harvest runs, then `calibrating` for
+  the lanes' tail. A LIVE series now fits each frame while waiting for the
+  next instant (it fitted nothing until its last instant before).
+- **Measured.** Synthetic source, a fake 0.2 s I/O fetch, real LQD fits
+  (free + hybrid prior, 4 rungs, 8 frames): fetch-to-fetch gap 218 ms
+  harvest-only → 226 ms with the fits running beside it (the GIL's share,
+  +4 %); wall 1.77 s harvest-only → 3.52 s with 64 fits overlapped. REAL
+  (the user's Massive key, a spare-port backend with a throwaway store,
+  4 NVDA frames 5 min apart on 2 rungs = 276 NBBO quotes each): frames
+  landed at t+7, 14, 18, 24 s while the lanes fitted beside them — the
+  first smile 7 s in, `fits 4/16` at t+8 s with frame 2 still fetching,
+  done at 23.6 s (harvest 56 s estimated serial-with-fits before). The
+  perf rails hold (the 20-frame runner rail 1.2 s, budget 5 s).
+- **Locks.** `test_lanes_fit_while_the_harvest_continues` (a 0.25 s fetch,
+  a 0.5 s fit, four frames: frame 0 fitting before the third fetch ends,
+  the harvest's span stays the fetches', frames fitted in index order, the
+  run ends done with the exact totals) and
+  `test_run_feed_orders_frames_and_merges_both_threads_progress` (a later
+  frame landing first waits, failed frames passed over, the totals settle,
+  the labels compose); the S3 / S7 locks unchanged (pause-resume
+  byte-identity, determinism, rails). Help: the Series guide bullet,
+  What's new; the spec doc's post-arc note; CLAUDE.md.
+- Rider kept: a "parked lane" after k consecutive budget hits.
 
 ### 🧭 SESSION WRAP (2026-09-11a) — THE SERIES LENS ON ITS FIRST DESK DAY: A FRAME BUDGET PER LANE, WARNINGS THAT STOP A START, AN HONEST START STAMP
 

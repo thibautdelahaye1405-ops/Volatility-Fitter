@@ -68,7 +68,7 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (2457 passed / 7 skipped as of 2026-09-11a, ~13 min — split it in two halves [tests/test_[a-k]*.py | test_[l-z]*.py] when a tool caps runs at 10 min, incl. the perf rails — NB the graph perf rail needs a quiet box [dense BLAS]; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (2459 passed / 7 skipped as of 2026-09-11b, ~13 min — split it in two halves [tests/test_[a-k]*.py | test_[l-z]*.py] when a tool caps runs at 10 min, incl. the perf rails — NB the graph perf rail needs a quiet box [dense BLAS]; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
 - Benchmark pack: `-m backtest.benchmark_pack run|report` (chunked/resumable
             graph-LOO parts under backtest\results\benchmark\ + HTML/JSON
             artifact); full sweep via backend\backtest\run_benchmark_pack.ps1
@@ -160,7 +160,10 @@ Key commands (Windows, repo root):
             frame and held a series at 8/10); a Start without an Estimate stops on the
             creation warnings (draft + "Start anyway"); startedTs is on the store's
             local clock. The harvest = the Smile lens's as-of fetch (Massive NBBO
-            history, 1,500-contract cap, ~12 s per frame), all frames before any fit.
+            history, 1,500-contract cap, ~12 s per frame). 2026-09-11b: a run is TWO
+            threads (`api/series_feed.RunFeed`): the harvest lands frames, the lane
+            thread fits them in index order as they land, progress merged under one
+            lock — a fit never delays the next fetch.
 - MCP connector (2026-09-09c): backend\volfit_mcp = the app's API as a Model
             Context Protocol server for Claude Desktop / claude.ai (Docs\mcp_connector.md).
             `.venv\Scripts\python -m volfit_mcp` (stdio; registered in

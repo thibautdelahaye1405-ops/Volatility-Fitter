@@ -38,6 +38,7 @@ from volfit.api.schemas_affine import AffineFitRequest
 from volfit.api.schemas_prior import PriorSurfaceSnapshot
 from volfit.api.schemas_series import FrameDoc, LaneFitDoc, LaneSpec, SeriesDoc
 from volfit.api.series_metrics import attach_filter, attach_pull, slice_fit_doc, surface_fit_doc
+from volfit.api.series_feed import expected_fits
 from volfit.api.series_store import SeriesStore
 from volfit.api.state import AppState
 from volfit.api.workspace_filter_doc import (
@@ -241,35 +242,31 @@ def reference_lane(lanes: list[LaneSpec], lane: LaneSpec) -> LaneSpec | None:
     return None
 
 
-def _expected_fits(doc: SeriesDoc, frames: list[FrameDoc]) -> int:
-    return sum(len(f.expiries) + (1 if lane.family == "lv" else 0)
-               for f in frames for lane in doc.spec.lanes)
-
-
 def run_lanes(jobs, doc: SeriesDoc) -> None:
-    """``SeriesJobs.calibrate_hook``: calibrate every lane over every ready
-    frame, frame-major, checkpointing fits + carries as they land; returns
-    early on a pause / cancel (the runner records the final status)."""
+    """``SeriesJobs.calibrate_hook``: calibrate every lane over every frame
+    as it lands (the run's feed hands frames over in index order while the
+    harvest thread keeps fetching — 2026-09-11b), frame-major, checkpointing
+    fits + carries as they land; returns early on a pause / cancel (the
+    runner records the final status). Progress goes through the feed so the
+    harvest thread's fields are never clobbered."""
     state = jobs._state
     series_id = doc.id
-    frames = [f for f in doc.frames if f.status == "ready"]
+    feed = jobs.feed(doc)
     lanes = list(doc.spec.lanes)
     ticker = doc.spec.ticker
+    n_frames = len(doc.frames)
     with VolStore(state.store_path) as store:
         series = SeriesStore(store)
         carries = {lane.id: LaneCarry.from_doc(series.lane_filter(series_id, lane.id))
                    for lane in lanes}
         done_frames = {lane.id: {f.idx for f in series.fits(series_id, lane_id=lane.id)}
                        for lane in lanes}
-        progress = doc.progress.model_copy(update={
-            "status": "calibrating", "fitsTotal": _expected_fits(doc, frames),
-            "fitsDone": series.count_fits(series_id),
-        })
-        series.set_progress(series_id, progress)
+        feed.advance(fitsTotal=expected_fits(doc, feed.landed()),
+                     fitsDone=series.count_fits(series_id))
     for lane in lanes:  # the D4 seed: the live prior, once, before the first frame
         if lane.seed == "live_prior" and carries[lane.id].last_idx is None:
             carries[lane.id].prior = state.active_prior(ticker)
-    for n, frame in enumerate(frames):
+    for frame in feed.frames_as_ready(lambda: jobs._interrupted(series_id) is not None):
         frame_fits: dict[str, dict[str, LaneFitDoc]] = {}
         with VolStore(state.store_path) as store:
             series = SeriesStore(store)
@@ -288,11 +285,9 @@ def run_lanes(jobs, doc: SeriesDoc) -> None:
                 with VolStore(state.store_path) as store:
                     stored = SeriesStore(store).fits(series_id, idx=frame.idx, lane_id=ref.id)
                 ref_fits = {f.expiry: f for f in stored if f.expiry} or None
-            label = (f"Calibrating {ticker} frame {n + 1}/{len(frames)} · {lane.name}"
+            label = (f"Calibrating {ticker} frame {frame.idx + 1}/{n_frames} · {lane.name}"
                      f" · {frame.ts}")
-            with VolStore(state.store_path) as store:
-                SeriesStore(store).set_progress(series_id, progress.model_copy(
-                    update={"current": label}))
+            feed.advance(fit=label)
             try:
                 with state.activity.activity("series", label):
                     fits, carry = calibrate_frame(doc, lane, frame, chain, carries[lane.id],
@@ -308,13 +303,10 @@ def run_lanes(jobs, doc: SeriesDoc) -> None:
                 series = SeriesStore(store)
                 series.save_fits(series_id, fits)  # one commit per (lane, frame)
                 series.set_lane_filter(series_id, lane.id, carry.to_doc())
-                progress = progress.model_copy(update={
-                    "fitsDone": series.count_fits(series_id), "current": label,
-                    "error": next((f.error for f in fits if f.status == "failed"),
-                                  progress.error),
-                })
-                series.set_progress(series_id, progress)
+                n_done = series.count_fits(series_id)
+            failed = next((f.error for f in fits if f.status == "failed"), None)
+            feed.advance(fitsDone=n_done, fitsTotal=expected_fits(doc, feed.landed()),
+                         **({"error": failed} if failed is not None else {}))
             if jobs._interrupted(series_id):
                 return
-    with VolStore(state.store_path) as store:
-        SeriesStore(store).set_progress(series_id, progress.model_copy(update={"current": None}))
+    feed.advance(fit=None, fitsTotal=expected_fits(doc, feed.landed()))

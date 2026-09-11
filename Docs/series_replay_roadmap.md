@@ -635,9 +635,34 @@ NewSeriesDialog.test.tsx. `progress.startedTs` is stamped on the store's
 local clock like every other stamp (it was UTC: every run read an hour
 long on a UTC+1 desk). Also measured that day: the harvest is the Smile
 lens's own as-of fetch — Massive's per-contract NBBO history at the
-1,500-contract cap, 11–13 s per frame on NVDA over 8 rungs — run for every
-frame before any lane fits, so ten frames show nothing for two minutes;
-interleaving harvest and fits is a rider.)
+1,500-contract cap, 11–13 s per frame on NVDA over 8 rungs — and until
+2026-09-11b it ran for every frame before any lane fit, so ten frames
+showed nothing for two minutes.)
+
+(2026-09-11b — **harvest and fits side by side.** A run is two threads:
+the harvest thread fetches the pending frames in order and lands each in
+`api/series_feed.RunFeed`; the lane thread runs `run_lanes`, which pulls
+frames from the feed in index order as they land (`frames_as_ready`), so a
+frame's fits start as soon as its chain is stored and a fit in progress
+never holds the next fetch — the user's condition. The feed also merges
+the two threads' progress under one lock (`advance`: the harvest writes
+`framesReady` + "Harvesting …", the lanes `fitsTotal` / `fitsDone` +
+"Calibrating …"; `current` composes both labels), and `expected_fits`
+settles the bar's total as frames land (a pending frame assumes the last
+ready frame's rungs). Pause / cancel: both loops check between frames; the
+harvest signals "over" however it ends so the lane thread never waits on a
+frame that will not come; resume re-harvests pending frames and skips the
+stored (lane, frame) rows as before. The store's connections take a 30 s
+busy timeout (two writers). A live series now fits each frame while
+waiting for the next instant. Measured on the synthetic source with a fake
+0.2 s I/O fetch and real LQD fits (free + hybrid prior, 4 rungs, 8
+frames): fetch-to-fetch gap 218 ms alone → 226 ms with the fits running
+beside it (the GIL's share), wall 1.77 s harvest-only → 3.52 s for 64 fits
+overlapped with it. Locks: `test_lanes_fit_while_the_harvest_continues`
+(frame 0 fitting before the third fetch ends; the harvest's span stays the
+fetches'; index order), `test_run_feed_orders_frames_and_merges_both_threads_progress`;
+the S3 / S7 locks (pause-resume byte-identity, determinism, the rails)
+unchanged.)
 
 ## 9. Standing constraints (from the ratified rulings)
 

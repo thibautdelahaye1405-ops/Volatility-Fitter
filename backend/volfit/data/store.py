@@ -178,7 +178,9 @@ class VolStore:
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
-        self.conn = sqlite3.connect(str(self.path))
+        # A 30 s busy wait: a series run writes from two threads (the harvest
+        # lands chains while the lanes commit fits) on their own connections.
+        self.conn = sqlite3.connect(str(self.path), timeout=30.0)
         self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.execute("PRAGMA foreign_keys = ON")
         self._ensure_schema()
