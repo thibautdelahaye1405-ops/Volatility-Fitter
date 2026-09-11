@@ -351,3 +351,41 @@ def test_creation_warns_about_the_active_filter_under_calendar_coupling(tmp_path
     assert len(lane_warnings(state, spec.model_copy(update={"lanes": [relaxed]}))) == 1
     overlay = active.model_copy(update={"patchOptions": {"observationFilterMode": "overlay"}})
     assert lane_warnings(state, spec.model_copy(update={"lanes": [overlay]})) == []
+
+
+def test_frame_budget_fails_the_rows_past_it_and_the_run_moves_on(tmp_path, monkeypatch):
+    """The frame budget (SeriesSpec.frameBudgetSeconds, 2026-09-11 — a filter
+    lane held a series at 8/10: 17 minutes on one frame, the next never
+    finished). The deadline is checked before every calibration item and
+    before every joint refit of the repair; past it the lane keeps what it
+    committed, the remaining rows fail with the reason and the run moves on
+    to the next frame. The clock is driven so the budget passes before the
+    FIRST item — nothing committed, every row of every frame fails, the run
+    still ends done. Budget None = no check at all (the same clock)."""
+    from volfit.calib import deadline as deadline_clock
+
+    ticks = iter(range(0, 1_000_000, 1000))  # every read of the clock jumps 1000 s
+    monkeypatch.setattr(deadline_clock, "now", lambda: float(next(ticks)))
+    campaign = _campaign(tmp_path / "c.sqlite", minutes=(0, 15))
+    state = _state(tmp_path / "app.sqlite")
+
+    def _make(budget, name):
+        return import_series(state, SeriesImportRequest(
+            name=name, ticker="ALPHA", source=ImportSource(kind="store", path=campaign),
+            lanes=[FREE], ladder=SeriesLadder(maxExpiries=2), frameBudgetSeconds=budget))
+
+    capped = _make(5, "capped")
+    assert capped.spec.frameBudgetSeconds == 5
+    doc, series = _run(state, capped.id)
+    assert doc.progress.status == "done"  # a budget hit is a failed row, never the run's end
+    fits = series.fits(capped.id)
+    assert len(fits) == 4 and all(f.status == "failed" for f in fits)  # 2 frames × 2 rungs
+    assert all(f.error.startswith("frame budget 5 s exceeded: frame budget exceeded before ALPHA ")
+               for f in fits)
+    assert "frame budget" in doc.progress.error
+
+    free = _make(None, "unlimited")
+    assert free.spec.frameBudgetSeconds is None
+    doc2, series2 = _run(state, free.id)
+    assert doc2.progress.status == "done" and doc2.progress.error is None
+    assert all(f.status == "done" for f in series2.fits(free.id))

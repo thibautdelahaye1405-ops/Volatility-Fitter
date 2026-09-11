@@ -151,6 +151,24 @@ def test_historical_run_harvests_every_frame_as_of_its_instant(tmp_path):
         assert store.list_snapshots(["ALPHA"], source="massive") == []
     assert [d for d in asof_payload(state)["days"] if d["hasCaptures"]] == []
     assert jobs.status(sid).running is None and jobs.status(sid).progress.status == "done"
+    # startedTs reads the store's local clock like harvestedTs / updatedTs
+    # (it was UTC until 2026-09-11: every run read an hour long on a UTC+1 desk).
+    started = datetime.fromisoformat(doc.progress.startedTs)
+    harvested = datetime.fromisoformat(doc.frames[0].harvestedTs)
+    updated = datetime.fromisoformat(doc.progress.updatedTs)
+    assert abs((harvested - started).total_seconds()) < 120
+    assert abs((updated - started).total_seconds()) < 120
+
+
+def test_frame_budget_field_defaults_and_bounds():
+    """SeriesSpec.frameBudgetSeconds: 300 s by default, None = unlimited,
+    at least 5 s."""
+    from pydantic import ValidationError
+
+    assert _spec().frameBudgetSeconds == 300
+    assert _spec(frameBudgetSeconds=None).frameBudgetSeconds is None
+    with pytest.raises(ValidationError):
+        _spec(frameBudgetSeconds=2)
 
 
 def test_failed_frame_is_recorded_and_the_run_ends_done(tmp_path):

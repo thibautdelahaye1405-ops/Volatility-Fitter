@@ -67,6 +67,8 @@ export interface SeriesSpec {
   ladder: SeriesLadder;
   fitMode: FitMode;
   lanes: LaneSpec[];
+  /** Wall-clock cap of one (lane, frame) calibration, seconds; null = unlimited (backend default 300). */
+  frameBudgetSeconds?: number | null;
   note: string;
 }
 
@@ -153,6 +155,7 @@ export interface SeriesImportRequest {
   presets?: string[];
   fitMode?: FitMode | null;
   ladder?: SeriesLadder | null;
+  frameBudgetSeconds?: number | null;
   note?: string;
 }
 

@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from volfit.api.schemas_series import SeriesDoc, SeriesProgress
 from volfit.api.series_harvest import harvest_frame
-from volfit.api.series_store import SeriesStore
+from volfit.api.series_store import SeriesStore, now_iso
 from volfit.data.store import VolStore
 
 #: Statuses that mean "a run is in flight" (recovered to paused at startup).
@@ -225,10 +225,13 @@ class SeriesJobs:
             doc = self._load(series_id)
             if doc is None:
                 return
+            # startedTs on the store's local clock, like createdTs / updatedTs /
+            # harvestedTs (it was UTC until 2026-09-11 — every run read an
+            # hour long on a UTC+1 desk); frame instants stay UTC-naive.
             progress = doc.progress.model_copy(update={
                 "status": "harvesting", "framesTotal": len(doc.frames),
                 "framesReady": sum(1 for f in doc.frames if f.status == "ready"),
-                "startedTs": doc.progress.startedTs or utcnow().isoformat(), "error": None,
+                "startedTs": doc.progress.startedTs or now_iso(), "error": None,
             })
             self._checkpoint(series_id, progress)
             pending = [f for f in doc.frames if f.status in ("pending", "failed")]

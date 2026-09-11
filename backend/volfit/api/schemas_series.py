@@ -67,6 +67,9 @@ FitStatus = Literal["pending", "done", "failed", "skipped"]
 #: multi-day daily series stays far below this.
 MAX_FRAMES = 2000
 MAX_LANES = 8
+#: Default (lane, frame) wall-clock cap, s — the LV view's client budget; the
+#: S3 rails read 0.4–1.3 s per frame, the worst honest outlier 160 s.
+DEFAULT_FRAME_BUDGET_S = 300
 
 _FIT_FIELDS = frozenset(FitSettings.model_fields)
 _OPTIONS_FIELDS = frozenset(OptionsSettings.model_fields)
@@ -171,7 +174,12 @@ class LaneSpec(BaseModel):
 
 class SeriesSpec(BaseModel):
     """What the user asked for (the dialog, §3.1). ``tickers`` carries the
-    D2 extension seam and must equal ``[ticker]`` in v1."""
+    D2 extension seam and must equal ``[ticker]`` in v1.
+
+    ``frameBudgetSeconds`` caps ONE (lane, frame) calibration (2026-09-11: a
+    filter lane spent 17 min on a frame and held a series at 8/10): past it
+    the lane keeps its committed slice fits, its repair / LV rows fail with
+    the reason, the run moves on. None = unlimited; the desk has no budget."""
 
     name: str = Field(min_length=1, max_length=120)
     ticker: str = Field(min_length=1)
@@ -182,6 +190,7 @@ class SeriesSpec(BaseModel):
     ladder: SeriesLadder = SeriesLadder()
     fitMode: FitMode = "mid"
     lanes: list[LaneSpec] = Field(min_length=1, max_length=MAX_LANES)
+    frameBudgetSeconds: int | None = Field(default=DEFAULT_FRAME_BUDGET_S, ge=5, le=86_400)
     note: str = ""
 
     @model_validator(mode="after")

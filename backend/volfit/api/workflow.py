@@ -261,12 +261,20 @@ def calibrate_ticker(state: AppState, ticker: str, fit_mode: str = "mid") -> int
     """Synchronously (re)calibrate one ticker's lit expiries + its LV surface.
 
     Honours ``enforceCalendar`` (calendar-couples the expiries) by running the
-    same work items as the background path, just inline."""
+    same work items as the background path, just inline. A frame budget set
+    on the state (``state.fit_deadline``, the series lanes' — None on the live
+    desk) is checked before each item: past it, ``FitDeadlineExceeded``
+    leaves the items already committed in place and skips the rest."""
+    from volfit.calib.deadline import check_deadline
+
+    deadline = getattr(state, "fit_deadline", None)
     calibration_chains(state, [ticker])  # the calibration snapshot
     nodes = lit_nodes(state, [ticker])
-    for _, _, thunk in _parametric_items(state, nodes, fit_mode):
+    for label, _, thunk in _parametric_items(state, nodes, fit_mode):
+        check_deadline(deadline, label)
         thunk()
     if nodes and state.options().localVolEnabled:
+        check_deadline(deadline, f"{ticker} LV surface")
         workflow_stages._affine_thunk(state, ticker, fit_mode)()  # also (re)build the LV surface
     return len(nodes)
 

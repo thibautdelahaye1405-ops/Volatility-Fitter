@@ -1,9 +1,14 @@
 // New series… dialog (SERIES ARC S4 §3.1): mode tabs Historical · Live ·
-// Import, the clock and ladder fields, the fit target, the lane composer,
-// Estimate (instants · servable · harvest / calibration time · warnings)
-// and Start (create or import, then start the job → onCreated(id)). Backend
-// errors print inline; the buttons are inert while a request is in flight.
-// Built on the shell's Dialog primitive; the spec mapping is newSeriesSpec.ts.
+// Import, the clock and ladder fields, the fit target, the frame budget,
+// the lane composer, Estimate (instants · servable · harvest / calibration
+// time · warnings) and Start (create or import, then start the job →
+// onCreated(id)). A Start without an Estimate whose creation carries
+// warnings (a lane known unusable at this cadence) stops on the draft and
+// shows them: "Start anyway" runs it, an edit or Cancel discards the draft
+// (2026-09-11 — a filter lane had started silently and stalled a series).
+// Backend errors print inline; the buttons are inert while a request is in
+// flight. Built on the shell's Dialog primitive; the spec mapping is
+// newSeriesSpec.ts.
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import Dialog from "../shell/Dialog";
@@ -12,7 +17,7 @@ import type { FitMode, LaneSpec, SeriesEstimate, SeriesMode } from "../../lib/se
 import { SERIES_STEPS, STEP_LABELS } from "../../lib/seriesTypes";
 import { fmtInstant, fmtSeconds } from "../../lib/seriesFormat";
 import { buttonClass, chipClass, primaryButtonClass, selectClass } from "../../lib/ui";
-import { createSeries, estimateSeries, fetchPresets, importSeries, startSeries } from "../../state/useSeries";
+import { createSeries, deleteSeries, estimateSeries, fetchPresets, importSeries, startSeries } from "../../state/useSeries";
 import {
   DAILY_STEPS, MAX_FRAMES, buildImport, buildSpec, defaultForm, defaultLanes, defaultName, validateForm,
 } from "./newSeriesSpec";
@@ -61,7 +66,7 @@ function EstimateCard({ estimate }: { estimate: SeriesEstimate }) {
         </dd>
       </dl>
       {estimate.warnings.length > 0 && (
-        <ul className="mt-2 list-disc pl-4 text-[11px] text-amber-400">
+        <ul className="mt-2 list-disc pl-4 text-[11px] text-amber-400" data-testid="series-warnings">
           {estimate.warnings.map((w, i) => <li key={i}>{w}</li>)}
         </ul>
       )}
@@ -90,9 +95,22 @@ export default function NewSeriesDialog({ open, onClose, ticker, fitMode, onCrea
   const [estimate, setEstimate] = useState<SeriesEstimate | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"estimate" | "start" | null>(null);
+  // A draft Start created whose warnings the user has not answered yet:
+  // "Start anyway" runs it; an edit or Cancel discards it (best effort).
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const discardDraft = () => {
+    if (pendingId === null) return;
+    void deleteSeries(pendingId).catch(() => undefined);
+    setPendingId(null);
+  };
   const patch = (p: Partial<NewSeriesForm>) => {
     setForm((f) => ({ ...f, ...p }));
     setEstimate(null); // an estimate describes ONE spec
+    discardDraft();
+  };
+  const close = () => {
+    discardDraft();
+    onClose();
   };
 
   // Each opening starts clean and re-reads the presets against the LIVE settings.
@@ -103,6 +121,7 @@ export default function NewSeriesDialog({ open, onClose, ticker, fitMode, onCrea
     setEstimate(null);
     setError(null);
     setBusy(null);
+    setPendingId(null);
     setPresetsLoading(true);
     setPresetsError(null);
     fetchPresets()
@@ -142,10 +161,24 @@ export default function NewSeriesDialog({ open, onClose, ticker, fitMode, onCrea
     setBusy("start");
     setError(null);
     try {
-      const id = form.mode === "import"
-        ? (await importSeries(buildImport(ticker, form, lanes))).id
-        : (await createSeries(buildSpec(ticker, form, lanes))).id;
+      let id = pendingId;
+      if (id === null) {
+        if (form.mode === "import") {
+          id = (await importSeries(buildImport(ticker, form, lanes))).id;
+        } else {
+          const created = await createSeries(buildSpec(ticker, form, lanes));
+          id = created.id;
+          // Warnings the user has not seen (no Estimate for this spec): stop
+          // on the draft and show them; the next Start ("Start anyway") runs it.
+          if (created.estimate.warnings.length > 0 && estimate === null) {
+            setEstimate(created.estimate);
+            setPendingId(id);
+            return;
+          }
+        }
+      }
       await startSeries(id);
+      setPendingId(null);
       onCreated(id);
       onClose();
     } catch (err: unknown) {
@@ -162,7 +195,7 @@ export default function NewSeriesDialog({ open, onClose, ticker, fitMode, onCrea
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={close}
       title="New series"
       subtitle={`${ticker} — frames × lanes, calibrated through time`}
       width="w-[min(96vw,46rem)]"
@@ -246,6 +279,18 @@ export default function NewSeriesDialog({ open, onClose, ticker, fitMode, onCrea
                 <option value="haircut">Haircut</option>
               </select>
             </Field>
+            <Field label="Frame budget (s)">
+              <input
+                className={inputClass}
+                type="number"
+                min={5}
+                max={86400}
+                value={form.frameBudgetSeconds}
+                placeholder="no cap"
+                title="the most one lane may spend calibrating one frame: past it the lane keeps the slice fits it committed, its calendar repair and LV rows fail with the reason, and the run moves on to the next frame; blank = no cap"
+                onChange={(e) => patch({ frameBudgetSeconds: e.target.value })}
+              />
+            </Field>
             <Field label="Note" className="col-span-2 sm:col-span-3">
               <input className={inputClass} value={form.note} onChange={(e) => patch({ note: e.target.value })} />
             </Field>
@@ -253,7 +298,7 @@ export default function NewSeriesDialog({ open, onClose, ticker, fitMode, onCrea
 
           <section>
             <h3 className={`${labelClass} mb-1`}>Lanes</h3>
-            <LaneComposer presets={presets} loading={presetsLoading} error={presetsError} lanes={lanes} onChange={(l) => { setLanes(l); setEstimate(null); }} />
+            <LaneComposer presets={presets} loading={presetsLoading} error={presetsError} lanes={lanes} onChange={(l) => { setLanes(l); setEstimate(null); discardDraft(); }} />
           </section>
 
           {estimate && <EstimateCard estimate={estimate} />}
@@ -263,20 +308,22 @@ export default function NewSeriesDialog({ open, onClose, ticker, fitMode, onCrea
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-800 px-4 py-2.5">
-          <span className="text-[11px] text-slate-500">
-            {isImport
-              ? "Import creates the frames from stored snapshots, then calibrates them."
-              : "Estimate before Start: the instants, what the source can serve, and the time."}
+          <span className={`text-[11px] ${pendingId !== null ? "text-amber-400" : "text-slate-500"}`}>
+            {pendingId !== null
+              ? "Created as a draft — read the warnings above. Start anyway runs it; an edit or Cancel discards it."
+              : isImport
+                ? "Import creates the frames from stored snapshots, then calibrates them."
+                : "Estimate before Start: the instants, what the source can serve, and the time."}
           </span>
           <div className="ml-auto flex items-center gap-2">
-            <button className={buttonClass} onClick={onClose} disabled={inflight}>Cancel</button>
+            <button className={buttonClass} onClick={close} disabled={inflight}>Cancel</button>
             {!isImport && (
               <button className={buttonClass} onClick={() => void onEstimate()} disabled={inflight || presetsLoading}>
                 {busy === "estimate" ? "Estimating…" : "Estimate"}
               </button>
             )}
             <button className={primaryButtonClass} onClick={() => void onStart()} disabled={inflight || presetsLoading}>
-              {busy === "start" ? "Starting…" : "Start"}
+              {busy === "start" ? "Starting…" : pendingId !== null ? "Start anyway" : "Start"}
             </button>
           </div>
         </div>

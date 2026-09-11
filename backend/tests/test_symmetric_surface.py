@@ -133,6 +133,33 @@ def test_real_violation_is_shared_symmetrically():
     assert sym.max_calendar_violation < 1e-3
 
 
+def test_repair_deadline_stops_before_a_joint_refit():
+    """The series lanes' frame budget (volfit.calib.deadline): past the
+    deadline the repair raises before its next joint refit instead of
+    grinding through escalations; a clean ladder never reaches a refit (the
+    fast path) so it never checks; None = the deadline is never read."""
+    import pytest
+
+    from volfit.calib.deadline import FitDeadlineExceeded
+    from volfit.calib.symmetric import repair_surface
+
+    near = calibrate_slice(K_GRID, W_NEAR, t=0.5, n_order=6)
+    far = calibrate_slice(K_GRID, 0.8 * W_NEAR, t=1.0, n_order=6)  # far below near: a violation
+    specs = [_spec(0.5, K_GRID, W_NEAR), _spec(1.0, K_GRID, 0.8 * W_NEAR)]
+    thetas = [near.params.to_vector(), far.params.to_vector()]
+    with pytest.raises(FitDeadlineExceeded, match="joint refit"):
+        repair_surface(specs, thetas, deadline=-1.0)
+    repaired = repair_surface(specs, thetas)
+    assert repaired.components == [(0, 1)]
+    assert repair_surface(specs, thetas, deadline=None).components == repaired.components
+
+    clean_far = calibrate_slice(K_GRID, 2.0 * W_NEAR, t=1.0, n_order=6)
+    clean = [_spec(0.5, K_GRID, W_NEAR), _spec(1.0, K_GRID, 2.0 * W_NEAR)]
+    untouched = repair_surface(clean, [near.params.to_vector(), clean_far.params.to_vector()],
+                               deadline=-1.0)
+    assert untouched.components == [] and not any(untouched.refit)
+
+
 def test_tail_contract_orders_the_extrapolated_wings():
     """extrapolation-guard ON: the acute near slice's steep extrapolated wing
     (in-support clean, so untouched by default) now triggers the low-dim tail

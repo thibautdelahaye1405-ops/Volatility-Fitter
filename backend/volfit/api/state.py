@@ -240,6 +240,13 @@ class AppState(SourcesMixin, UniverseMixin):
         #: SQLite path for fit-history persistence (volfit.api.history);
         #: None (the default) keeps the API side-effect free.
         self.store_path = store_path
+        #: A cooperative wall-clock deadline for the NEXT calibration on this
+        #: state (a ``perf_counter`` epoch, ``volfit.calib.deadline``): the
+        #: series lane runner sets it on its detached lane state per frame
+        #: (``SeriesSpec.frameBudgetSeconds``); the live desk leaves it None,
+        #: so no live path ever checks it. Read between calibration items and
+        #: before every joint refit of the calendar repair.
+        self.fit_deadline: float | None = None
         #: The curated universe (mutable): starts as the provider's watchlist,
         #: the user adds/removes tickers via the universe-management API.
         self._active_tickers: list[str] = list(self.provider.list_tickers())

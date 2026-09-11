@@ -32,6 +32,8 @@ export interface NewSeriesForm {
   /** "" = no cap. */
   maxExpiries: string;
   fitMode: FitMode;
+  /** Seconds one lane may spend on one frame; "" = no cap. */
+  frameBudgetSeconds: string;
   note: string;
   importKind: ImportSource["kind"];
   importPath: string;
@@ -42,7 +44,7 @@ export interface NewSeriesForm {
 export function defaultForm(fitMode: FitMode): NewSeriesForm {
   return {
     mode: "historical", name: "", step: "15m", count: 20, start: "", sessionOnly: true, timeOfDay: "15:45",
-    warmupFrames: 0, policy: "pinned", maxExpiries: "", fitMode, note: "",
+    warmupFrames: 0, policy: "pinned", maxExpiries: "", fitMode, frameBudgetSeconds: "300", note: "",
     importKind: "captures", importPath: "", importMaxFrames: "",
   };
 }
@@ -89,6 +91,7 @@ export function buildSpec(ticker: string, f: NewSeriesForm, lanes: LaneSpec[]): 
     ladder: { policy: f.policy, expiries: [], maxExpiries: optionalInt(f.maxExpiries) },
     fitMode: f.fitMode,
     lanes,
+    frameBudgetSeconds: optionalInt(f.frameBudgetSeconds), // blank = no cap
     note: f.note,
   };
 }
@@ -101,6 +104,7 @@ export function buildImport(ticker: string, f: NewSeriesForm, lanes: LaneSpec[])
     lanes,
     fitMode: f.fitMode,
     ladder: { policy: f.policy, expiries: [], maxExpiries: optionalInt(f.maxExpiries) },
+    frameBudgetSeconds: optionalInt(f.frameBudgetSeconds),
     note: f.note,
   };
 }
@@ -110,6 +114,9 @@ export function validateForm(f: NewSeriesForm, lanes: LaneSpec[]): string | null
   if (lanes.length === 0) return "Pick at least one lane.";
   if (!lanes.some((l) => l.production)) return "Pick a production lane.";
   if (lanes.some((l) => l.name.trim() === "")) return "Every lane needs a name.";
+  if (f.frameBudgetSeconds.trim() !== "" && (optionalInt(f.frameBudgetSeconds) ?? 0) < 5) {
+    return "Frame budget must be at least 5 seconds, or blank for no cap.";
+  }
   if (f.mode !== "import") {
     if (!Number.isInteger(f.count) || f.count < 1 || f.count > MAX_FRAMES) return `Count must be between 1 and ${MAX_FRAMES}.`;
     if (!/^\d{2}:\d{2}$/.test(f.timeOfDay)) return "Time of day must be HH:MM.";

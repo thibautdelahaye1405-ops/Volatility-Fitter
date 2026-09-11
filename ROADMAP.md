@@ -1990,7 +1990,76 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-10p (resume here)
+## STATUS — updated 2026-09-11a (resume here)
+
+### 🧭 SESSION WRAP (2026-09-11a) — THE SERIES LENS ON ITS FIRST DESK DAY: A FRAME BUDGET PER LANE, WARNINGS THAT STOP A START, AN HONEST START STAMP
+
+User (first morning on the lens, NVDA on Massive history): "fetching data
+seems slower (by frame) than in the smile lens … the LQD+prior+filter lane
+is very slow and even stalls completely before it does all the frames
+(8/10)". Read from the running app's own series (the strip / evidence
+routes), then three fixes on "go ahead with the fixes".
+
+- **What the series showed.** Harvest 11–13 s per frame on every series
+  (four NVDA series, 8 rungs, 1,500 quotes each) — the SAME call the Smile
+  lens makes for an as-of snapshot (`prov.fetch_chain(as_of=)` → Massive's
+  per-contract NBBO history, nearest-the-money first, `NBBO_MAX_CONTRACTS`
+  = 1,500 at 12 in flight ≈ 12 s worst case, which NVDA saturates). Not
+  slower per frame; slower to SHOW: the runner harvests every frame before
+  the lanes start (ten frames = two minutes of fetch before a smile), and a
+  series created while another runs waits in the one job slot. The
+  `+ prior + filter` lane on the 5-min ladder (6- and 8-day fronts, haircut,
+  symmetric solver): fit times 1.6 → 7.9 → 12.5 → 13.0 → 7.5 → 82 → 188 →
+  1,033 s on frames 1–8, rms 7.9 → 161 bp, pull ATM up to −1,097 bp, the
+  ninth frame never finished — the recorded active-filter finding
+  (2026-09-10l/n), compounding frame to frame; the free lane on the same
+  frames 2 s and 8–10 bp. The creation warning exists but rendered ONLY in
+  the Estimate card; the user pressed Start without Estimate, the create
+  response carried the warning and the UI dropped it.
+- **Fix 1 — the frame budget.** `SeriesSpec.frameBudgetSeconds` (300 s
+  default = the LV client budget; ≥ 5; null = no cap; on the import request
+  and the connector's `create_series(frame_budget_seconds=)` too) becomes a
+  `perf_counter` deadline on the lane's detached state
+  (`AppState.fit_deadline`, None on the live desk — every live path
+  byte-identical). `volfit/calib/deadline.py` (`check_deadline`,
+  `FitDeadlineExceeded`) is called between the items of
+  `workflow.calibrate_ticker` and before every `joint_refit` inside
+  `symmetric.repair_surface(deadline=)` — the loop that grinds through its
+  escalation and growth passes. A hit takes the S3 dying-repair path: the
+  phase-A slices already committed stay, the remaining rows fail with
+  "frame budget 300 s exceeded: frame budget exceeded before …", the carry
+  advances from the committed fits, the run moves on. The fit stack has no
+  interruptible solver, so a budget bites only at those seams (one joint
+  refit still runs to its own end). Locks: `test_series_lanes` (a driven
+  clock: every row fails with the budget text and the run still ends done;
+  None = no check), `test_series_jobs` (default / bounds), and
+  `test_symmetric_surface` (a violating ladder raises before its refit past
+  the deadline; a clean ladder never checks; None ≡ no deadline).
+- **Fix 2 — warnings stop a Start.** The dialog's Start, when no Estimate
+  was shown for the spec and the creation carries warnings, stops on the
+  draft: the warnings in amber, the footer says so, the button reads
+  **Start anyway**; an edit of any field / the lanes or Cancel deletes the
+  draft (best effort). An Estimate that already showed them lets Start go
+  through. The frame budget is a field in the grid ("Frame budget (s)",
+  blank = no cap, < 5 blocks). `NewSeriesDialog.test.tsx` (6 locks; a
+  Dialog test needs `afterEach(cleanup)` — no vitest globals).
+- **Fix 3 — the start stamp.** `progress.startedTs` was `utcnow()` while
+  `createdTs` / `updatedTs` / `harvestedTs` are `series_store.now_iso()`
+  (local): every run read an hour long on this UTC+1 desk (nothing in the
+  UI showed it; the document and the series file did). Locked beside the
+  historical-run test.
+- Docs: the spec §3.1 gains the Frame budget bullet + a post-arc note in
+  the arc wrap; the connector doc's `create_series` row; the Series guide
+  (Estimate + Frame budget bullets); What's new 2026-09-11; CLAUDE.md.
+- Verification: the full backend suite in two halves 1454 + 1003 passed /
+  7 skipped (~13 min), ruff clean; frontend 804 / 114 green, tsc + build
+  clean; the live Series check `scripts/series_check.mjs` (:4197) 9 steps
+  green with the start stamp on the local clock.
+- Riders (none gates): interleave harvest and lane fits so a frame shows
+  after ~14 s instead of the whole harvest; a "parked lane" after k
+  consecutive budget hits (today a diverging lane still costs one budget per
+  frame); a series starting at 09:30 ET gets a marks frame (226 quotes)
+  before the NBBO populates — its LV lane reports "no fit committed" there.
 
 ### ✅ SERIES ARC COMPLETE 2026-09-10p — S0–S7 shipped in one day (the arc
 header above the LV operator arc carries every phase's wrap, the measured

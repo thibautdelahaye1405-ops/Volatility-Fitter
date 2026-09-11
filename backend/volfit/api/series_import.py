@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from volfit.api.schemas import FitMode
 from volfit.api.schemas_series import (
+    DEFAULT_FRAME_BUDGET_S,
     FrameDoc,
     LaneSpec,
     SeriesClock,
@@ -68,6 +69,8 @@ class SeriesImportRequest(BaseModel):
     presets: list[str] = []
     fitMode: FitMode | None = None
     ladder: SeriesLadder | None = None
+    #: The (lane, frame) wall-clock cap (SeriesSpec.frameBudgetSeconds).
+    frameBudgetSeconds: int | None = Field(default=DEFAULT_FRAME_BUDGET_S, ge=5, le=86_400)
     note: str = ""
 
 
@@ -272,7 +275,8 @@ def import_series(state, req: SeriesImportRequest) -> SeriesDoc:
                     else f"import:{os.path.basename(req.source.path or '')}"),
             clock=derive_clock([ts for ts, _c, _i in chains]), ladder=ladder,
             fitMode=req.fitMode or base_options.fitMode,
-            lanes=_resolve_lanes(req, base_fit), note=req.note,
+            lanes=_resolve_lanes(req, base_fit), frameBudgetSeconds=req.frameBudgetSeconds,
+            note=req.note,
         )
         stamp = now_iso()
         frames = []

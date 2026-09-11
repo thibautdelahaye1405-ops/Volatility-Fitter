@@ -171,6 +171,7 @@ def register(mcp: MCPServer, api: VolfitApi) -> None:
         max_expiries: int | None = None,
         fit_mode: FitMode = "mid",
         session_only: bool = True,
+        frame_budget_seconds: int | None = 300,
         start_job: bool = True,
     ) -> CallToolResult:
         """Create a series on one ticker (in the universe; spoken names
@@ -182,8 +183,12 @@ def register(mcp: MCPServer, api: VolfitApi) -> None:
         presets (default lqd_free + lqd_prior; lqd_prior_filter, svi_free,
         mcs_free, lv_free, lv_prior, current). ``start`` is ISO 8601;
         ``session_only`` skips out-of-session instants; ``max_expiries``
-        crops the pinned ladder nearest-first. Returns the id, the estimate
-        (frames, servable, seconds, warnings), the status and the Workbench
+        crops the pinned ladder nearest-first; ``frame_budget_seconds`` caps
+        one lane's calibration of one frame (past it the lane keeps its
+        committed slice fits, its repair / LV rows fail with the reason and
+        the run moves on; null = unlimited). Returns the id, the estimate
+        (frames, servable, seconds, warnings — read them: a lane can be
+        warned unusable at this cadence), the status and the Workbench
         link; then ``wait_for_series``. Needs the app to run with a store."""
         res = aliases.resolve(ticker)
         lanes = await resolve_presets(api, presets)
@@ -192,7 +197,8 @@ def register(mcp: MCPServer, api: VolfitApi) -> None:
             clock["start"] = start
         spec = {"name": name or f"{res.ticker} {mode} {step} x {count}", "ticker": res.ticker, "mode": mode,
                 "clock": clock, "fitMode": fit_mode, "lanes": lanes,
-                "ladder": {"policy": "pinned", "expiries": [], "maxExpiries": max_expiries}}
+                "ladder": {"policy": "pinned", "expiries": [], "maxExpiries": max_expiries},
+                "frameBudgetSeconds": frame_budget_seconds}
         try:
             created = await api.post("/series", spec)
         except ApiError as exc:

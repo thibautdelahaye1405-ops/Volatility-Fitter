@@ -145,10 +145,13 @@ def phase_b_repair(
         # The tail contract (seam + wing-slope ordering of the extrapolated
         # wings) rides the extrapolation-guard toggle, like the overlay's
         # Notes-09/10 machinery; the identified in-support screen is always on.
+        # The frame budget of a series lane (state.fit_deadline, None on the
+        # live desk): the repair stops before a joint refit past it.
         repair = repair_surface(
             specs,
             [r.result.params.to_vector() for r in records],
             tail_contract=state.options().extrapEnforce,
+            deadline=getattr(state, "fit_deadline", None),
         )
         # Active-set exchange (tails+calendar arc Phase 4 / roadmap V3.0):
         # the EXACT full-line certificate — the same acceptance authority

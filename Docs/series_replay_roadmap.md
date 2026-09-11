@@ -103,6 +103,21 @@ ruling of 2026-09-07.
   capture ladders, `intraday_ladder.py`) · `maxExpiries` crop. Strike window
   = the source's history window (Massive: nearest-the-money first up to
   `NBBO_MAX_CONTRACTS = 1500`).
+- **Frame budget** (2026-09-11) — `frameBudgetSeconds`, the most one lane
+  may spend calibrating one frame (300 s by default, null = no cap). A
+  cooperative deadline on the lane's detached state (`volfit.calib.deadline`),
+  checked before every calibration item and before every joint refit of the
+  calendar repair: past it the lane keeps the slice fits it committed, its
+  repair / LV rows fail with the reason (`frame budget 300 s exceeded: …`),
+  the carry advances from the committed fits as after a dying repair, and
+  the run moves on to the next frame. The desk's own Calibrate never sets a
+  deadline (byte-identical). Added after a `+ prior + filter` lane on a 5-min
+  NVDA series spent 1.6 s → 7.9 → 12.5 → 13.0 → 7.5 → 82 → 188 → 1,033 s on
+  frames 1–8 (rms 7.9 → 161 bp, pull ATM −1,097 bp) and never finished the
+  ninth — the recorded active-filter finding, now bounded. A Start without
+  an Estimate stops on the creation warnings (the draft is kept, **Start
+  anyway** runs it, an edit or Cancel discards it) instead of running
+  silently.
 - **Lanes** — composed from presets, each a patch over the frozen base
   (§3.3): `LQD-N free` · `LQD-N + prior` · `LQD-N + prior + filter` ·
   `SVI-JW free` · `MCS free` · `LV affine free` · `LV affine + prior` ·
@@ -607,6 +622,22 @@ the ring evidence), and the prior lane's calendar repair grinds on a few
 frames (a 44 s outlier). The exit readout (§8 S5) stands: on the
 replay-day SPY series the hybrid prior damps the one-day rung's ATM path
 18.4 → 17.5 bp per frame for +0.5 bp of rms.
+
+(Post-arc, 2026-09-11 — the first desk day: three fixes. The **frame
+budget** (§3.1) bounds a diverging lane — the active filter on a 5-min
+NVDA series had reached 17 minutes on one frame and held the series at
+8/10; `volfit.calib.deadline` + `SeriesSpec.frameBudgetSeconds`, locks in
+tests/test_series_lanes.py, test_series_jobs.py, test_symmetric_surface.py.
+The **creation warnings stop a Start** taken without an Estimate (the
+dialog kept them in the Estimate card only; the create response carried
+them and the UI dropped them) — a draft + "Start anyway", locked in
+NewSeriesDialog.test.tsx. `progress.startedTs` is stamped on the store's
+local clock like every other stamp (it was UTC: every run read an hour
+long on a UTC+1 desk). Also measured that day: the harvest is the Smile
+lens's own as-of fetch — Massive's per-contract NBBO history at the
+1,500-contract cap, 11–13 s per frame on NVDA over 8 rungs — run for every
+frame before any lane fits, so ten frames show nothing for two minutes;
+interleaving harvest and fits is a rider.)
 
 ## 9. Standing constraints (from the ratified rulings)
 

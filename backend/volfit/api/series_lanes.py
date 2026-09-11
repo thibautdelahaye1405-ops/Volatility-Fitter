@@ -30,6 +30,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from time import perf_counter
 
+from volfit.calib import deadline as deadline_clock
+from volfit.calib.deadline import FitDeadlineExceeded
+
 from volfit.api import affine_fit, priors, workflow
 from volfit.api.schemas_affine import AffineFitRequest
 from volfit.api.schemas_prior import PriorSurfaceSnapshot
@@ -166,6 +169,12 @@ def calibrate_frame(doc: SeriesDoc, lane: LaneSpec, frame: FrameDoc, chain: Chai
     fit_mode = lane.fitMode or doc.spec.fitMode
     st = lane_state(doc, lane, frame, chain, carry)
     t0 = perf_counter()
+    # The frame budget (SeriesSpec.frameBudgetSeconds): a deadline on the
+    # detached state, checked between the desk's items and before every joint
+    # refit of the calendar repair (volfit.calib.deadline). Past it the items
+    # already committed stay, the rest raise — the same dying-repair path.
+    budget = doc.spec.frameBudgetSeconds
+    st.fit_deadline = deadline_clock.now() + budget if budget is not None else None
     # The desk's items: phase-A slice fits commit one by one, then the calendar
     # repair, then the LV surface. A repair that dies (the active filter's
     # calendar-inconsistent predictions on a dense intraday ladder — recorded
@@ -174,6 +183,8 @@ def calibrate_frame(doc: SeriesDoc, lane: LaneSpec, frame: FrameDoc, chain: Chai
     repair_error: str | None = None
     try:
         workflow.calibrate_ticker(st, ticker, fit_mode)
+    except FitDeadlineExceeded as exc:
+        repair_error = f"frame budget {budget} s exceeded: {exc}"
     except Exception as exc:  # noqa: BLE001
         repair_error = f"{type(exc).__name__}: {str(exc)[:200]}"
     fit_ms = (perf_counter() - t0) * 1000.0

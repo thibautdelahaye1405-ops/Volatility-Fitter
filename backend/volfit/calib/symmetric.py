@@ -43,6 +43,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from volfit.calib.calendar import calendar_grid_nodes, common_support, tapered_support_grid
+from volfit.calib.deadline import check_deadline
 from volfit.calib.symmetric_stack import (  # noqa: F401 — public re-exports
     SLOPE_TOL,
     TAIL_ROW_FRAC,
@@ -209,6 +210,7 @@ def repair_surface(
     thetas0: list[np.ndarray],
     screen_tol: float = SCREEN_TOL_VOL,
     tail_contract: bool = False,
+    deadline: float | None = None,
 ) -> SurfaceRepair:
     """Screen the ladder and jointly repair its violation components.
 
@@ -217,6 +219,10 @@ def repair_surface(
     ``tail_contract`` (the extrapolation-guard toggle) adds the seam +
     wing-slope ordering rows per interface and includes their violations in
     the screen; the identified in-support constraint is always on.
+    ``deadline`` (a ``perf_counter`` epoch, ``volfit.calib.deadline``) is
+    checked before every joint refit: past it the repair raises
+    ``FitDeadlineExceeded`` instead of grinding on through its escalation and
+    growth passes — the series lanes' frame budget. None = no budget.
     """
     n = len(specs)
     ifaces = [
@@ -253,6 +259,7 @@ def repair_surface(
                 comp_thetas = [thetas[i] for i in range(lo, hi + 1)]
                 comp_ifaces = ifaces[lo:hi]
                 for attempt in range(MAX_ESCALATIONS + 1):
+                    check_deadline(deadline, "the calendar repair's joint refit")
                     comp_thetas, ok = joint_refit(
                         comp_specs, comp_thetas, comp_ifaces, weight
                     )

@@ -6,6 +6,15 @@ import type { WhatsNewEntry } from "./types";
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-09-11",
+    title: "Series: a frame budget per lane, warnings that stop a Start, and honest run times",
+    items: [
+      "**Frame budget** in New series… (300 s by default, blank = no cap): the most one lane may spend calibrating one frame. Past it the lane keeps the slice fits it committed, its calendar repair and LV rows fail with the reason, and the run moves on — a lane that diverges (the active filter at intraday cadence spent 17 minutes on one frame and never finished the next) can no longer hold a series at 8/10.",
+      "A Start without an Estimate now stops on the creation warnings instead of running silently: the series is created as a draft, the warnings show in amber, **Start anyway** runs it, an edit or Cancel discards the draft. The connector's `create_series` returns the same warnings and takes `frame_budget_seconds`.",
+      "A run's start time is stamped on the same clock as its frames (it read one hour long on a UTC+1 desk).",
+    ],
+  },
+  {
     date: "2026-09-10",
     title: "The Series lens: a ticker's chains through time, calibrated under model lanes and replayed frame by frame",
     items: [
