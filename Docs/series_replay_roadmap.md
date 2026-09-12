@@ -664,6 +664,35 @@ fetches'; index order), `test_run_feed_orders_frames_and_merges_both_threads_pro
 the S3 / S7 locks (pause-resume byte-identity, determinism, the rails)
 unchanged.)
 
+(2026-09-12a — **series files that remember where they went.** User: "so
+we can easily choose a file which just got saved: opening the same
+directory default, and propose the latest saved file by default". Frontend
+only. `lib/seriesFiles.ts` (pure): the recent list — name, when, series id,
+ticker, frames — head insert / dedup by name / eight entries, in
+localStorage `volfit.series.recent.v1`; the handles in IndexedDB beside the
+workspace handles under `series:<name>`. `state/seriesFiles.ts` (an
+external store, `useSeriesRecent`): `exportSeries` saves through the picker
+and remembers the file; `openSeriesPicker` opens the picker with the series
+picker id (Chromium remembers the directory per id across sessions) and
+`startIn` = the latest file's handle (else the most recent that has one);
+`openSeriesRecent` reopens through the stored handle (a permission prompt
+at most) and falls back to the picker for an entry without one (another
+browser, a download); `openDroppedSeries` remembers a dropped file with the
+drop's handle when Chromium hands one over. `lib/fileHandles.ts` pickers
+take `{ id, startIn, description }` and retry without them when the
+browser rejects the options. Surfaces: the header's **Open file…** and
+**Reopen <latest>** (the name shortened, the full one in the title; an
+opened series is selected like a created one), File ▸ Series (Open
+series… — the row was missing from the menu — plus the recent rows, the
+first tagged latest), the palette's `Open recent series: <name>`
+(`DYNAMIC.seriesRecent`, documented for the Command Reference lock).
+Locks: `lib/seriesFiles.test.ts` (the list algebra), `state/seriesFiles.test.ts`
+(stubbed pickers: Export records the file and the next Open receives its
+handle as `startIn` under the series id; Reopen uses the handle without a
+picker; no handle → the picker; a non-series file refused; the list
+survives a reload). Not done: no picker can pre-select a file (the platform
+has no such API) — "propose" is the Reopen button and the first menu row.)
+
 ## 9. Standing constraints (from the ratified rulings)
 
 - **Anchoring axis (2026-09-07)** — no variant calibrations in Options;

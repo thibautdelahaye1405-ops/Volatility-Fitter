@@ -23,30 +23,17 @@ import { useSmileSession } from "./smileSession";
 import { API_BASE_URL } from "./api";
 import { saveNodePriors } from "../components/topbar/PriorsMenu";
 import { chartBackground, chartPngFilename, findActiveChartSvg, svgToPngBlob } from "../lib/chartPng";
-import { downloadBlob, promptFile } from "../lib/fileHandles";
-import { importSeriesFile, notifySeriesChanged } from "./useSeries";
-import { parseSeriesBundle } from "../lib/seriesFile";
+import { downloadBlob } from "../lib/fileHandles";
+import { openSeriesPicker, openSeriesRecent, useSeriesRecent } from "./seriesFiles";
 import { useHelp } from "./help";
 import { useDiagnosticsSnapshot } from "./useDiagnostics";
 import { copyText, formatDiagnostics } from "../lib/help/diagnostics";
 
-/** File > Open series...: pick a .volfit-series.json, validate the envelope,
- *  recreate the series in the store, and tell every series list. */
-async function openSeriesFile(): Promise<void> {
-  const file = await promptFile(".json,application/json");
-  if (!file) return;
-  const text = await file.text();
-  let raw: unknown = null;
-  try { raw = JSON.parse(text); } catch { window.alert("not a JSON file"); return; }
-  const parsed = parseSeriesBundle(raw);
-  if (!parsed.ok) { window.alert(parsed.error); return; }
-  try {
-    await importSeriesFile(raw);
-    notifySeriesChanged();
-  } catch (err) {
-    window.alert(err instanceof Error ? err.message : String(err));
-  }
-}
+/** File > Open series... / Open recent series: the verbs live in
+ *  state/seriesFiles (the picker starts where the last file was saved; a
+ *  recent file reopens through its handle); a failure is an alert here —
+ *  the lens's own buttons show it as a note instead. */
+const alertError = (err: unknown) => window.alert(err instanceof Error ? err.message : String(err));
 
 
 export interface Command extends CommandDef {
@@ -71,6 +58,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
   const ws = useWorkspaceFile();
   const snap = useSnapshotFile();
   const uni = useUniverse();
+  const seriesRecent = useSeriesRecent();
   const view = useViewSettings();
   const expiry = useExpiryFormat();
   const session = useSmileSession();
@@ -110,7 +98,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       bind("file.saveToServer", (arg) => { if (arg?.trim()) void ws.saveToServer(arg.trim()); }, live && ws.server.storeEnabled && !ws.busy),
       bind("file.saveSnapshot", () => void snap.saveSnapshot(), live && !snap.busy),
       bind("file.openSnapshot", () => void snap.openPicker(), live && !snap.busy),
-      bind("file.openSeries", () => void openSeriesFile(), live),
+      bind("file.openSeries", () => void openSeriesPicker().catch(alertError), live),
       // Export (A3): the publish artifacts + the active chart
       bind("export.surfacesJson", () => openUrl(`${API_BASE_URL}/export/surfaces`), live),
       bind("export.surfacesCsv", () => openUrl(`${API_BASE_URL}/export/surfaces?format=csv`), live),
@@ -130,6 +118,12 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         id: `${DYNAMIC.workspaceRecent}${r.kind}:${r.name}`, label: `Open recent: ${r.name}`,
         category: "File" as const, detail: r.kind === "server" ? "server" : "file", enabled: live && !ws.busy,
         run: () => void ws.openRecent(r),
+      })),
+      // Series files, the latest saved / opened first (the header proposes it too).
+      ...seriesRecent.map((r, i) => ({
+        id: `${DYNAMIC.seriesRecent}${r.name}`, label: `Open recent series: ${r.name}`,
+        category: "File" as const, detail: i === 0 ? "latest" : `${r.ticker} · ${r.frames} frames`, enabled: live,
+        run: () => void openSeriesRecent(r).catch(alertError),
       })),
       // Universe
       bind("universe.manage", () => wb.openDialog("universe")),

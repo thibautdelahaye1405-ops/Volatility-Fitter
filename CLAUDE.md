@@ -121,7 +121,7 @@ Key commands (Windows, repo root):
             --regime spike_aug2024 --lv` then `-m backtest.analyze --results ...json`.
             Plan/params: backend\backtest\SPEC.md; module map: backend\backtest\README.md.
 - Frontend: cd frontend ; npm run dev   (talks to :8000 if up, else mock fallback + MOCK badge)
-- Frontend tests: cd frontend ; npm test   (vitest, 804 tests / 114 files as of 2026-09-11a) ; npm run smoke:ui
+- Frontend tests: cd frontend ; npm test   (vitest, 813 tests / 116 files as of 2026-09-12a) ; npm run smoke:ui
             (headless-Edge WORKBENCH smoke; LIVE on a synthetic single-origin
             server — backend\smoke_server.py on :4188, throw-away DB — when
             ..\.venv exists, else vite preview + mock: first-run Welcome, lenses,
@@ -163,7 +163,10 @@ Key commands (Windows, repo root):
             history, 1,500-contract cap, ~12 s per frame). 2026-09-11b: a run is TWO
             threads (`api/series_feed.RunFeed`): the harvest lands frames, the lane
             thread fits them in index order as they land, progress merged under one
-            lock — a fit never delays the next fetch.
+            lock — a fit never delays the next fetch. 2026-09-12a: series files remember
+            where they went (`frontend/src/state/seriesFiles.ts`: Export remembers the
+            file + handle, Open file… starts in its directory, Reopen <latest> in the
+            header, File ▸ Series recent rows, `DYNAMIC.seriesRecent`).
 - MCP connector (2026-09-09c): backend\volfit_mcp = the app's API as a Model
             Context Protocol server for Claude Desktop / claude.ai (Docs\mcp_connector.md).
             `.venv\Scripts\python -m volfit_mcp` (stdio; registered in

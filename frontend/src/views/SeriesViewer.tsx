@@ -21,9 +21,9 @@ import { useSeriesPlayback } from "../state/useSeriesPlayback";
 import { useSeriesFrames } from "../state/useSeriesFrames";
 import { useSeriesStrip } from "../state/useSeriesStrip";
 import { keyAction } from "../lib/seriesPlayback";
-import { adoptSeriesPrior, exportSeriesFile, seriesErrorMessage } from "../state/useSeries";
-import { seriesFilename } from "../lib/seriesFile";
-import { downloadText, pickSaveHandle, supportsFilePicker, writeHandle } from "../lib/fileHandles";
+import { adoptSeriesPrior, seriesErrorMessage } from "../state/useSeries";
+import { exportSeries, openSeriesPicker, openSeriesRecent, useSeriesRecent } from "../state/seriesFiles";
+import type { SeriesRecentEntry } from "../lib/seriesFiles";
 import { useSmileSession } from "../state/smileSession";
 import type { FrameDoc, LaneSpec } from "../lib/seriesTypes";
 import { buttonClass, cardClass, chartMessageClass, chipClass, primaryButtonClass, selectClass } from "../lib/ui";
@@ -66,6 +66,7 @@ export default function SeriesViewer() {
   const live = source === "live";
   const view = useSeriesViewState();
   const { seriesId, stage, hidden, axisMode, ghost, kWindow, surfaceMode, patch, toggleLane } = view;
+  const recentFiles = useSeriesRecent();
   const sel = useSeriesSelection(ticker, live, seriesId, (id) => patch({ seriesId: id }));
   const { doc, progress, epochKey, pendingActive, pendingFrame, clearPending } = sel;
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -215,23 +216,28 @@ export default function SeriesViewer() {
     );
   };
 
+  // Export remembers the file it saved; Open file… starts in that directory
+  // and Reopen <latest> proposes it (state/seriesFiles). An opened series is
+  // selected at once, like a series the dialog created.
   const onExport = async () => {
     if (!seriesId || !doc) return;
     try {
-      const bundle = await exportSeriesFile(seriesId);
-      const text = JSON.stringify(bundle);
-      const suggested = seriesFilename(doc.spec.ticker, doc.spec.name, String(bundle.savedAt ?? ""));
-      if (supportsFilePicker()) {
-        const handle = await pickSaveHandle(suggested);
-        if (!handle) return;
-        if (!(await writeHandle(handle, text))) throw new Error("could not write the file");
-      } else {
-        downloadText(suggested, text);
-      }
-      setNote(`exported ${suggested}`);
+      const name = await exportSeries(seriesId, doc);
+      if (name !== null) setNote(`exported ${name}`);
     } catch (err) {
       setNote(seriesErrorMessage(err));
     }
+  };
+  const onOpened = (res: { id: string; name: string; ticker: string; frames: number } | null) => {
+    if (res === null) return;
+    sel.markCreated(res.id);
+    setNote(`opened ${res.name} · ${res.ticker} · ${res.frames} frame${res.frames === 1 ? "" : "s"}`);
+  };
+  const onOpenFile = async () => {
+    try { onOpened(await openSeriesPicker()); } catch (err) { setNote(seriesErrorMessage(err)); }
+  };
+  const onOpenRecent = async (entry: SeriesRecentEntry) => {
+    try { onOpened(await openSeriesRecent(entry)); } catch (err) { setNote(seriesErrorMessage(err)); }
   };
   const onAdoptPrior = async () => {
     if (!seriesId || !doc) return;
@@ -263,6 +269,9 @@ export default function SeriesViewer() {
         onSelect={(id) => patch({ seriesId: id })}
         onNew={() => setDialogOpen(true)}
         onDelete={sel.verbs.remove}
+        onOpenFile={() => void onOpenFile()}
+        onOpenRecent={(entry) => void onOpenRecent(entry)}
+        recentFiles={recentFiles}
         onExport={() => void onExport()}
         onAdoptPrior={() => void onAdoptPrior()}
         onStart={sel.verbs.start}

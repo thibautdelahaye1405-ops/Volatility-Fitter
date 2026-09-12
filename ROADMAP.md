@@ -1990,7 +1990,50 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-11b (resume here)
+## STATUS — updated 2026-09-12a (resume here)
+
+### 🧭 SESSION WRAP (2026-09-12a) — SERIES FILES THAT REMEMBER WHERE THEY WENT
+
+User: "improve the import feature in this harvest / replay lens, so we can
+easily chose a file which just got saved: opening the same directory
+default, and propose the latest saved file by default". Frontend only,
+mirroring the workspace files' handle + Recent pattern.
+
+- **What the lens does now.** Export saves through the picker (Edge /
+  Chrome) and remembers the file — name, when, series id, ticker, frames —
+  at the head of a recent list (localStorage, eight entries) with its handle
+  in IndexedDB beside the workspace handles. **Open file…** (new in the
+  header; File ▸ Open series… too) opens the picker under the series picker
+  id — Chromium remembers the last directory per id across sessions — and
+  with `startIn` = the latest file's handle, so it opens in the directory
+  the last file was saved to. **Reopen <latest>** beside it proposes the
+  last file saved or opened: one click, a read-permission prompt at most,
+  no picker. File ▸ Series lists the last eight (the first tagged latest;
+  the Open series… row was missing from the menu — added), the palette has
+  them as `Open recent series: <name>`. A series file dropped on the shell
+  joins the list with the drop's handle when the browser gives one. An
+  opened series is selected in the lens like a created one. Other browsers
+  (no File System Access API): the export downloads, the names are kept,
+  a reopen re-picks the file.
+- **Code.** `lib/seriesFiles.ts` (pure list algebra), `state/seriesFiles.ts`
+  (an external store: `useSeriesRecent`, `exportSeries`, `openSeriesPicker`,
+  `openSeriesRecent`, `openDroppedSeries`, `lastSeriesHandle` — the latest
+  file's handle, else the most recent that has one), `lib/fileHandles.ts`
+  pickers take `{ id, startIn, description }` and retry bare when the
+  browser rejects the options, `DYNAMIC.seriesRecent`, the File menu's
+  Series section, the header buttons, the viewer wiring, the Command
+  Reference row + docs (`file.openSeries` widened, `file.recentSeries:`
+  new), the guide's Files bullet, What's new 2026-09-12.
+- **Locks.** `lib/seriesFiles.test.ts` (head insert / dedup / cap /
+  restore / latest / labels / the short name) and `state/seriesFiles.test.ts`
+  (stubbed pickers on window: Export records the file and the next Open
+  receives its handle as `startIn` under the series id; Reopen reads the
+  handle without a picker; an entry without a handle picks, started in the
+  last handled file's directory; a workspace file is refused as a series;
+  the list survives a module reload). Frontend suite + tsc + build green;
+  the help corpus locks cover the new dynamic prefix.
+- Not possible by design: no browser picker can pre-select a file, so
+  "propose the latest" is the Reopen button and the first menu row.
 
 ### 🧭 SESSION WRAP (2026-09-11b) — SERIES: THE HARVEST AND THE LANE FITS RUN SIDE BY SIDE
 

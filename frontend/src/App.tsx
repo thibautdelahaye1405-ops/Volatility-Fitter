@@ -39,7 +39,7 @@ import { HelpProvider } from "./state/help";
 import Walkthrough from "./components/help/Walkthrough";
 import { classifyBundle } from "./lib/snapshotFile";
 import { useDeepLink } from "./state/useDeepLink";
-import { importSeriesFile, notifySeriesChanged } from "./state/useSeries";
+import { openDroppedSeries } from "./state/seriesFiles";
 import { snapshotNameOf } from "./lib/snapshotFile";
 import { workspaceNameOf } from "./lib/workspaceFile";
 import { useShellShortcuts } from "./state/useShellShortcuts";
@@ -55,16 +55,27 @@ function Shell() {
   // Drop a .json anywhere on the shell: a workspace file (A1) or a snapshot
   // file (A2), routed by its schema family.
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    const file = Array.from(e.dataTransfer.files).find((f) => /\.json$/i.test(f.name));
+    const items = Array.from(e.dataTransfer.items ?? []);
+    const idx = Array.from(e.dataTransfer.files).findIndex((f) => /\.json$/i.test(f.name));
+    const file = idx >= 0 ? e.dataTransfer.files[idx] : null;
     if (!file) return;
     e.preventDefault();
-    void file.text().then((text) => {
+    // Chromium hands a dropped file's handle over (synchronously, in the
+    // event): a dropped series file then reopens from the Series recent list.
+    const item = items[idx] as (DataTransferItem & { getAsFileSystemHandle?: () => Promise<FileSystemHandle | null> }) | undefined;
+    const handlePromise = typeof item?.getAsFileSystemHandle === "function"
+      ? item.getAsFileSystemHandle().catch(() => null)
+      : Promise.resolve<FileSystemHandle | null>(null);
+    void file.text().then(async (text) => {
       let raw: unknown = null;
       try { raw = JSON.parse(text); } catch { /* the workspace opener reports it */ }
       const kind = classifyBundle(raw);
       if (kind === "snapshot") void snap.openText(text, snapshotNameOf(file.name));
-      else if (kind === "series") void importSeriesFile(raw).then(notifySeriesChanged).catch((err: unknown) => window.alert(err instanceof Error ? err.message : String(err)));
-      else void ws.openFile(new File([text], `${workspaceNameOf(file.name)}.volfit.json`, { type: "application/json" }));
+      else if (kind === "series") {
+        const handle = await handlePromise;
+        void openDroppedSeries(file, handle && handle.kind === "file" ? (handle as FileSystemFileHandle) : null)
+          .catch((err: unknown) => window.alert(err instanceof Error ? err.message : String(err)));
+      } else void ws.openFile(new File([text], `${workspaceNameOf(file.name)}.volfit.json`, { type: "application/json" }));
     });
   };
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {

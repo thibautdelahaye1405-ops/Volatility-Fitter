@@ -74,11 +74,20 @@ export const COMMAND_DOCS_FILE: CommandDoc[] = [
   {
     id: "file.openSeries",
     summary: "Load a series file into the store.",
-    details: "Imports a `.volfit-series.json` (`POST /series/import`): the series document, every frame's chain, every lane's fits and the lanes' carried prior / filter state are recreated in the store under the file's own series id — an id already present is left as it is. The Series lens lists it for its ticker at once; dropping the file on the shell does the same. Export sits in the Series lens header (the **Export** button downloads the selected series).",
-    example: "Open `spy_spy-2026-08-19-15-min_20260910_1512.volfit-series.json` on another desk: Alt+6 on an SPY tab shows the 25-frame series with its three lanes, ready to replay — no harvest, no calibration.",
+    details: "Imports a `.volfit-series.json` (`POST /series/import`): the series document, every frame's chain, every lane's fits and the lanes' carried prior / filter state are recreated in the store under the file's own series id — an id already present is left as it is. The Series lens lists it for its ticker at once and selects it; dropping the file on the shell does the same. In Edge / Chrome the picker starts in the directory of the last series file saved or opened (Export remembers where it saved), and the lens header's **Reopen <latest>** button and File ▸ Series list the recent files, the latest first. Export sits in the Series lens header (the **Export** button saves the selected series).",
+    example: "You exported `nvda_5-min-x10_20260912_1452.volfit-series.json` an hour ago. File ▸ Open series… opens in that folder; File ▸ Series ▸ the first row (tagged latest) or the header's **Reopen nvda_5-min-x10_2026…1452** reopens it in one click, a permission prompt at most.",
     enabledWhen: "Live backend with a store (VOLFIT_DB)",
     guide: "series",
-    related: ["lens.series", "file.openSnapshot", "file.open"],
+    related: ["lens.series", "file.recentSeries:", "file.openSnapshot", "file.open"],
+  },
+  {
+    id: "file.recentSeries:",
+    summary: "Reopen a recent series file (one row per file, the latest first, last 8).",
+    details: "Rows `Open recent series: <name>` for the last eight series files saved through the Series lens's Export or opened through File ▸ Open series… (a drop on the shell counts too). The first row is the latest; the Series lens header proposes it as **Reopen <name>**. In Edge / Chrome the file reopens through its stored handle (a permission prompt may appear); in other browsers, or for a file that was downloaded rather than saved through the picker, the row opens the picker instead.",
+    example: "File ▸ Series ▸ `nvda_5-min-x10_20260912_1452.volfit-series.json` (latest): the series is back in the store and selected in the lens.",
+    enabledWhen: "Live backend with a store (VOLFIT_DB)",
+    guide: "series",
+    related: ["file.openSeries", "lens.series"],
   },
   // -------------------------------------------------------------- Export
   {

@@ -10,7 +10,7 @@
 // the active chart as PNG (A3). State + verbs: state/workspaceFile,
 // state/snapshotFile, state/commands.
 import { useState } from "react";
-import { Camera, Clock, Download, FileImage, FilePlus, FileSpreadsheet, FileText, FolderOpen, Save, Server, Trash2 } from "lucide-react";
+import { Camera, Clock, Download, FileImage, FilePlus, FileSpreadsheet, FileText, Film, FolderOpen, Save, Server, Trash2 } from "lucide-react";
 import MenuButton from "./MenuButton";
 import CommandRow from "../CommandRow";
 import { MenuDivider, MenuPanel, MenuSection } from "../../topbar/Menu";
@@ -44,6 +44,7 @@ export default function FileMenu() {
   const disabled = !live || ws.busy;
   const serverRows = commands.filter((c) => c.id.startsWith(DYNAMIC.workspaceServer));
   const recentRows = commands.filter((c) => c.id.startsWith(DYNAMIC.workspaceRecent));
+  const seriesRows = commands.filter((c) => c.id.startsWith(DYNAMIC.seriesRecent));
 
   const submitServer = () => {
     const n = serverName.trim();
@@ -85,6 +86,15 @@ export default function FileMenu() {
         <MenuSection label="Snapshots — quotes + calibrations" />
         <CommandRow id="file.saveSnapshot" icon={Camera} after={close} />
         <CommandRow id="file.openSnapshot" icon={FolderOpen} after={close} />
+
+        <MenuDivider />
+        <MenuSection label="Series — frames, lanes, fits" />
+        <CommandRow id="file.openSeries" icon={FolderOpen} after={close}
+          detail={seriesRows.length > 0 ? "starts where the last file was saved" : undefined} />
+        {seriesRows.map((c, i) => (
+          <CommandRow key={c.id} id={c.id} icon={Film} label={c.label.replace(/^Open recent series: /, "")}
+            detail={i === 0 ? "latest" : c.detail} after={close} />
+        ))}
 
         <MenuDivider />
         <MenuSection label="Export" />

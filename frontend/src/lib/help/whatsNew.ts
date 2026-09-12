@@ -6,6 +6,14 @@ import type { WhatsNewEntry } from "./types";
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-09-12",
+    title: "Series files: Open starts where the last file was saved and proposes it",
+    items: [
+      "**Export** remembers the series file it saved. **Open file…** in the Series lens header (and File ▸ Open series…) now starts in that file's directory in Edge / Chrome, and a **Reopen <latest>** button beside it reopens the last file saved or opened in one click, a read permission prompt at most.",
+      "File ▸ Series lists the last eight series files, the latest first; the command palette has them as *Open recent series: <name>*. A series file dropped on the shell joins the list too. An opened series is selected in the lens at once.",
+    ],
+  },
+  {
     date: "2026-09-11",
     title: "Series: harvest and fits side by side, a frame budget per lane, warnings that stop a Start, and honest run times",
     items: [

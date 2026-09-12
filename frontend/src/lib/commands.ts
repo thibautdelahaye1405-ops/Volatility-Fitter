@@ -29,6 +29,7 @@ export const DYNAMIC = {
   workspaceServer: "file.openServer:",
   workspaceDelete: "file.deleteServer:",
   workspaceRecent: "file.recent:",
+  seriesRecent: "file.recentSeries:",
 } as const;
 
 export const COMMANDS = [

@@ -22,6 +22,7 @@ const DYNAMIC_ROWS: CommandDef[] = [
   { id: DYNAMIC.workspaceServer, label: "Open workspace from server: <name>", category: "File", detail: "one row per server workspace" },
   { id: DYNAMIC.workspaceDelete, label: "Delete workspace from server: <name>", category: "File", detail: "one row per server workspace" },
   { id: DYNAMIC.workspaceRecent, label: "Open recent: <name>", category: "File", detail: "one row per recent file / server workspace" },
+  { id: DYNAMIC.seriesRecent, label: "Open recent series: <name>", category: "File", detail: "one row per recent series file, the latest first" },
 ];
 
 export default function CommandReference({ anchor }: HelpPageProps) {

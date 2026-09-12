@@ -8,6 +8,8 @@
 // tabs — Smile · Frames · Surface · Term · Lanes (S5 lit the last three).
 // Pure presentation: every verb is a prop.
 import type { LaneSpec, SeriesDoc, SeriesProgress, SeriesSummary } from "../../lib/seriesTypes";
+import type { SeriesRecentEntry } from "../../lib/seriesFiles";
+import { latestSeriesFile, shortFileName } from "../../lib/seriesFiles";
 import { laneStyle } from "../../lib/seriesLanes";
 import { statusTone } from "../../lib/seriesFormat";
 import { badgeClass, buttonClass, chipClass, primaryButtonClass, selectClass } from "../../lib/ui";
@@ -35,7 +37,13 @@ export interface SeriesHeaderProps {
   onSelect: (id: string | null) => void;
   onNew: () => void;
   onDelete: () => void;
-  /** Download the series as a .volfit-series.json (frames, lanes, fits). */
+  /** Open a series file through the picker (it starts where the last file was saved). */
+  onOpenFile: () => void;
+  /** Reopen a recent series file (the header proposes the latest). */
+  onOpenRecent: (entry: SeriesRecentEntry) => void;
+  /** The recent series files, the latest first. */
+  recentFiles: SeriesRecentEntry[];
+  /** Save the series as a .volfit-series.json (frames, lanes, fits). */
   onExport: () => void;
   /** Save the production lane's fits at the playhead's frame as the ticker's live prior. */
   onAdoptPrior: () => void;
@@ -115,9 +123,13 @@ function LaneChip({ lane, index, hidden, onToggle }: { lane: LaneSpec; index: nu
 }
 
 export default function SeriesHeader(props: SeriesHeaderProps) {
-  const { ticker, list, seriesId, doc, progress, busy, hidden, stage, onSelect, onNew, onDelete, onExport, onAdoptPrior, onToggleLane, onStage } = props;
+  const {
+    ticker, list, seriesId, doc, progress, busy, hidden, stage, onSelect, onNew, onDelete, onOpenFile, onOpenRecent, recentFiles,
+    onExport, onAdoptPrior, onToggleLane, onStage,
+  } = props;
   const adoptable = doc !== null && doc.frames.some((f) => f.status === "ready") && (progress?.fitsDone ?? 0) > 0;
   const unlisted = seriesId !== null && !list.some((s) => s.id === seriesId);
+  const latest = latestSeriesFile(recentFiles);
   return (
     <div className="flex shrink-0 flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -135,6 +147,16 @@ export default function SeriesHeader(props: SeriesHeaderProps) {
           ))}
         </select>
         <button className={buttonClass} onClick={onNew}>New series…</button>
+        <button className={buttonClass} disabled={busy} onClick={onOpenFile}
+          title="open a .volfit-series.json — the picker starts where the last series file was saved">
+          Open file…
+        </button>
+        {latest !== null && (
+          <button className={buttonClass} disabled={busy} onClick={() => onOpenRecent(latest)}
+            title={`reopen the latest series file: ${latest.name}`} data-testid="series-reopen-latest">
+            Reopen {shortFileName(latest.name)}
+          </button>
+        )}
         {seriesId !== null && (
           <button className={buttonClass} disabled={busy} onClick={onDelete} title="delete the series with its frames and fits">
             Delete

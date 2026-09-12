@@ -10,7 +10,8 @@
 const DB_NAME = "volfit.workspaceHandles";
 const STORE = "handles";
 
-type SaveOpts = { suggestedName?: string; types?: { description: string; accept: Record<string, string[]> }[] };
+type FileType = { description: string; accept: Record<string, string[]> };
+type SaveOpts = { suggestedName?: string; id?: string; startIn?: FileSystemHandle; types?: FileType[] };
 type PickerWindow = Window & {
   showSaveFilePicker?: (o?: SaveOpts) => Promise<FileSystemFileHandle>;
   showOpenFilePicker?: (o?: SaveOpts & { multiple?: boolean }) => Promise<FileSystemFileHandle[]>;
@@ -22,31 +23,63 @@ type PermissionHandle = FileSystemFileHandle & {
 
 const JSON_TYPE = [{ description: "VolFit workspace", accept: { "application/json": [".json"] } }];
 
+/** Where a picker opens and what it calls the file (2026-09-12, the series
+ *  files): ``id`` makes Chromium remember the last directory per picker
+ *  across sessions; ``startIn`` opens in that handle's directory (a file
+ *  handle = its parent) — the last file saved, typically; ``description``
+ *  names the type. A picker that rejects the options (a handle it cannot
+ *  start in) is retried without them, so an open never fails on memory. */
+export interface PickerOptions {
+  id?: string;
+  startIn?: FileSystemHandle | null;
+  description?: string;
+}
+
+function pickerOpts(o: PickerOptions | undefined): SaveOpts {
+  const out: SaveOpts = { types: o?.description ? [{ description: o.description, accept: JSON_TYPE[0].accept }] : JSON_TYPE };
+  if (o?.id) out.id = o.id;
+  if (o?.startIn) out.startIn = o.startIn;
+  return out;
+}
+
+const isAbort = (err: unknown) => err instanceof Error && err.name === "AbortError";
+
 /** Chromium with the File System Access API. */
 export function supportsFilePicker(): boolean {
   return typeof window !== "undefined" && typeof (window as PickerWindow).showSaveFilePicker === "function";
 }
 
 /** Save picker → handle, or null when unsupported / cancelled. */
-export async function pickSaveHandle(suggestedName: string): Promise<FileSystemFileHandle | null> {
+export async function pickSaveHandle(suggestedName: string, opts?: PickerOptions): Promise<FileSystemFileHandle | null> {
   const w = window as PickerWindow;
   if (typeof w.showSaveFilePicker !== "function") return null;
   try {
-    return await w.showSaveFilePicker({ suggestedName, types: JSON_TYPE });
-  } catch {
-    return null; // AbortError (user cancelled) or a sandboxed context
+    return await w.showSaveFilePicker({ suggestedName, ...pickerOpts(opts) });
+  } catch (err) {
+    if (isAbort(err) || !opts) return null; // the user cancelled, or a sandboxed context
+    try {
+      return await w.showSaveFilePicker({ suggestedName, types: pickerOpts({ description: opts.description }).types });
+    } catch {
+      return null;
+    }
   }
 }
 
 /** Open picker → handle, or null when unsupported / cancelled. */
-export async function pickOpenHandle(): Promise<FileSystemFileHandle | null> {
+export async function pickOpenHandle(opts?: PickerOptions): Promise<FileSystemFileHandle | null> {
   const w = window as PickerWindow;
   if (typeof w.showOpenFilePicker !== "function") return null;
   try {
-    const [h] = await w.showOpenFilePicker({ types: JSON_TYPE, multiple: false });
+    const [h] = await w.showOpenFilePicker({ ...pickerOpts(opts), multiple: false });
     return h ?? null;
-  } catch {
-    return null;
+  } catch (err) {
+    if (isAbort(err) || !opts) return null;
+    try {
+      const [h] = await w.showOpenFilePicker({ types: pickerOpts({ description: opts.description }).types, multiple: false });
+      return h ?? null;
+    } catch {
+      return null;
+    }
   }
 }
 
