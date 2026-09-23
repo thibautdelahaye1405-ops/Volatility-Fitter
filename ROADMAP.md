@@ -1990,7 +1990,37 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-12a (resume here)
+## STATUS — updated 2026-09-23a (resume here)
+
+### 🧭 SESSION WRAP (2026-09-23a) — SPX ON MASSIVE: THE CONTRACTS REFERENCE KEYS AN INDEX BY ITS BARE ROOT
+
+Found while preparing the presentation Q&A (`Docs/deck/presentation_prep_QA_2026-09-23.md`,
+nine researched sections + `Docs/deck/prep_2026-09-23/` scripts; user: "fix the I:SPX bug on
+Massive too").
+
+- **The bug.** `MassiveProvider._underlying("SPX")` = `I:SPX` was sent to
+  `/v3/reference/options/contracts` as `underlying_ticker`, which answers **0 rows** for the
+  `I:` spelling (live-verified: `SPX` lists the SPX + SPXW book and the rows' own
+  `underlying_ticker` reads `SPX`). So `available_expiries` was empty, Add SPX failed ("no
+  usable option expiries"), and the stream / NBBO-history paths that need the listing were
+  empty too — even though the key IS entitled to SPX contracts and NBBO. ROADMAP 2026-09-02
+  had flagged `I:SPX` as "unverified against the live tier".
+- **The fix.** `data/massive.py`: a second spelling helper `_contracts_underlying` (the bare
+  root, `I:` stripped) used by the contracts reference in `feed_status`, `available_expiries`
+  and `_intraday_contracts`; `_underlying` (the `I:` prefix) stays for the snapshot and the
+  aggregate endpoints (the snapshot accepts both and reports `I:SPX` back; the index VALUE is a
+  separate product, not entitled here → spot from parity as designed).
+- **Verified live (after the 09-23 close).** `feed_status` amber "delayed feed"; 53 SPX
+  expiries (0.73 s status, 4.1 s listing); one expiry (2026-10-14) = 312 quotes / 298
+  two-sided real NBBO in 0.30 s, European, AM settlement, `zero_carry` False, spot 7,722 from
+  parity. Locks: `test_massive.py::test_index_root_lists_contracts_by_bare_root_and_snapshots_by_i_prefix`
+  (the listing + the status probe use the bare root, the snapshot keeps `I:SPX`) and the
+  widened portable-ticker lock in `test_market_data_fetch.py`; the Massive / universe /
+  data-source test files 154 green.
+- Also recorded in the prep doc (§2): on Massive the app never lists a SAME-DAY expiry
+  (`available_expiries` keeps `0 < days`, `_intraday_contracts` has no `as_of`), and a
+  same-day rung needs `intradayClock` ON — not fixed here.
+
 
 ### 🧭 SESSION WRAP (2026-09-12a) — SERIES FILES THAT REMEMBER WHERE THEY WENT
 

@@ -223,8 +223,14 @@ def test_cboe_index_file_settles_each_expiry_per_its_listing_root():
 def test_index_roots_carry_across_sources():
     assert YahooProvider._symbol("SPX") == "^SPX" and YahooProvider._symbol("^VIX") == "^VIX"
     assert YahooProvider._symbol("SPY") == "SPY"
+    # snapshot / aggregate spelling: the "I:" prefix on a cash-index root
     assert MassiveProvider._underlying("SPX") == "I:SPX" and MassiveProvider._underlying("NDX") == "I:NDX"
     assert MassiveProvider._underlying("spy") == "SPY" and MassiveProvider._underlying("I:SPX") == "I:SPX"
+    # contracts-reference spelling: the BARE root (``I:SPX`` lists nothing there — live-verified 2026-09-23)
+    assert MassiveProvider._contracts_underlying("SPX") == "SPX"
+    assert MassiveProvider._contracts_underlying("I:SPX") == "SPX"
+    assert MassiveProvider._contracts_underlying("^SPX") == "SPX" and MassiveProvider._contracts_underlying("NDX") == "NDX"
+    assert MassiveProvider._contracts_underlying("spy") == "SPY"
 
 
 # ------------------------------------------------------ honest as-of picker

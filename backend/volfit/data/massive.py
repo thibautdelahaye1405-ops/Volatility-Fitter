@@ -218,7 +218,7 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
         try:
             ref = self._get(
                 f"{self.base_url}/v3/reference/options/contracts",
-                {"underlying_ticker": symbol, "limit": 1},
+                {"underlying_ticker": self._contracts_underlying(tickers[0]), "limit": 1},
             )
         except Exception:
             return ("red", "unreachable")
@@ -308,7 +308,7 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
         today = date.today()
         expiries: set[date] = set()
         params = {
-            "underlying_ticker": self._underlying(ticker),
+            "underlying_ticker": self._contracts_underlying(ticker),
             "expired": "false",
             "order": "asc",
             "sort": "expiration_date",
@@ -401,13 +401,28 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
 
     @staticmethod
     def _underlying(ticker: str) -> str:
-        """Massive/Polygon's spelling of a universe ticker: a known cash-index
-        root gets the "I:" prefix ("SPX" -> "I:SPX", the universe's portable
-        bare root, volfit.data.symbols); anything else upper-cased."""
+        """Massive/Polygon's spelling of a universe ticker on the SNAPSHOT and
+        AGGREGATE endpoints: a known cash-index root gets the "I:" prefix
+        ("SPX" -> "I:SPX", the universe's portable bare root,
+        volfit.data.symbols); anything else upper-cased. NOT the spelling the
+        contracts reference keys on — see ``_contracts_underlying``."""
         t = ticker.strip().upper()
         if t.startswith("I:"):
             return t
         return f"I:{normalize_root(t)}" if is_index_root(t) else t
+
+    @staticmethod
+    def _contracts_underlying(ticker: str) -> str:
+        """The ``underlying_ticker`` the CONTRACTS REFERENCE
+        (``/v3/reference/options/contracts``) keys on: the bare root for an
+        index ("SPX", never "I:SPX" — live-verified 2026-09-23: ``I:SPX``
+        answers 0 rows while ``SPX`` lists the SPX/SPXW book, and the rows'
+        own ``underlying_ticker`` reads "SPX"); anything else upper-cased.
+        The snapshot accepts both spellings and reports ``I:SPX`` back."""
+        t = ticker.strip().upper()
+        if t.startswith("I:"):
+            t = t[2:]
+        return normalize_root(t) if is_index_root(t) else t
 
     def historical_modes(self) -> set[str]:
         """Live + Previous Close (the snapshot's day close), and per-day **EOD**
@@ -931,7 +946,7 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
         wanted = set(expiries) if expiries else None
         out: list[dict] = []
         params = {
-            "underlying_ticker": self._underlying(ticker),
+            "underlying_ticker": self._contracts_underlying(ticker),
             "expired": "false",
             "order": "asc",
             "sort": "expiration_date",

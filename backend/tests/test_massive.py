@@ -672,3 +672,40 @@ def test_search_symbols_falls_back_on_failure():
     provider = MassiveProvider(["SPY"], api_key="k", http_get=boom)
     # Base echo search still resolves a plausible bare symbol.
     assert any(m.symbol == "SPY" for m in provider.search_symbols("SPY"))
+
+
+# ------------------------------------------------------ index roots (SPX)
+
+def test_index_root_lists_contracts_by_bare_root_and_snapshots_by_i_prefix():
+    """SPX on Massive (live-verified 2026-09-23): the contracts reference keys
+    an index by its BARE root (``underlying_ticker=I:SPX`` answers 0 rows, so
+    the old spelling left ``available_expiries`` empty and Add/stream/history
+    all failed), while the snapshot and aggregate endpoints take the ``I:``
+    spelling. Both the listing and the status probe must use the bare root on
+    the reference and keep ``I:SPX`` on the snapshot."""
+    spx_contract = dict(_contract(5000, 30), ticker="O:SPX5000C", underlying_ticker="SPX")
+    pages = {
+        "/v3/reference/options/contracts": {"results": [spx_contract], "status": "OK"},
+        "/v3/snapshot/options/I:SPX": {
+            "results": [_snap_result(500, 30, "call"), _snap_result(500, 30, "put")],
+            "status": "OK",
+        },
+    }
+    fake = FakeHttp(pages)
+    provider = MassiveProvider(["SPX"], api_key="k", http_get=fake)
+
+    assert provider.available_expiries("SPX") == [date.fromisoformat(_exp(30))]
+    ref_calls = [p for u, p in fake.calls if "reference/options/contracts" in u]
+    assert ref_calls and all(p["underlying_ticker"] == "SPX" for p in ref_calls)
+
+    snap = provider.fetch_chain("SPX", [date.fromisoformat(_exp(30))])
+    assert len(snap.quotes) == 2
+    assert any(u.endswith("/v3/snapshot/options/I:SPX") for u, _ in fake.calls)
+    assert not any("/v3/snapshot/options/SPX" in u for u, _ in fake.calls)
+
+    fake.calls.clear()
+    colour, _detail = provider.feed_status()
+    assert colour != "red"
+    ref_probe = [p for u, p in fake.calls if "reference/options/contracts" in u]
+    assert ref_probe and ref_probe[0]["underlying_ticker"] == "SPX"
+    assert any(u.endswith("/v3/snapshot/options/I:SPX") for u, _ in fake.calls)
