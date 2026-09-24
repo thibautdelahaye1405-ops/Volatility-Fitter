@@ -1,0 +1,327 @@
+{
+ "ladder": [
+  "2026-09-25",
+  "2026-10-02",
+  "2026-10-09",
+  "2026-10-16",
+  "2026-11-20",
+  "2026-12-18",
+  "2027-01-15",
+  "2027-03-19",
+  "2027-09-17"
+ ],
+ "n_quotes_chain": 3454,
+ "surface_inputs_9_rungs_warm_ms": {
+  "median": 353.5,
+  "walls": [
+   349.3,
+   387.8,
+   353.5
+  ],
+  "fit_quotes_per_rung": [
+   50,
+   99,
+   111,
+   121,
+   57,
+   75,
+   87,
+   108,
+   167
+  ]
+ },
+ "parametric_serial": [
+  {
+   "model": "lqd24",
+   "enforceCalendar": true,
+   "surfaceSolver": "symmetric",
+   "serial_cold_ms": 355.4,
+   "serial_warm_median_ms": 337.5,
+   "serial_walls_ms": [
+    337.5,
+    328.5,
+    348.7
+   ],
+   "surface_rms_bp": 3.46,
+   "per_expiry_rms_bp": [
+    7.6,
+    4.6,
+    2.6,
+    2.0,
+    2.2,
+    2.8,
+    3.2,
+    3.6,
+    2.6
+   ],
+   "fit_surface_serial_ms": 580.8,
+   "calendar_residuals_max": 0.0,
+   "max_iv_err_bp_per_expiry": [
+    31.2,
+    22.8,
+    10.2,
+    6.4,
+    6.1,
+    10.1,
+    13.4,
+    25.8,
+    20.6
+   ]
+  },
+  {
+   "model": "lqd24",
+   "enforceCalendar": false,
+   "surfaceSolver": "symmetric",
+   "serial_warm_median_ms": 339.6,
+   "serial_walls_ms": [
+    359.9,
+    333.4,
+    339.6
+   ],
+   "surface_rms_bp": 3.46,
+   "per_expiry_rms_bp": [
+    7.6,
+    4.6,
+    2.6,
+    2.0,
+    2.2,
+    2.8,
+    3.2,
+    3.6,
+    2.6
+   ]
+  },
+  {
+   "model": "lqd24",
+   "enforceCalendar": true,
+   "surfaceSolver": "sequential",
+   "serial_warm_median_ms": 405.3,
+   "serial_walls_ms": [
+    403.8,
+    408.1,
+    405.3
+   ],
+   "surface_rms_bp": 3.46,
+   "per_expiry_rms_bp": [
+    7.6,
+    4.6,
+    2.6,
+    2.0,
+    2.2,
+    2.8,
+    3.2,
+    3.6,
+    2.6
+   ]
+  },
+  {
+   "model": "svi",
+   "enforceCalendar": true,
+   "surfaceSolver": "symmetric",
+   "serial_warm_median_ms": 376.5,
+   "serial_walls_ms": [
+    376.5,
+    397.4,
+    372.8
+   ],
+   "surface_rms_bp": 7.76,
+   "per_expiry_rms_bp": [
+    7.1,
+    4.9,
+    5.0,
+    4.7,
+    5.3,
+    5.9,
+    5.5,
+    7.1,
+    13.4
+   ],
+   "fit_surface_serial_ms": 407.8,
+   "calendar_residuals_max": 0.0,
+   "max_iv_err_bp_per_expiry": [
+    31.2,
+    22.8,
+    10.2,
+    6.4,
+    6.1,
+    10.1,
+    13.4,
+    25.8,
+    20.6
+   ]
+  },
+  {
+   "model": "svi",
+   "enforceCalendar": false,
+   "surfaceSolver": "symmetric",
+   "serial_warm_median_ms": 358.3,
+   "serial_walls_ms": [
+    358.3,
+    355.5,
+    419.0
+   ],
+   "surface_rms_bp": 7.76,
+   "per_expiry_rms_bp": [
+    7.1,
+    4.9,
+    5.0,
+    4.7,
+    5.3,
+    5.9,
+    5.5,
+    7.1,
+    13.4
+   ]
+  }
+ ],
+ "calibrate_ticker_serial_lqd24_cal_on_plus_lv_ms": 3340.2,
+ "calibrate_ticker_lv_rms_bp": {
+  "in_operator": 3.61,
+  "converged": 5.12,
+  "n_evals": 66
+ },
+ "lv_9_rungs": {
+  "cold_start_walls_ms_jit_warm": [
+   2823.5,
+   2810.1,
+   2851.6
+  ],
+  "cold_start_median_ms": 2823.5,
+  "rms_in_operator_bp": 3.61,
+  "rms_converged_bp": 5.12,
+  "max_iv_bp": 24.81,
+  "n_evals": 66,
+  "arb_free": true,
+  "calendar_violations": 0,
+  "message": "matrix-free Gauss-Newton converged",
+  "diag": {
+   "vertex_count": 253,
+   "pde_x_count": 368,
+   "pde_t_count": 116,
+   "quote_count": 875,
+   "nfev": 65,
+   "seed_source": "parametric",
+   "wall_ms_pde_sensitivity": 0.0,
+   "wall_ms_pde_value": 0.0,
+   "wall_ms_residual_assembly": 353.9,
+   "wall_ms_optimizer_outer": 2179.8,
+   "wall_ms_total": 2533.8
+  },
+  "warm_started_recal_ms": 889.4,
+  "warm_started": {
+   "rms_in_operator_bp": 3.61,
+   "rms_converged_bp": 5.12,
+   "max_iv_bp": 24.81,
+   "n_evals": 20,
+   "arb_free": true,
+   "calendar_violations": 0,
+   "message": "matrix-free Gauss-Newton converged",
+   "diag": {
+    "vertex_count": 253,
+    "pde_x_count": 368,
+    "pde_t_count": 116,
+    "quote_count": 875,
+    "nfev": 19,
+    "seed_source": "prev-affine",
+    "wall_ms_pde_sensitivity": 0.0,
+    "wall_ms_pde_value": 0.0,
+    "wall_ms_residual_assembly": 100.0,
+    "wall_ms_optimizer_outer": 500.2,
+    "wall_ms_total": 600.2
+   }
+  }
+ },
+ "lv_9_rungs_enforceCalendar_off": {
+  "ms": 2869.1,
+  "rms_in_operator_bp": 3.61,
+  "rms_converged_bp": 5.12,
+  "max_iv_bp": 24.81,
+  "n_evals": 66,
+  "arb_free": true,
+  "calendar_violations": 0,
+  "message": "matrix-free Gauss-Newton converged",
+  "diag": {
+   "vertex_count": 253,
+   "pde_x_count": 368,
+   "pde_t_count": 116,
+   "quote_count": 875,
+   "nfev": 65,
+   "seed_source": "parametric",
+   "wall_ms_pde_sensitivity": 0.0,
+   "wall_ms_pde_value": 0.0,
+   "wall_ms_residual_assembly": 342.0,
+   "wall_ms_optimizer_outer": 2148.0,
+   "wall_ms_total": 2490.0
+  },
+  "identical_to_on": true
+ },
+ "pool_workers": 8,
+ "pool_spinup_ms": 4144.9,
+ "parametric_pooled": [
+  {
+   "model": "lqd24",
+   "enforceCalendar": true,
+   "surfaceSolver": "symmetric",
+   "pooled_calibrate_job_shape_median_ms": 391.3,
+   "pooled_calibrate_job_walls_ms": [
+    1619.4,
+    391.3,
+    383.0
+   ],
+   "pooled_fit_surface_fanout_median_ms": 507.7,
+   "pooled_fit_surface_walls_ms": [
+    545.5,
+    507.7,
+    505.3
+   ],
+   "surface_rms_bp": 3.46,
+   "per_expiry_rms_bp": [
+    7.6,
+    4.6,
+    2.6,
+    2.0,
+    2.2,
+    2.8,
+    3.2,
+    3.6,
+    2.6
+   ],
+   "pooled_calibrate_job_cal_off_median_ms": 374.7
+  },
+  {
+   "model": "svi",
+   "enforceCalendar": true,
+   "surfaceSolver": "symmetric",
+   "pooled_calibrate_job_shape_median_ms": 414.5,
+   "pooled_calibrate_job_walls_ms": [
+    459.4,
+    414.5,
+    412.7
+   ],
+   "pooled_fit_surface_fanout_median_ms": 280.2,
+   "pooled_fit_surface_walls_ms": [
+    280.2,
+    267.7,
+    336.0
+   ],
+   "surface_rms_bp": 7.76,
+   "per_expiry_rms_bp": [
+    7.1,
+    4.9,
+    5.0,
+    4.7,
+    5.3,
+    5.9,
+    5.5,
+    7.1,
+    13.4
+   ],
+   "pooled_calibrate_job_cal_off_median_ms": 396.9
+  }
+ ],
+ "lv_9_rungs_pooled_cold_start_walls_ms": [
+  2926.6,
+  2902.4,
+  2863.2
+ ]
+}
