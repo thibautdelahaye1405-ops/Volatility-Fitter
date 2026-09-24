@@ -2086,7 +2086,7 @@ everything in one frame (SPY 10,560) and dropped the error — the book never se
   with the API and the recorder side by side.
 
 **Verification.** Backend suite in six chunks (a–c 789, d–g 673, h–k 26, l–o 411, p–s 509, t–z 184): **2,592 passed / 7 skipped**, `test_series_perf` excluded (needs a quiet box). Frontend: tsc clean, **829 vitest tests / 121 files**, production build green.
-Live: the app restarted on this code right after the commit — see the follow-up line below.
+Live (2026-09-24 10:58 London, US session closed): the app restarted on this code (`restart.ps1`; the saved universe `TwoNames` = SPY + NVDA reloaded, NVDA pinned to Massive as before): the socket connected to the delayed cluster, **420 subscribed / 420 acknowledged** in chunks of 200 (NVDA's windowed plan; 950 cap, 0 over cap), **0 refused, 0 reconnects, no error**, 155 messages; the light reads "streaming 420 · 0 msg/s · last 13 s · 3 calls/h"; `tickers.NVDA` false and the node SSE `streaming: false, tier: none` — honest, no quote before the open; the first in-session tick flips both (unverified today: the ack text parsed as expected — `subscribed to:` per contract). The per-contract INFO line was throttled to one per 100 acks after the run (2026-09-24c).
 
 **Riders (recorded, not done).** A per-name `sigma_ref` from the last fit's ATM vol
 (the window is nearly inert on SPY at 1.0); in RECORDED mode the API's focus cannot

@@ -24,6 +24,8 @@ from __future__ import annotations
 import logging
 
 log = logging.getLogger("volfit.massive_ws")
+#: Acknowledgement log cadence (contracts) — a line per batch, not per contract.
+_ACK_LOG_EVERY = 100
 
 #: The error text of a refused (over-limit) subscribe frame.
 LIMIT_TEXT = "subscription limit"
@@ -117,7 +119,7 @@ class AckMixin:
             if syms:
                 hits = self._ack(syms, by_status=True)
                 if hits and (self._acks_parsed <= self._batch or not self._pending):
-                    log.info("%s: acknowledged %d (total %d)", self._name, hits, len(self._acked))
+                    self._log_acks(hits)
         elif status == "error":
             if LIMIT_TEXT in message.lower():
                 await self._on_limit(conn, message)
@@ -127,6 +129,18 @@ class AckMixin:
         elif status == "connected":
             log.info("%s: connected to %s", self._name, url)
         return None
+
+    def _log_acks(self, hits: int) -> None:
+        """One INFO line per ~batch of acknowledgements, not one per contract:
+        the live server acknowledges contract by contract (420 lines for a
+        420-contract plan on 2026-09-24), so the log reports the running total
+        every ``_ACK_LOG_EVERY`` acks and once more when nothing is pending."""
+        total = len(self._acked)
+        last = getattr(self, "_ack_logged", 0)
+        done = not self._pending
+        if total - last >= _ACK_LOG_EVERY or (done and total != last):
+            self._ack_logged = total
+            log.info("%s: acknowledged %d%s", self._name, total, " (all pending chunks confirmed)" if done else "")
 
     def _ack_by_quotes(self, events: list[dict]) -> None:
         """A quote for a pending contract is its acknowledgement."""
