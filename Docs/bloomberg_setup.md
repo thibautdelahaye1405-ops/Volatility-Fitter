@@ -87,9 +87,11 @@ as its live book (`volfit/data/bloomberg_stream.py` book + blpapi transport,
   legacy uniform band, `None` the whole ladder. The same rule sizes the
   metered pull. Around a centre held with 5 % hysteresis (no restart when
   spot wobbles across a strike), capped at `VOLFIT_BBG_MAX_SUBS` (default
-  3000), nearest-the-money first. Over-cap contracts are carried unquoted and
-  the status light says "N over cap". Smoke 2026-08-20: SPY + SPX, 2 expiries
-  each, 3166 wanted → 2998 subscribed, **0 metered calls** while streaming.
+  3000), nearest-the-money first. Over-cap contracts are READ by the bucket
+  rotation (the section below; "rotating N over cap" on the light) — unquoted
+  only with `VOLFIT_BBG_ROTATION_SLOTS=0`. Smoke 2026-08-20: SPY + SPX, 2
+  expiries each, 3166 wanted → 2998 subscribed, **0 metered calls** while
+  streaming.
 - Universe edits (ticker / expiry selection, a strike-window re-centre, cap
   re-ranking) are applied **incrementally on the live session** on the next
   scheduler tick (≤ 1 s): `update_streaming` subscribes only the new
@@ -121,10 +123,12 @@ as its live book (`volfit/data/bloomberg_stream.py` book + blpapi transport,
   repaint of the rest).
 - Env knobs (`serve.py`): `VOLFIT_BBG_STREAM_INTERVAL` (conflation s, 0 = every
   tick), `VOLFIT_BBG_STREAM_INTERVAL_SLOW` (the slow tier, 5),
-  `VOLFIT_BBG_MAX_SUBS`, `VOLFIT_BBG_HOST` / `VOLFIT_BBG_PORT` (DAPI
-  endpoint, default `localhost:8194`), `VOLFIT_BBG_BOOK_WAIT` (book-first
-  seconds, 5), `VOLFIT_BBG_BOOK_ONLY` (1 = never a metered quote pull while
-  streaming), `VOLFIT_BBG_WINDOW_SIGMA` (the window's reference vol, 1.0),
+  `VOLFIT_BBG_MAX_SUBS`, `VOLFIT_BBG_ROTATION_SLOTS` (slots the bucket
+  rotation of the over-cap contracts reserves, 300; read by the provider),
+  `VOLFIT_BBG_HOST` / `VOLFIT_BBG_PORT` (DAPI endpoint, default
+  `localhost:8194`), `VOLFIT_BBG_BOOK_WAIT` (book-first seconds, 5),
+  `VOLFIT_BBG_BOOK_ONLY` (1 = never a metered quote pull while streaming),
+  `VOLFIT_BBG_WINDOW_SIGMA` (the window's reference vol, 1.0),
   `VOLFIT_CACHE_DIR` (the listing cache root).
 - **Live Quote Table**: while streaming, the Smile Viewer's Table tab opens a
   per-node SSE stream (`GET /smiles/{t}/{e}/table/stream`,
@@ -243,3 +247,71 @@ gated.** No code change clears it — it's resolved on the Bloomberg side.
   cash dividends for the forward / de-Americanization model).
 - Symbol search uses the `//blp/instruments` service (free-text → securities),
   falling back to a substring/echo search if that service is unavailable.
+
+## Subscription churn — verified live 2026-09-24
+
+A bucket rotation through `//blp/mktdata` (subscribe a bucket, take its
+INITPAINT, unsubscribe, next) is tolerated by the Desktop API: thirty buckets
+of 40 SPY option securities cycled three times in a row (3.5 minutes,
+unmetered — the listing came from the day's disk cache, 0 bds): every bucket
+painted 40/40 in 0.8–3.0 s (median ≈ 2.7 s ≈ 15 securities per second),
+0 `SubscriptionFailure`, no session error, no throttling message. So a
+universe larger than the 3,000-subscription budget can be READ without
+reference hits by rotating the over-cap contracts through a reserved slice of
+the budget — the paints are last-known bid/ask with their own stamps, which
+the quote-synchronisation step (volfit.api.quote_sync) brings to the current
+spot before a fit. The per-connection contract count on Massive is released on
+unsubscribe too (Docs/massive_streaming.md §2b), but Massive sends no paint on
+subscribe, so rotation earns nothing there against the per-minute REST layer.
+
+## Bucket rotation — the over-cap contracts read off the book (2026-09-24)
+
+`volfit/data/bloomberg_rotation.py` (the worker + the paint memory; hooks in
+`bloomberg_plan.py` / `bloomberg_live.py`, the health block in
+`bloomberg_health.py`). When the plan exceeds the cap (`VOLFIT_BBG_MAX_SUBS`,
+3,000), `VOLFIT_BBG_ROTATION_SLOTS` slots (constructor `rotation_slots`;
+default 300, clamped to a quarter of the cap; 0 = off) are reserved: the
+allocation policy serves the LIVE set from the remainder (focus / floor / fair
+share, as before) and a daemon thread cycles the rest — nearest the money
+first, interleaved across tickers — through the reserved slots in buckets of
+≤ R: subscribe the bucket, poll the book every 0.25 s until every security
+painted or failed (or `max(6 s, R / 10 per s)` elapsed), copy each paint —
+bid / ask / last / volume, the provider stamp if the INITPAINT carried one,
+the wall time it was taken at, the underlying's spot at that instant — into
+the paint memory, unsubscribe, next; after the last bucket the pool starts
+over; a failed security is skipped and retried next cycle. Under the cap
+nothing changes: the plan is byte-identical and no worker runs.
+
+- **The chain** (`_chain_from_book`): live contracts with their ticks as
+  before; rotated contracts from the memory with their OWN `timestamp` and
+  `spot` — the quote synchronisation (`volfit/api/quote_sync.py`) transports
+  each to the chain's spot and widens its band by its age; only a contract
+  never painted stays unquoted. An un-stamped paint is dated by its age (the
+  chain's newest provider stamp minus the wall time since the paint was
+  taken): on the 15-min delayed feed, capping a wall-clock arrival at the
+  provider stamp would read every paint as fresh.
+- **Re-plan safety**: `update_streaming` diffs the live set only, under the
+  worker's lock — a bucket in flight is never unsubscribed by a universe edit,
+  and a bucket security the new plan promotes to the live set is handed over
+  instead of dropped when the bucket ends. A changed pool takes effect at the
+  next bucket boundary; an unchanged one leaves the running cycle alone.
+- **Health**: the Bloomberg provider now has `stream_stats()` (the Massive
+  shape — `connected`, `subscribed`, `acknowledged` = started, `refused` =
+  failures, `overCap`, `requested`, `cap`, `rate`, the per-ticker served
+  flags, the allocation — plus a `rotation` block: `pool`, `slots`,
+  `bucketWait`, `bucketSeconds`, `cycleSeconds`, `painted` / `failed` of the
+  last cycle, `paintedNow` / `bucketsNow` of the cycle in flight, `cycles`,
+  `memory`, `owned`); the light reads "rotating N over cap · cycle X s"
+  ("· M painted so far" until the first cycle ends).
+- **Measured live 2026-09-24** (SPY, the 12 nearest expiries = 3,796 planned
+  contracts from the day's cached listing, `max_subscriptions=400`,
+  `rotation_slots=100`, the delayed feed, **0 reference hits end to end** —
+  the window centre came off an underlying-only subscription): live set 300
+  (incl. the underlying), pool 3,497; the nearest buckets painted 100/100 in
+  2.6–3.7 s, the further-out ones in 7.0–8.4 s (≈ 13–35 paints per second,
+  ~18/s over a run — a flat 6 s cap truncated them, hence the R-scaled wait),
+  0 `SubscriptionFailure`; after 120 s the chain carried 2,490 quoted of
+  3,796 (299 live + 2,191 paints; the 1,306 not yet visited unquoted), 2,033
+  paints at a spot different from the chain's, 160 msg/s on 400
+  subscriptions. A full cycle of that pool takes ≈ 4 min; at the production
+  cap (3,000, R = 300) a 1,000-contract overflow cycles in about a minute.

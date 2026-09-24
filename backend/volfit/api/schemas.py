@@ -254,6 +254,26 @@ class OptionsSettings(BaseModel):
     #: only (each fit still receives its mode per request), so it never bumps the
     #: options version.
     fitMode: FitMode = "mid"
+    #: QUOTE SYNCHRONISATION (2026-09-24, volfit.api.quote_sync): before a
+    #: calibration every quote is brought to the chain's spot and time — a
+    #: quote quoted against its own spot (a live tick beside a REST layer up
+    #: to a minute old, a Bloomberg paint, a recorded frame) is de-Americanized
+    #: and inverted at ITS forward, corrected to the chain's forward through
+    #: the node's last committed fit under the dynamics regime (Δw = 0 under
+    #: sticky-strike) and relabelled at k = ln(K / F_now); its age widens its
+    #: band (band modes) or shrinks its weight (mid) by
+    #: ``quoteSyncAgeBpPerSqrtMin``. Inert — byte-identical — on a chain whose
+    #: quotes all share the chain's spot and stamp (every REST chain). Affects
+    #: calibration -> bumps the options version.
+    quoteSync: bool = True
+    #: The IV uncertainty of a quote's AGE, in vol bp per √minute at a 15 % ATM
+    #: vol (scaled by the node's ATM vol): 3.6 = the intraday campaign's SPY
+    #: ATM drift, 19.5 vol bp per 30 min (backtest/FINDINGS_observation_filter).
+    #: A stale quote's band widens by a·√age per side in bid-ask / haircut
+    #: mode; in mid mode its weight is multiplied by 1 / (1 + (s / s_half)²),
+    #: s_half its half-spread in IV. 0 = no widening. Read while ``quoteSync``
+    #: is on; affects calibration -> bumps the options version.
+    quoteSyncAgeBpPerSqrtMin: float = Field(3.6, ge=0.0, le=100.0)
     #: Data-age staleness thresholds (minutes) for LIVE real-feed chains
     #: (volfit.api.data_age): past ``dataAgeAmberMin`` the market pill turns
     #: amber (advisory — e.g. the delayed tier's 15 min lag); past

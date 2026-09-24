@@ -320,6 +320,9 @@ def _make_provider(session, **kwargs):
     blp = FakeBlp(_opt_chain_frame(DESCRIPTORS), bdp_values)
     kwargs.setdefault("strike_window", (0.9, 1.1))
     kwargs.setdefault("book_first_wait", 0.3)  # the 5 s production wait, shortened for the suite
+    # The cap tests below count the raw subscribe batches: the bucket rotation
+    # of the over-cap contracts (tests/test_bloomberg_rotation.py) stays off here.
+    kwargs.setdefault("rotation_slots", 0)
     prov = BloombergProvider(["SPY"], blp_module=blp, stream_session_factory=lambda: session, **kwargs)
     return prov, blp
 
@@ -368,6 +371,7 @@ def test_fetch_chain_and_spot_are_served_from_the_book_without_bdp():
         assert len(blp.bdp_calls) == metered_before  # NO reference hit: the book served it
         assert snap.spot == 101.1 and len(snap.quotes) == 10
         assert {(q.bid, q.ask, q.last, q.volume) for q in snap.quotes} == {(1.0, 1.2, 1.1, 5)}
+        assert {q.spot for q in snap.quotes} == {101.1}  # QUOTE SYNC: the underlying's paint on every tick
         assert snap.exercise_style == "american"
         assert prov.spot("SPY") == 101.1 and len(blp.bdp_calls) == metered_before
         assert prov.feed_status()[0] in ("green", "amber")
@@ -667,6 +671,7 @@ def _make_provider3(session, **kwargs):
     blp = FakeBlp(_opt_chain_frame(DESCRIPTORS3), bdp_values)
     kwargs.setdefault("strike_window", (0.9, 1.1))
     kwargs.setdefault("book_first_wait", 0.3)
+    kwargs.setdefault("rotation_slots", 0)
     return BloombergProvider(["SPY"], blp_module=blp, stream_session_factory=lambda: session, **kwargs), blp
 
 
@@ -724,6 +729,23 @@ def test_slow_interval_knob(monkeypatch):
     assert prov._slow_interval == 10.0 and prov._floor == 60
     monkeypatch.setenv("VOLFIT_BBG_STREAM_INTERVAL_SLOW", "junk")
     assert slow_interval_setting() == 5.0
+
+
+def test_rotation_slots_knob(monkeypatch):
+    """R = the constructor, else VOLFIT_BBG_ROTATION_SLOTS, else 300 — clamped
+    to a quarter of the cap (the live set keeps three quarters); 0 = off."""
+    from volfit.data.bloomberg_rotation import rotation_slots_setting
+
+    monkeypatch.delenv("VOLFIT_BBG_ROTATION_SLOTS", raising=False)
+    assert rotation_slots_setting(None, 3000) == 300 and rotation_slots_setting(None, 400) == 100
+    assert rotation_slots_setting(100, 3000) == 100 and rotation_slots_setting(0, 3000) == 0
+    assert rotation_slots_setting(900, 3000) == 750 and rotation_slots_setting(5, 3) == 0
+    monkeypatch.setenv("VOLFIT_BBG_ROTATION_SLOTS", "40")
+    assert rotation_slots_setting(None, 3000) == 40
+    prov, _ = _make_provider(FakeSession(), rotation_slots=None)  # None = the env knob
+    assert prov._rotation_slots == 40 and prov._rotation is None
+    monkeypatch.setenv("VOLFIT_BBG_ROTATION_SLOTS", "junk")
+    assert rotation_slots_setting(None, 3000) == 300
 
 
 def test_app_state_sync_streaming_drives_bloomberg():

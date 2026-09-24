@@ -45,6 +45,14 @@ class OptionQuote:
     volume: int | None = None
     open_interest: int | None = None
     timestamp: datetime | None = None
+    #: The underlying spot this quote was quoted AGAINST, when it differs from
+    #: the chain's (QUOTE SYNC, 2026-09-24): a chain merged from layers of
+    #: different ages — booked ticks at the book's spot beside a REST layer at
+    #: its own, Bloomberg paints, recorded frames — tags each quote so quote
+    #: prep (volfit.api.quote_sync) can invert it at ITS forward and bring it
+    #: to the chain's spot and time. None = the chain's spot (synchronous).
+    #: Not persisted: a stored frame is one instant, so reads leave it None.
+    spot: float | None = None
 
     def __post_init__(self) -> None:
         if self.call_put not in ("C", "P"):

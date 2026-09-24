@@ -145,6 +145,10 @@ class BloombergProvider(BloombergStreamingMixin, BloombergReferenceMixin, Option
     stream_port  : the ``//blp/mktdata`` streaming knobs (volfit.data.
                    bloomberg_live): conflation seconds, concurrent-subscription
                    budget, injectable session (tests), DAPI endpoint override.
+    rotation_slots : slots reserved for the BUCKET ROTATION of the over-cap
+                   contracts (volfit.data.bloomberg_rotation; None = env
+                   ``VOLFIT_BBG_ROTATION_SLOTS``, default 300, clamped to a
+                   quarter of the cap; 0 = off — over-cap contracts unquoted).
     book_first_wait : seconds a live fetch waits for the streaming book (paint +
                    coverage) before the metered fallback (BOOK_FIRST_WAIT).
     book_only    : while streaming, NEVER fall back to a metered quote pull —
@@ -176,6 +180,7 @@ class BloombergProvider(BloombergStreamingMixin, BloombergReferenceMixin, Option
         chain_series: Sequence[str] = CHAIN_SERIES,
         listing_dir: str | Path | None = "auto",
         exchange_day: Callable[[], date] | None = None,
+        rotation_slots: int | None = None,
     ) -> None:
         self._tickers = [t.strip().upper() for t in tickers]
         self.yellow_key = yellow_key
@@ -184,7 +189,8 @@ class BloombergProvider(BloombergStreamingMixin, BloombergReferenceMixin, Option
         self._exchange_day = exchange_day if exchange_day is not None else _exchange_day_et
         self._init_reference()
         self._init_streaming(
-            stream_interval, max_subscriptions, stream_session_factory, stream_host, stream_port
+            stream_interval, max_subscriptions, stream_session_factory, stream_host, stream_port,
+            rotation_slots=rotation_slots,
         )
         #: The strike window of a live fetch and of the stream plan (see the
         #: class docstring): every listed strike is a separately-METERED

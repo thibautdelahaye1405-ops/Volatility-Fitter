@@ -41,6 +41,16 @@ export type PriorPersistenceMode =
 export interface OptionsSettings {
   /** Default fit target (Mid / Bid-Ask / Haircut); seeds the session on load. */
   fitMode: FitMode;
+  /** Quote synchronisation (2026-09-24): before a calibration every quote of
+   *  a chain merged from layers of different ages (live ticks beside a REST
+   *  layer, paints, recorded frames) is inverted at ITS forward, corrected to
+   *  the chain's under the Dynamics regime and relabelled at the chain's
+   *  forward; its age widens its band (band modes) or shrinks its weight
+   *  (mid). Inert on a synchronous chain. Affects fits. */
+  quoteSync: boolean;
+  /** Age uncertainty of a stale quote, vol bp per sqrt(minute) at a 15 % ATM
+   *  vol (3.6 = the SPY intraday campaign's 19.5 bp per 30 min); 0 = off. */
+  quoteSyncAgeBpPerSqrtMin: number;
   enforceCalendar: boolean;
   /** Calendar-coupled surface solver: "symmetric" (independent fits + an
    *  identified-violation screen on common quote support + joint repair of
@@ -257,6 +267,8 @@ export interface OptionsSettings {
 
 export const OPTIONS_DEFAULTS: OptionsSettings = {
   fitMode: "mid",
+  quoteSync: true,
+  quoteSyncAgeBpPerSqrtMin: 3.6,
   enforceCalendar: true,
   surfaceSolver: "symmetric",
   extrapEnforce: false,

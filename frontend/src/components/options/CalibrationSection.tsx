@@ -4,7 +4,7 @@
 // knobs render only while the feature is on).
 import HyperparamPanel from "../HyperparamPanel";
 import type { FitSettings } from "../HyperparamPanel";
-import { PenaltyTable, Segmented, Toggle } from "../OptionsControls";
+import { NumberRow, PenaltyTable, Segmented, Toggle } from "../OptionsControls";
 import type { OptionsSettings } from "../../state/useOptions";
 import type { FitMode } from "../../state/useSmile";
 import { numInput, rowLabel, sectionTitle, subTitle } from "./shared";
@@ -47,6 +47,27 @@ export default function CalibrationSection({
         Mid · Bid-Ask band · Haircut band (shrink set by Haircut below).
         Persisted via Save as default.
       </p>
+
+      {/* Quote synchronisation (volfit.api.quote_sync): a chain merged from
+          layers of different ages is fitted as one synchronous set. */}
+      <Toggle
+        label="Quote synchronisation"
+        hint="Before a calibration, bring every quote to the chain's spot and time: on a chain merged from layers of different ages (live ticks beside a REST layer up to a minute old, Bloomberg paints, recorded frames) each quote is inverted at ITS forward, corrected to the chain's through the node's last fit under the Dynamics regime, and relabelled at the chain's forward. Read naively, a 0.1% spot move mis-reads an ATM one-month IV by ~40 bp. Inert on a chain whose quotes share one spot and stamp."
+        checked={draft.quoteSync} disabled={!live}
+        onChange={(v) => patch({ quoteSync: v })}
+      />
+      {draft.quoteSync && (
+        <div
+          className="mt-1"
+          title="IV uncertainty of a stale quote, vol bp per √minute at a 15% ATM vol (scaled by the node's ATM vol): 3.6 = the SPY intraday campaign's 19.5 bp per 30 min. Widens a stale quote's band per side in Bid-Ask / Haircut mode, shrinks its weight in Mid mode. 0 = off."
+        >
+          <NumberRow
+            label="Age uncertainty (bp / √min)" value={draft.quoteSyncAgeBpPerSqrtMin}
+            step={0.1} disabled={!live}
+            onChange={(v) => patch({ quoteSyncAgeBpPerSqrtMin: v })}
+          />
+        </div>
+      )}
 
       {/* Haircut, quote weighting, band mid anchor (FitSettings). */}
       <div className="mt-4">

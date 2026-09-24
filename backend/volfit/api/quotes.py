@@ -53,6 +53,20 @@ beyond a buffered Z_MAX cut). It is output-preserving by construction — the
 prepared (k, w, IV) arrays are byte-identical with the screen on or off — so it
 trades no quote quality for fewer tree pricings. Pass ``prefilter=False`` to
 disable it (used by the equivalence tests).
+
+Quote synchronisation (2026-09-24, ``volfit.api.quote_sync`` — the method and
+its equations live there): with a ``sync`` context and a chain whose quotes
+carry spots / stamps of their own (a live core beside a REST layer, paints,
+recorded frames), every quote is inverted at ITS forward F_i = forward_at(S_i)
+(the de-Am per distinct spot), corrected to the chain's forward through the
+node's last fit under the dynamics regime, relabelled at k = ln(K / F_now) and
+tagged with its age. The OTM side is still chosen against the chain's forward
+(one row per strike, byte-identical selection); the ITM-ness of a strike
+between F_i and F_now is sub-0.1 % and the inversion handles it by parity. The
+age widens the band (``apply_band_edits``) or shrinks the mid-mode weight
+(``quote_sync.apply_age_weights``, applied by ``service.node_weights``). A
+synchronous chain (``needs_sync`` False) or ``sync=None`` runs the historical
+path, byte-identical.
 """
 
 from __future__ import annotations
@@ -62,6 +76,14 @@ from datetime import date
 
 import numpy as np
 
+from volfit.api.quote_sync import (
+    SyncContext,
+    grouped_early_exercise_premiums,
+    needs_sync,
+    quote_age_minutes,
+    synchronise,
+    widen_band_by_age,
+)
 from volfit.api.session import QuoteEdit
 from volfit.calib.band import DEFAULT_HAIRCUT, BandTarget, apply_tick_floor, resolve_band
 from volfit.calib.convex_deam import convex_wing_repair
@@ -184,6 +206,21 @@ class PreparedQuotes:
     #: None on synthetic / IV-exact chains.  Carried so downstream
     #: diagnostics can express price gaps in ticks (R5 calendar reporting).
     tick_size: float | None = None
+    #: Quote synchronisation diagnostics (volfit.api.quote_sync), aligned with
+    #: ``k``; None on a synchronous chain / without a sync context. ``age_min``
+    #: = the quote's age at the chain's stamp (minutes); ``sync_shift_bp`` =
+    #: the applied regime correction ΔIV at mid (vol bp); ``age_widen_bp`` =
+    #: the age uncertainty s_i (vol bp) the band / weight consumers apply.
+    age_min: np.ndarray | None = None
+    sync_shift_bp: np.ndarray | None = None
+    age_widen_bp: np.ndarray | None = None
+    #: Which reference smile the regime correction used: "fit" (the node's
+    #: last committed fit) or "none" (no fit — Δw = 0, sticky-strike; also
+    #: the value on a synchronous chain).
+    sync_reference: str = "none"
+    #: Quotes the synchronisation actually moved or aged (spot or stamp of
+    #: their own); 0 on a synchronous chain.
+    n_synced: int = 0
 
     def __post_init__(self) -> None:
         if self.tau <= 0.0:
@@ -280,6 +317,7 @@ def prepare_quotes(
     tau: float | None = None,
     prefilter: bool = True,
     convex_deam: bool = True,
+    sync: SyncContext | None = None,
 ) -> PreparedQuotes:
     """Turn one expiry of a chain into sorted (k, w, IV-band) fit inputs.
 
@@ -291,26 +329,39 @@ def prepare_quotes(
     None means the calendar clock (tau = t). Total variance ``w`` is inverted
     from the price (clock-independent), so only the reported IV band uses tau:
     iv = sqrt(w / tau). Calendar ``t`` still drives de-Americanization and carry.
+
+    ``sync`` (module doc, volfit.api.quote_sync) synchronises quotes that carry
+    a spot / stamp of their own to the chain's; None, or a synchronous chain,
+    is the historical path.
     """
     tv = t if tau is None or tau <= 0.0 else tau
     f, d = forward.forward, forward.discount
-    scale = 1.0 / (d * f)
     # Tick-noise floor (module doc): only real-feed chains carry a tick size.
     price_floor = (
         TICK_FLOOR_TICKS * snapshot.tick_size if snapshot.tick_size else None
     )
+    quotes = snapshot.quotes_for(expiry)
+    spot_now, t_now = float(snapshot.spot), snapshot.timestamp
+    if sync is not None and not needs_sync(quotes, snapshot):
+        sync = None  # synchronous chain: nothing to do (byte-identical)
+    fwd_of: dict[float, float] = {spot_now: float(f)}  # F_i per distinct spot
 
-    # Raw rows first: (k, strike, is_call, bid, mid, ask) in price space —
-    # de-Americanization needs strikes and option types before normalization.
+    # Raw rows first: (k, strike, is_call, bid, mid, ask, spot, F_i, age) in
+    # price space — de-Americanization needs strikes and option types before
+    # normalization; k and F_i are the quote's OWN (its spot's) under sync.
     # Every drop from here on is QUARANTINED with a reason (R1 item 6) — the
     # kept set is unchanged, the absences become auditable. The OTM-side skip
     # is structural (the ITM twin of every strike), not a quarantine.
     screened: list[ScreenedQuote] = []
-    rows: list[tuple[float, float, bool, float, float, float]] = []
-    for quote in snapshot.quotes_for(expiry):
+    rows: list[tuple] = []
+    for quote in quotes:
         if quote.call_put != ("C" if quote.strike >= f else "P"):
-            continue  # keep the OTM side only
-        k = float(np.log(quote.strike / f))
+            continue  # keep the OTM side only (against the chain's forward)
+        s_i = spot_now if sync is None or quote.spot is None else float(quote.spot)
+        if s_i not in fwd_of:
+            fwd_of[s_i] = float(sync.forward_at(s_i))
+        f_i = fwd_of[s_i]
+        k = float(np.log(quote.strike / f_i))
         if quote.bid is None or quote.ask is None or quote.mid is None:
             screened.append(
                 ScreenedQuote(quote.strike, quote.call_put, k, "missing_or_crossed")
@@ -319,7 +370,8 @@ def prepare_quotes(
         if price_floor is not None and quote.bid <= price_floor:
             screened.append(ScreenedQuote(quote.strike, quote.call_put, k, "tick_floor"))
             continue  # tick-noise floor: the bid is at the quantum, not a market
-        rows.append((k, quote.strike, quote.call_put == "C", quote.bid, quote.mid, quote.ask))
+        age = 0.0 if sync is None else quote_age_minutes(quote, t_now)
+        rows.append((k, quote.strike, quote.call_put == "C", quote.bid, quote.mid, quote.ask, s_i, f_i, age))
 
     if not rows:  # real providers can serve one-sided-only expiries
         raise ValueError(f"no two-sided OTM quotes for expiry {expiry.isoformat()}")
@@ -330,6 +382,10 @@ def prepare_quotes(
     bid = np.array([r[3] for r in rows])
     mid = np.array([r[4] for r in rows])
     ask = np.array([r[5] for r in rows])
+    # Per-row sync side data (the chain's spot / forward / 0 when inert), masked
+    # in step with the rows: spot S_i, forward F_i, age (minutes).
+    side = np.array([(r[6], r[7], r[8]) for r in rows], dtype=float)
+    scale = 1.0 / (d * side[:, 1])  # 1 / (D F_i): the chain's scalar when inert
 
     def _quarantine(mask: np.ndarray, reasons) -> None:
         """Record dropped rows; ``reasons`` is a string or per-row array."""
@@ -355,9 +411,13 @@ def prepare_quotes(
             if pre.any() and not pre.all():
                 k_arr, strikes, is_call = k_arr[pre], strikes[pre], is_call[pre]
                 bid, mid, ask = bid[pre], mid[pre], ask[pre]
+                side, scale = side[pre], scale[pre]
             n_deam_input = int(k_arr.size)
-        eep_arr, n_deam = _early_exercise_premiums(
-            snapshot.spot, is_call, strikes, k_arr, mid, f, d, t, cash_dividends
+        # One de-Am per distinct quote spot (quote_sync step 2); a synchronous
+        # chain is the single historical call at the chain's spot.
+        eep_arr, n_deam = grouped_early_exercise_premiums(
+            _early_exercise_premiums, side[:, 0], side[:, 1], is_call, strikes, k_arr, mid,
+            d, t, cash_dividends,
         )
         bid, mid, ask = bid - eep_arr, mid - eep_arr, ask - eep_arr
 
@@ -398,7 +458,7 @@ def prepare_quotes(
     ks = k_arr[keep]
     w_bid_s, w_mid_s, w_ask_s = w_bid[keep], w_mid[keep], w_ask[keep]
     eep_s = eep_arr[keep] if eep_arr is not None else None
-    strikes_s, is_call_s = strikes[keep], is_call[keep]
+    strikes_s, is_call_s, side_s = strikes[keep], is_call[keep], side[keep]
     # R3 (FINDINGS_calibration_arb): independent per-strike de-Am + max(EEP,0) can
     # leave the American call wings non-convex (butterfly-arbitrageable inputs).
     # Repair the WINGS only — the ATM core stays byte-identical — then re-invert the
@@ -421,8 +481,25 @@ def prepare_quotes(
                         )
                     )
             ks, w_bid_s, w_mid_s, w_ask_s = ks[ok], w_bid_r[ok], w_mid_r[ok], w_ask_r[ok]
+            side_s = side_s[ok]
             if eep_s is not None:
                 eep_s = eep_s[ok]
+
+    # Quote synchronisation (quote_sync steps 3-5): regime-correct each quote
+    # from its own forward to the chain's, relabel at k = ln(K / F_now), tag
+    # ages. Only reached on an asynchronous chain with a sync context.
+    sync_fields: dict = {}
+    if sync is not None:
+        res = synchronise(
+            sync, ks, side_s[:, 1], f, w_bid_s, w_mid_s, w_ask_s, side_s[:, 2], tv, w_atm
+        )
+        ks, w_bid_s, w_mid_s, w_ask_s = res.k, res.w_bid, res.w_mid, res.w_ask
+        if eep_s is not None:
+            eep_s = eep_s[res.order]
+        sync_fields = dict(
+            age_min=res.age_min, sync_shift_bp=res.shift_bp, age_widen_bp=res.widen_bp,
+            sync_reference=sync.reference, n_synced=res.n_synced,
+        )
 
     iv_mid_s = np.sqrt(w_mid_s / tv)
     return PreparedQuotes(
@@ -443,6 +520,7 @@ def prepare_quotes(
             np.count_nonzero(black_vega_sigma(ks, iv_mid_s, tv) < VEGA_FLOOR_DIAG)
         ),
         tick_size=snapshot.tick_size,
+        **sync_fields,
     )
 
 
@@ -504,6 +582,10 @@ def apply_band_edits(
     half-width about its mid at that many price ticks of IV, applied AFTER
     the haircut so the floor wins (calib.band.apply_tick_floor). 0, or a
     chain without a tick size, is byte-identical.
+
+    A synchronised slice's age uncertainty (``prepared.age_widen_bp``,
+    quote_sync step 5) widens each quote's band by s_i per side after the
+    haircut and before the tick floor; absent / zero it is byte-identical.
     """
     if fit_mode == "mid":
         return None
@@ -519,6 +601,7 @@ def apply_band_edits(
         if edit.excluded and not include_excluded:
             keep[index] = False
     band = resolve_band(iv_bid[keep], iv_mid[keep], iv_ask[keep], fit_mode, haircut)
+    band = widen_band_by_age(band, prepared.age_widen_bp, keep)
     tick_norm = (  # one price tick in normalized (forward, undiscounted) units
         prepared.tick_size / (prepared.discount * prepared.forward)
         if prepared.tick_size and prepared.forward > 0.0 and prepared.discount > 0.0

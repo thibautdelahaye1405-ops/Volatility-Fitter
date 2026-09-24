@@ -32,6 +32,39 @@ export const CALIBRATION_DOCS: SettingDoc[] = [
     docs: ["07_calibration_objective_measure"],
   },
   {
+    key: "quoteSync",
+    model: "options",
+    section: "opt-calibration",
+    label: "Quote synchronisation",
+    summary: "Bring every quote of a chain merged from layers of different ages to the chain's spot and time before it is calibrated.",
+    details:
+      "A live core at the book's spot beside a REST layer up to a minute old at its own spot, Bloomberg paints, recorded frames — one chain, several spots. A quote quoted at spot S_i and read at today's forward carries an error of about Δ·ΔF/vega: for an ATM one-month option a 0.1 % spot move mis-reads the IV by ~40 vol bp, an order of magnitude above the fit's resolution. With the step on, each quote (its spot tagged by the merge) is de-Americanized and inverted at ITS forward F_i — the app's forward-transport rule, proportional or additive under a cash-dividend schedule — then corrected to the chain's forward through the node's last committed fit under the Dynamics regime: Δw = w0(x + (R − 1)δ) − w0(x), exactly zero under sticky-strike, the fixed-moneyness relabel under sticky-moneyness. Bid, mid and ask move by the same Δw (the spread survives) and the quote is relabelled at k = ln(K / F_now). Without a committed fit the correction is zero (sticky-strike behaviour). Total variance is held across the quote's age; the fit's clock is the chain's.\n\n" +
+      "Inert — byte-identical prepared quotes — on a chain whose quotes all share the chain's spot and stamp (every REST chain, a stored frame). Changes the prepared quotes, so it bumps the options version; the prepared-quote cache also re-keys on a new reference fit or a new layer.",
+    example:
+      "Streaming SPY on Massive with the belly live at 500.4 and the wings from a REST pull at 499.9: read naively the wing puts sit ~35 bp above the live core and the fitted skew kinks at the seam; with `quoteSync` on the wings are inverted at their own forward and relabelled, the seam disappears and the RMS drops back to the single-layer level.",
+    cacheEffect: "options-version",
+    surfaced: true,
+    related: ["quoteSyncAgeBpPerSqrtMin", "dynamicsRegime", "fitMode", "streamFreezeFit"],
+    docs: ["12_spotvol_missing_derivative"],
+  },
+  {
+    key: "quoteSyncAgeBpPerSqrtMin",
+    model: "options",
+    section: "opt-calibration",
+    label: "Age uncertainty",
+    unit: "vol bp / √min",
+    summary: "Set how much implied-vol uncertainty a quote's age adds, in vol bp per √minute at a 15 % ATM vol.",
+    details:
+      "A quote t minutes older than the chain carries s = a·√t·(σ_ATM / 0.15) of IV uncertainty. In the Bid-Ask and Haircut fit targets the quote's band widens by s on each side; in Mid mode its weight is multiplied by 1 / (1 + (s / s_half)²), s_half its own half-spread in IV floored at 1 bp, then the slice's weights are re-normalized to mean 1 so only the RANKING of stale against fresh quotes changes. The default 3.6 is the intraday campaign's SPY ATM drift of 19.5 vol bp per 30 min (backtest/FINDINGS_observation_filter.md), scaled to the node by its ATM vol. 0 disables the widening; a quote without a stamp of its own, or a chain whose quotes share one stamp, is never aged.",
+    example:
+      "A Bloomberg book whose deep wings last painted 9 minutes ago on a 20 % name: those wings' bands widen by 3.6·3·(0.20/0.15) ≈ 14 bp per side while the ticking belly keeps its quoted band, and in Mid mode a stale 10-bp-wide wing quote counts about a third of a fresh one.",
+    activation: "Read only while quoteSync is on",
+    cacheEffect: "options-version",
+    surfaced: true,
+    related: ["quoteSync", "fitMode", "bandTickFloorTicks", "weightScheme"],
+    docs: ["12_spotvol_missing_derivative"],
+  },
+  {
     key: "enforceCalendar",
     model: "options",
     section: "opt-calibration",

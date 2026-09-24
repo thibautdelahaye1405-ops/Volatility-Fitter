@@ -22,6 +22,7 @@ from volfit.api import fit_pool, fit_uncertainty, history
 from volfit.api.fit_models import DisplayFit, _max_iv_error
 from volfit.calib.fit_task import OverlaySettings, SliceFitTask, run_slice_fit
 from volfit.models.sigmoid.calibrate import WING_PENALTY_BASE
+from volfit.api.quote_sync import SyncContext, apply_age_weights, layers_digest, needs_sync
 from volfit.api.quotes import (
     PreparedQuotes,
     apply_band_edits,
@@ -361,6 +362,7 @@ def _prepared_key(
     cash_divs: tuple | None,
     t_cal: float,
     tau: float,
+    sync: tuple | None = None,
 ) -> tuple:
     """Content-digest cache key for a node's PreparedQuotes (note Stage 2).
 
@@ -382,6 +384,10 @@ def _prepared_key(
       - t_cal             : calendar maturity (drives de-Am carry + discounting)
       - tau               : variance clock (absorbs eventsEnabled/normalize/calendar)
       - reference_date    : as-of (belt-and-braces; an as-of switch also re-keys)
+      - sync              : the quote-synchronisation context digest
+                            (``sync_context``) — None while the slice is
+                            synchronous or the feature is off, so every
+                            REST-chain key is the historical tuple
 
     The resolution cost (forward/schedule/tau) is microseconds against the
     seconds of de-Am it gates, so computing it on every call — including hits —
@@ -396,7 +402,74 @@ def _prepared_key(
         round(float(t_cal), 12),
         round(float(tau), 12),
         state.reference_date.toordinal(),
+        sync,
     )
+
+
+def _sync_reference(state: AppState, ticker: str, iso: str) -> FitRecord | None:
+    """The node's last COMMITTED fit (any model, any fit target) — the
+    reference smile of the quote synchronisation. The mode on screen is tried
+    first, then the others; a committed pointer whose record left the cache
+    is skipped. Read-only: never a fit."""
+    modes = [state.last_fit_mode] + [m for m in ("mid", "bidask", "haircut") if m != state.last_fit_mode]
+    for mode in modes:
+        ptr = state.get_calibrated_ptr(ticker, iso, mode)
+        if ptr is None:
+            continue
+        record = state.get_fit(ptr[0])
+        if record is not None:
+            return record
+    return None
+
+
+def sync_context(
+    state: AppState, ticker: str, expiry: date, forward: ResolvedForward, t_cal: float
+) -> tuple[SyncContext | None, tuple | None]:
+    """(SyncContext, its cache-key digest) for one slice, or (None, None) when
+    the quote synchronisation is off (``OptionsSettings.quoteSync``) or every
+    quote of the slice already shares the chain's spot and stamp
+    (``quote_sync.needs_sync``) — the byte-identical gate.
+
+    The context carries the app's forward-transport rule anchored at the
+    CHAIN's spot (``spot_forward_shift`` with ``spot0`` = the snapshot spot:
+    proportional, or additive under a cash-dividend schedule), the dynamics
+    regime, the reference smile = the node's last committed fit's displayed
+    slice at its own forward with its ATM vol (the age scale), and the age
+    knob. The digest folds the knob, the regime, the reference's content
+    fingerprint + forward and the per-quote (spot, stamp) layers, so a new
+    commit or a new layer re-prepares while the fit cache (versions) is
+    untouched."""
+    options = state.options()
+    if not options.quoteSync:
+        return None, None
+    snapshot = state.snapshot(ticker)
+    quotes = snapshot.quotes_for(expiry)
+    if not quotes or not needs_sync(quotes, snapshot):
+        return None, None
+    f_now, disc, s_now = float(forward.forward), float(forward.discount), float(snapshot.spot)
+
+    def forward_at(spot: float) -> float:
+        return spot_forward_shift(
+            state, ticker, expiry, f_now, disc, t_cal, shift=spot / s_now - 1.0, spot0=s_now
+        )[0]
+
+    record = _sync_reference(state, ticker, expiry.isoformat())
+    ref_w = ref_f = sigma = digest = None
+    if record is not None:
+        ref_w = displayed_slice(record).implied_w
+        ref_f = float(record.prepared.forward)
+        sigma = float(displayed_atm_vol(record))
+        digest = _record_digest(record)
+    regime = state.dynamics_regime()
+    ctx = SyncContext(
+        forward_at=forward_at, regime=regime, reference_w=ref_w, reference_forward=ref_f,
+        sigma_atm=sigma, age_bp_per_sqrt_min=float(options.quoteSyncAgeBpPerSqrtMin),
+    )
+    key = (
+        round(float(options.quoteSyncAgeBpPerSqrtMin), 9), str(regime), digest,
+        None if ref_f is None else round(ref_f, 9), layers_digest(quotes),
+    )
+    return ctx, key
 
 
 def prepared_quotes(state: AppState, ticker: str, expiry: date) -> PreparedQuotes:
@@ -408,21 +481,37 @@ def prepared_quotes(state: AppState, ticker: str, expiry: date) -> PreparedQuote
     this caches the result so the de-Am runs once per genuine input change. The
     caller must have ensured the chain (``ensure_chain`` / ``has_quotes``).
 
-    The de-Am inputs are resolved FIRST (forward, cash schedule, clocks) so they
-    can be digested into the key — they are cheap to resolve and are exactly what
-    ``prepare_quotes`` needs on a miss, so nothing is computed twice."""
+    The de-Am inputs are resolved FIRST (forward, cash schedule, clocks, the
+    quote-synchronisation context) so they can be digested into the key — they
+    are cheap to resolve and are exactly what ``prepare_quotes`` needs on a
+    miss, so nothing is computed twice."""
     forward = state.resolved_forward(ticker, expiry)  # honours the forward policy
     cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
     t_cal, base_days = node_clock(state, ticker, expiry)
     tau = variance_time(state, ticker, expiry, t_cal, base_days)
-    key = _prepared_key(state, ticker, expiry.isoformat(), forward, cash_divs, t_cal, tau)
+    ctx, sync_key = sync_context(state, ticker, expiry, forward, t_cal)
+    key = _prepared_key(state, ticker, expiry.isoformat(), forward, cash_divs, t_cal, tau, sync_key)
     cached = state.get_prepared(key)
     if cached is not None:
         return cached
     snapshot = state.snapshot(ticker)
-    prepared = prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
+    prepared = prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau, sync=ctx)
     state.store_prepared(key, prepared)
     return prepared
+
+
+def node_weights(
+    state: AppState, ticker: str, iso: str, prepared: PreparedQuotes, fit_mode: str,
+    k: np.ndarray, w: np.ndarray,
+) -> np.ndarray | None:
+    """Per-quote calibration weights of a node on its EDITED (k, w): the
+    FitSettings weight scheme (volfit.calib.weights) times, in mid mode, the
+    quote-age factor of a synchronised slice (quote_sync.apply_age_weights) —
+    None = unit weights. The single weights path of the fit, the RMS and the
+    var-swap / prior readouts, so they agree."""
+    weights = resolve_weights(state.fit_settings().weightScheme, k, w)
+    session = state.session_if_exists((ticker, iso))
+    return apply_age_weights(prepared, {} if session is None else session.edits, fit_mode, weights)
 
 
 def varswap_target(
@@ -692,7 +781,7 @@ def prior_diagnostics(state: AppState, ticker: str, iso: str, fit_mode: str = "m
         iso = expiry.isoformat()
         prepared = prepared_quotes(state, ticker, expiry)
         k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
-        weights = resolve_weights(state.fit_settings().weightScheme, k, w)
+        weights = node_weights(state, ticker, iso, prepared, fit_mode, k, w)
         pt = prior_targets(state, ticker, iso, k, weights, prepared, fit_mode)
     except Exception:  # noqa: BLE001 — diagnostics are advisory, must never 500
         return PriorDiagnostics(mode=mode, active=False)
@@ -818,7 +907,7 @@ def _slice_task(
     production one, so the variants differ in the anchoring blocks alone."""
     settings = state.fit_settings()
     k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
-    weights = resolve_weights(settings.weightScheme, k, w)
+    weights = node_weights(state, ticker, iso, prepared, fit_mode, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
     pt = prior_targets(state, ticker, iso, k, weights, prepared, fit_mode, anchoring=anchoring)
@@ -1099,6 +1188,7 @@ def spot_forward_shift(
     discount: float,
     t: float,
     shift: float | None = None,
+    spot0: float | None = None,
 ) -> tuple[float, float]:
     """(F_T^1, h_T) for the active spot shift: the new forward and its log-ratio.
 
@@ -1110,11 +1200,16 @@ def spot_forward_shift(
     parametric slice transport and the affine LV-surface transport. ``shift``
     overrides the ACTIVE shift (the live quote-table stream passes the streamed
     spot's return so live IVs invert at the live forward); None = the active one.
+    ``spot0`` is the spot the shift is a return OF (the additive cash rule needs
+    it in currency): None = the calibration anchor spot; the quote
+    synchronisation passes the CHAIN's spot, the base its quotes' returns are
+    measured from.
     """
     shift = state.spot_shift(ticker) if shift is None else shift
     if shift == 0.0 or f0 <= 0.0:
         return f0, 0.0
-    spot0 = float(state.anchor_spot(ticker))  # the CALIBRATION spot, not live snapshot
+    if spot0 is None:
+        spot0 = float(state.anchor_spot(ticker))  # the CALIBRATION spot, not live snapshot
     ds = spot0 * shift
     mode = state.market_settings(ticker).dividendMode
     cash = mode in _CASH_DIV_MODES and any(
@@ -1403,7 +1498,7 @@ def _node_rms_terms(
     quote (volfit.calib.rms)."""
     prepared = record.prepared
     k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
-    weights = resolve_weights(state.fit_settings().weightScheme, k, w)
+    weights = node_weights(state, ticker, iso, prepared, fit_mode, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     tau = prepared.tau
     model_iv = np.sqrt(np.maximum(displayed_slice(record).implied_w(k), 1e-12) / tau)
@@ -1500,7 +1595,7 @@ def varswap_info(
     weight_abs = rms_share = None
     prepared = record.prepared
     k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
-    weights = resolve_weights(state.fit_settings().weightScheme, k, w)
+    weights = node_weights(state, ticker, iso, prepared, fit_mode, k, w)
     target = varswap_target(state, ticker, iso, k, weights, prepared.tau)
     if target is not None:
         weight_abs = float(target.weight)

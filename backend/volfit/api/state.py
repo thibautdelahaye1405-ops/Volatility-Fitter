@@ -1123,6 +1123,11 @@ class AppState(SourcesMixin, UniverseMixin):
                     # changes the resolved forwards every fit consumes.
                     or options.jointCarry != self._options.jointCarry
                     or options.jointCarryEngageBp != self._options.jointCarryEngageBp
+                    # Quote synchronisation (2026-09-24, volfit.api.quote_sync):
+                    # the switch and the age knob change the prepared quotes an
+                    # asynchronous chain is fitted to.
+                    or options.quoteSync != self._options.quoteSync
+                    or options.quoteSyncAgeBpPerSqrtMin != self._options.quoteSyncAgeBpPerSqrtMin
                 )
                 if affects_fit:
                     self._options_version += 1

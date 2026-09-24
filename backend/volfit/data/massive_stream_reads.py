@@ -17,6 +17,7 @@ import logging
 import os
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import replace
 from datetime import date, datetime, timezone
 
 from volfit.data.massive_book import ns_to_utc_naive
@@ -101,16 +102,46 @@ class MassiveStreamReadsMixin:
         return f"{'; '.join(parts) or 'nothing planned'} · focus {focus} · floor {self._floor}"
 
     # ---------------------------------------------------------------- reads
-    def _spot_from_quotes(self, quotes: list[OptionQuote]) -> float | None:
-        """Parity forward (spot proxy) from already-built two-sided quotes."""
-        from volfit.data.massive import _parity_forward
-
+    @staticmethod
+    def _pairs_by_expiry(quotes: list[OptionQuote]) -> dict[date, dict[float, dict[str, float]]]:
+        """expiry -> strike -> {"C": mid, "P": mid} of the two-sided quotes."""
         by_exp: dict[date, dict[float, dict[str, float]]] = {}
         for q in quotes:
             if q.bid is None or q.ask is None or q.ask < q.bid:
                 continue
             by_exp.setdefault(q.expiry, {}).setdefault(q.strike, {})[q.call_put] = 0.5 * (q.bid + q.ask)
-        return _parity_forward(by_exp)
+        return by_exp
+
+    def _spot_from_quotes(self, quotes: list[OptionQuote]) -> float | None:
+        """Parity forward (spot proxy) from already-built two-sided quotes."""
+        from volfit.data.massive import _parity_forward
+
+        return _parity_forward(self._pairs_by_expiry(quotes))
+
+    def _layer_spots(
+        self, booked: list[OptionQuote], rest: ChainSnapshot | None
+    ) -> tuple[float | None, float | None]:
+        """``(book spot, REST-layer spot)`` on ONE basis (QUOTE SYNC, 2026-09-24).
+
+        The book's spot is the parity forward of the first booked expiry that
+        implies one — exactly ``_spot_from_quotes(booked)``. The REST layer's is
+        the parity forward of the SAME expiry off the REST snapshot's own quotes,
+        NOT ``rest.spot`` (Massive's underlying price): that sits a carry basis
+        away from a front-expiry parity forward (≈ 0.25 % at one month), which
+        the quote synchronisation would read as a spot move — a 10 vol bp phantom
+        correction on every REST quote. None where the REST layer cannot imply
+        one at that expiry: its quotes then carry no spot of their own (treated
+        as synchronous — no correction rather than a wrong one)."""
+        from volfit.data.massive import _parity_forward
+
+        by_exp = self._pairs_by_expiry(booked)
+        rest_by = self._pairs_by_expiry(rest.quotes) if rest is not None else {}
+        for expiry in sorted(by_exp):
+            spot = _parity_forward({expiry: by_exp[expiry]})
+            if spot is not None:
+                rest_spot = _parity_forward({expiry: rest_by[expiry]}) if expiry in rest_by else None
+                return spot, rest_spot
+        return None, None
 
     def _book_parity_spot(self, ticker: str, expiries: list[date] | None = None) -> float | None:
         """The parity forward of the BOOKED ticks (the nearest selected expiry,
@@ -152,7 +183,12 @@ class MassiveStreamReadsMixin:
         with their tick (stamped at the provider tick time), the rest from the
         last REST snapshot (its own stamps), else unquoted. None until at least
         one tick is booked and a forward can be implied (the caller then
-        REST-fetches the first frame)."""
+        REST-fetches the first frame).
+
+        Each layer carries ITS spot on the quotes (``OptionQuote.spot``, the
+        quote synchronisation's input — volfit.api.quote_sync): booked ticks the
+        book's spot at read time (the chain's), REST fillers the REST layer's
+        spot on the same basis (``_layer_spots``), unquoted rows none."""
         from volfit.data.massive import _resolve_style, _settlement_for
 
         book = self._live_book
@@ -165,6 +201,7 @@ class MassiveStreamReadsMixin:
         now = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
         newest: datetime | None = None
         quotes: list[OptionQuote] = []
+        layer: list[str] = []  # "book" | "rest" | "none" per quote, for the spot tag
         booked: list[OptionQuote] = []
         styles: list[str] = []
         for row in rows:
@@ -179,6 +216,7 @@ class MassiveStreamReadsMixin:
                     timestamp=ts or now,
                 )
                 booked.append(quote)
+                layer.append("book")
             else:
                 filler = rest_by.get((row["expiry"], row["strike"], row["call_put"]))
                 if filler is not None:
@@ -187,20 +225,29 @@ class MassiveStreamReadsMixin:
                         bid=filler.bid, ask=filler.ask, last=filler.last, volume=filler.volume,
                         open_interest=filler.open_interest, timestamp=filler.timestamp,
                     )
+                    layer.append("rest")
                 else:
                     quote = OptionQuote(
                         ticker=key, expiry=row["expiry"], strike=row["strike"], call_put=row["call_put"],
                         bid=None, ask=None, last=None, volume=None, open_interest=None, timestamp=now,
                     )
+                    layer.append("none")
             quotes.append(quote)
             if row["style"] in ("american", "european"):
                 styles.append(row["style"])
         if not booked:
             return None
-        spot = self._spot_from_quotes(booked) or self._spot_from_quotes(quotes)
+        spot, rest_spot = self._layer_spots(booked, rest)
+        if spot is None:
+            spot = self._spot_from_quotes(quotes)  # mixed-layer fallback: no REST basis
         if spot is None:
             return None
         self._note_spot(key, spot)
+        spot_of = {"book": spot, "rest": rest_spot, "none": None}
+        quotes = [
+            replace(q, spot=spot_of[tag]) if spot_of[tag] is not None else q
+            for q, tag in zip(quotes, layer)
+        ]
         return ChainSnapshot(
             ticker=key, spot=spot, timestamp=newest or now, quotes=quotes,
             exercise_style=_resolve_style(styles), tick_size=US_OPTION_TICK,

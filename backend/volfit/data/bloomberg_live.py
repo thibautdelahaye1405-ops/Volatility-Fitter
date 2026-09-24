@@ -40,15 +40,31 @@ up to the provider's ``book_first_wait`` for the underlying's paint AND the
 selection's coverage (a selection edit is resubscribed on the next scheduler
 tick) before the metered fallback is even considered; any paint read off the
 book clears a stale reference refusal from the status light.
+
+Bucket rotation (2026-09-24, volfit.data.bloomberg_rotation — the WHY is
+there): over the cap a worker cycles the over-cap contracts through
+``rotation_slots`` reserved slots into a paint memory, and ``_chain_from_book``
+serves those paints with their own stamp and spot beside the live ticks.
+``update_streaming`` diffs the LIVE set only, under the worker's lock: a
+bucket in flight is never touched by a re-plan. Health: bloomberg_health.
 """
 
 from __future__ import annotations
 
 import time
+from contextlib import nullcontext
 from datetime import date, datetime, timezone
 
+from volfit.data.bloomberg_health import BloombergHealthMixin
 from volfit.data.bloomberg_parse import ParsedOption
 from volfit.data.bloomberg_plan import BloombergPlanMixin, slow_interval_setting
+from volfit.data.bloomberg_rotation import (
+    BUCKET_WAIT_S,
+    POLL_S,
+    RotationWorker,
+    paint_stamp,
+    rotation_slots_setting,
+)
 from volfit.data.bloomberg_stream import BbgBook, BloombergSubscription
 from volfit.data.stream_allocation import Allocation, ticker_floor
 from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
@@ -61,16 +77,17 @@ _SPOT_RETRY_SECONDS = 60.0
 #: Seconds a book read waits for the underlying's INITPAINT after a fresh start
 #: before falling back to the metered reference path.
 _WARMUP_WAIT = 2.0
-#: A stream whose newest stamp is older than this is reported idle (pre-market,
-#: closed session) — the book retains each contract's last tick across quiet spells.
-_IDLE_SECONDS = 20 * 60.0
 
 
-class BloombergStreamingMixin(BloombergPlanMixin):
+class BloombergStreamingMixin(BloombergHealthMixin, BloombergPlanMixin):
     """Streaming contract for ``BloombergProvider`` (expects the host class to
     provide ``_security``, ``_select_contracts``, ``_window_contracts``,
-    ``_spot``, ``strike_window``; the plan / allocation / conflation tiers in
-    volfit.data.bloomberg_plan)."""
+    ``_spot``, ``strike_window``; plan / tiers: bloomberg_plan, light /
+    health: bloomberg_health)."""
+
+    #: The rotation worker's book poll and bucket wait (tests shorten them).
+    _rotation_poll = POLL_S
+    _rotation_wait = BUCKET_WAIT_S
 
     # ---------------------------------------------------------------- init
     def _init_streaming(
@@ -82,6 +99,7 @@ class BloombergStreamingMixin(BloombergPlanMixin):
         stream_port: int | None = None,
         stream_interval_slow: float | None = None,
         stream_floor: int | None = None,
+        rotation_slots: int | None = None,
     ) -> None:
         self._stream_interval = stream_interval
         #: The slow conflation tier (None = env VOLFIT_BBG_STREAM_INTERVAL_SLOW,
@@ -102,6 +120,12 @@ class BloombergStreamingMixin(BloombergPlanMixin):
         self._stream_index: dict[str, tuple[str, ParsedOption]] = {}  # sec -> (ticker, contract)
         self._stream_center: dict[str, float] = {}  # ticker -> spot the window is centred on
         self._center_failed_at: dict[str, float] = {}
+        #: Bucket rotation: R (0 = off), the plan's pool + the slots it engaged
+        #: (bloomberg_plan writes them), the worker while one runs.
+        self._rotation_slots = rotation_slots_setting(rotation_slots, self._max_subscriptions)
+        self._rotation_pool: list[str] = []
+        self._rotation_active = 0
+        self._rotation: RotationWorker | None = None
         # ``_oi_cache`` / ``_style_cache`` (the reference-only facts a streamed
         # chain reports) are owned by BloombergReferenceMixin._init_reference.
 
@@ -164,29 +188,62 @@ class BloombergStreamingMixin(BloombergPlanMixin):
             kwargs["port"] = int(self._stream_port)
         self._sub = BloombergSubscription(securities, self._book, **kwargs)
         self._sub.start()
+        self._sync_rotation()
 
     def update_streaming(self, contracts: list[str]) -> tuple[list[str], list[str]]:
         """INCREMENTAL universe edit: re-plan for ``contracts`` and diff against the
-        live subscription — subscribe only the new securities, unsubscribe only
-        the gone ones, move only the ones whose conflation tier changed, on the
-        SAME session (no restart, no repaint of the rest, no warming gap).
-        Covers ticker/expiry edits, a strike-window re-centre, cap re-ranking
-        and a focus change alike. Starts a stream when none is running; stops
-        it when the universe empties. Returns ``(added, removed)``."""
+        LIVE set of the subscription — subscribe only the new securities,
+        unsubscribe only the gone ones, move only the ones whose conflation tier
+        changed, on the SAME session (no restart, no repaint of the rest, no
+        warming gap). Covers ticker/expiry edits, a strike-window re-centre, cap
+        re-ranking and a focus change alike. Starts a stream when none is
+        running; stops it when the universe empties. Returns ``(added, removed)``.
+        The rotation's bucket in flight is the worker's, not the diff's: under
+        the worker's lock, the owned securities are left out of "have" (never
+        unsubscribed here) and the ones the new plan wants live are handed over."""
         if not self.is_streaming() or self._sub is None:
             self.start_streaming(contracts)
             return (list(self._sub.securities) if self._sub else [], [])
         if not contracts:
             self.stop_streaming()
             return ([], [])
-        wanted = self._plan_subscriptions(contracts)
-        have = set(self._sub.securities)
-        added = self._sub.subscribe([s for s in wanted if s not in have])
-        removed = self._sub.unsubscribe([s for s in have if s not in set(wanted)])
-        self._sub.set_intervals(self._interval_map(wanted))  # the tiers of the kept ones
+        worker = self._rotation
+        with (worker.hold() if worker is not None else nullcontext()):
+            wanted = self._plan_subscriptions(contracts)
+            owned = worker.owned() if worker is not None else set()
+            have = set(self._sub.securities) - owned
+            handed = worker.release([s for s in wanted if s in owned]) if owned else []
+            added = self._sub.subscribe([s for s in wanted if s not in have]) + handed
+            removed = self._sub.unsubscribe([s for s in have if s not in set(wanted)])
+            self._sub.set_intervals(self._interval_map(wanted))  # the tiers of the kept ones
+        self._sync_rotation()
         return (added, removed)
 
+    def _sync_rotation(self) -> None:
+        """Start / re-pool / stop the worker for the plan's pool + slots."""
+        pool, slots = self._rotation_pool, self._rotation_active
+        if not slots or not pool or self._sub is None or self._book is None:
+            if self._rotation is not None:
+                self._rotation.stop()
+                self._rotation = None
+            return
+        if self._rotation is None:
+            self._rotation = RotationWorker(
+                self._sub, self._book, self._paint_spot, slots,
+                bucket_wait=self._rotation_wait, poll=self._rotation_poll,
+            )
+            self._rotation.start()
+        self._rotation.set_pool(pool)
+
+    def _paint_spot(self, sec: str) -> float | None:
+        """The underlying's current book value — the spot a paint is taken at."""
+        entry = self._stream_index.get(sec)
+        return self._book_spot(entry[0], wait=0.0) if entry is not None else None
+
     def stop_streaming(self) -> None:
+        if self._rotation is not None:
+            self._rotation.stop()
+            self._rotation = None
         if self._sub is not None:
             self._sub.stop()
             self._sub = None
@@ -194,6 +251,7 @@ class BloombergStreamingMixin(BloombergPlanMixin):
         self._requested = []
         self._stream_dropped = set()
         self._stream_tickers = set()
+        self._rotation_pool, self._rotation_active = [], 0
 
     def is_streaming(self) -> bool:
         return self._sub is not None and self._sub.is_running()
@@ -259,10 +317,14 @@ class BloombergStreamingMixin(BloombergPlanMixin):
         when the underlying has not painted within ``wait`` s, or when the
         selection is not fully covered by the subscription (a selection edit the
         scheduler has not resubscribed for yet) — an explicit fetch must never
-        silently miss contracts. Over-cap contracts are the exception: they are
-        carried unquoted. Quotes are stamped with the PROVIDER tick times (the
-        honest staleness signal across quiet periods), the chain with the newest
-        of them."""
+        silently miss contracts. Over-cap contracts are the exception: the
+        rotation's paint memory quotes them at the paint's own stamp and spot
+        (the quote synchronisation transports them), and only a contract never
+        painted is carried unquoted. Quotes are stamped with the PROVIDER tick
+        times (the honest staleness signal across quiet periods), the chain
+        with the newest of them; every live quote carries the underlying's paint
+        as its own spot (``OptionQuote.spot``) so the quote synchronisation
+        (volfit.api.quote_sync) ages each tick against the chain's stamp."""
         if not self.is_streaming() or self._book is None or self._sub is None:
             return None
         spot = self._book_spot(ticker, wait=wait)
@@ -270,23 +332,42 @@ class BloombergStreamingMixin(BloombergPlanMixin):
             return None
         plan = self._stream_plan(ticker, expiries)
         subscribed = set(self._sub.securities)
-        if not plan or any(
-            c.security not in subscribed and c.security not in self._stream_dropped for c in plan
-        ):
+        dropped = self._stream_dropped
+        if not plan or any(c.security not in subscribed and c.security not in dropped for c in plan):
             return None
         now = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
         key = ticker.upper()
-        ticks = [(c, self._book.quote(c.security)) for c in plan]
-        stamps = [t.ts for _, t in ticks if t is not None and t.ts is not None]
+        memory = self._rotation.memory if self._rotation is not None else None
+        rows = []  # (contract, live tick | None, rotated paint | None)
+        stamps = []
+        for c in plan:
+            if c.security in dropped:
+                paint = memory.get(c.security) if memory is not None else None
+                rows.append((c, None, paint))
+                if paint is not None and paint.ts is not None:
+                    stamps.append(paint.ts)
+            else:
+                tick = self._book.quote(c.security)
+                rows.append((c, tick, None))
+                if tick is not None and tick.ts is not None:
+                    stamps.append(tick.ts)
         under = self._book.quote(self._security(ticker))
         if under is not None and under.ts is not None:
             stamps.append(under.ts)
         # INITPAINT summaries carry no per-side stamp: an un-stamped quote is at
         # most as fresh as the newest stamped tick of the chain (on a delayed feed
-        # that is 15 min behind the clock — 'now' would overstate its freshness).
+        # that is 15 min behind the clock — 'now' would overstate its freshness);
+        # a rotated paint is dated by its age (bloomberg_rotation.paint_stamp).
         newest = max(stamps) if stamps else None
+        wall = datetime.now(timezone.utc).replace(tzinfo=None)
         quotes: list[OptionQuote] = []
-        for c, tick in ticks:
+        for c, tick, paint in rows:
+            if paint is not None:
+                tick, stamp = paint, paint_stamp(paint, newest, wall)
+                quoted_at = paint.spot if paint.spot is not None else spot
+            else:
+                stamp = (tick.ts if tick else None) or newest or now
+                quoted_at = spot  # the underlying's paint: the spot every live tick is quoted against
             quotes.append(
                 OptionQuote(
                     ticker=key,
@@ -298,7 +379,8 @@ class BloombergStreamingMixin(BloombergPlanMixin):
                     last=tick.last if tick else None,
                     volume=tick.volume if tick else None,
                     open_interest=self._oi_cache.get(c.security),
-                    timestamp=(tick.ts if tick else None) or newest or now,
+                    timestamp=stamp,
+                    spot=quoted_at,
                 )
             )
         style = self._style_cache.get(key) or (
@@ -314,44 +396,4 @@ class BloombergStreamingMixin(BloombergPlanMixin):
             settlement=self._settlement(key, {q.expiry for q in quotes}),  # the kept root per date
         )
 
-    # ------------------------------------------------------------- status
-    def _stream_status(self) -> tuple[str, str] | None:
-        """``(level, detail)`` for the Data Source light while streaming (None
-        otherwise) — quota-free, read off the book: red on a session error or a
-        refused underlying, amber while connecting / on a delayed stream / idle,
-        green once real-time ticks flow. Mentions over-cap + refused counts."""
-        if not self.is_streaming() or self._book is None or self._sub is None:
-            return None
-        if self._sub.last_error:
-            return ("red", f"stream: {self._sub.last_error}")
-        failures = self._book.failures()
-        underlyings = [self._security(t) for t in sorted(self._stream_tickers)]
-        for sec in underlyings:
-            if sec in failures:
-                return ("red", f"stream: {failures[sec]}")
-        started = self._book.started()
-        if started == 0:
-            return ("amber", "stream connecting")
-        extras = []
-        if self._stream_dropped:
-            extras.append(f"{len(self._stream_dropped)} over cap")
-        refused = [s for s in failures if s not in underlyings]
-        if refused:
-            extras.append(f"{len(refused)} refused")
-        suffix = "".join(f" · {e}" for e in extras)
-        newest = self._book.newest_ts()
-        if newest is None:
-            if self._book.size() == 0:
-                return ("amber", f"stream warming · {started} subscribed{suffix}")
-            # Painted (INITPAINT last-known values) but no stamped tick yet — the
-            # signature of a session opened outside trading hours: the book is
-            # serving, just not moving. Say so rather than "warming" forever.
-            return ("amber", f"streaming {started} · no tick stamp yet{suffix}")
-        age = (datetime.now(timezone.utc).replace(tzinfo=None) - newest).total_seconds()
-        if age > _IDLE_SECONDS:
-            return ("amber", f"stream idle since {newest:%H:%M} UTC · {started} subscribed{suffix}")
-        slow = [t for t in sorted(self._stream_tickers) if self._book.delayed([self._security(t)])]
-        if slow:
-            which = "" if len(slow) == len(underlyings) else f" ({', '.join(slow)})"
-            return ("amber", f"streaming {started} · delayed feed{which}{suffix}")
-        return ("green", f"streaming {started} · real-time{suffix}")
+    # The light + the health block (_stream_status / stream_stats): bloomberg_health.

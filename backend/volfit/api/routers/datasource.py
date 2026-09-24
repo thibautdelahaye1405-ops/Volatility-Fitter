@@ -54,6 +54,10 @@ class StreamHealth(BaseModel):
     focus: list[str] = []
     floor: int = 0
     restSeconds: float | None = None
+    #: The Bloomberg book's bucket rotation of the over-cap contracts
+    #: (volfit.data.bloomberg_rotation): pool, slots, bucket / cycle seconds,
+    #: paints, cycles — None for a source without one / under the cap.
+    rotation: dict | None = None
     level: str = "amber"
     detail: str = ""
 

@@ -81,6 +81,26 @@ budget is split by the allocation policy — the on-screen node first, a
 floor per ticker, a fair share of the rest — so the 874 / 76 split above is
 history: 475 / 475 without a focus.
 
+## 2b. Vendor facts verified live (2026-09-24, in session)
+
+* **Unsubscribe releases the count.** On one connection: subscribe 900 → 900
+  acknowledged; unsubscribe 500; subscribe 500 NEW → all 900 held are
+  acknowledged again; subscribe 200 more (1,100 held) → refused. So the
+  ~1,000 limit applies to the contracts HELD at a time, not to the
+  connection's lifetime — bucket rotation (subscribe, read, unsubscribe,
+  next) is technically possible on Massive. It is still not used here: Massive
+  sends no paint on subscribe (a contract shows nothing until it ticks), so a
+  rotated bucket must dwell until its contracts trade, and the per-minute REST
+  snapshot already gives every contract's last NBBO at once, faster and
+  without churn.
+* **A refused frame is answered with one status message per contract**
+  (27 messages for a 200-contract frame), not one per frame: the first message
+  is paired with the pending chunk and halved; the rest are logged at debug.
+* **The acknowledgement text** is `subscribed to: Q.O:…`, one status message
+  per contract, as the parser assumes; the app's 420-contract NVDA plan was
+  acknowledged in full within a second of the auth, and the book served 18,842
+  quotes in the first eight seconds of the 2026-09-24 session (≈ 550 msg/s).
+
 ## 3. The subscription — chunked and acknowledged
 
 * Frames carry at most `SUBSCRIBE_BATCH` = **200** contracts (the initial

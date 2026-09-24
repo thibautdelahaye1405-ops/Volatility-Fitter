@@ -1990,7 +1990,75 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-24b (resume here)
+## STATUS — updated 2026-09-24d (resume here)
+
+### 🧭 SESSION WRAP (2026-09-24d) — QUOTE SYNCHRONISATION, THE TWO VENDOR CHECKS, BLOOMBERG BUCKET ROTATION
+
+User (after the streaming wave): "each bucket of m nodes is subscribed in turn
+(with spot and time-stamp), the IV levels continuously adjusting according to
+the chosen spot-vol dynamics so everything remains synchronous from a spot
+level perspective, then calibration on the whole set?" — ratified as: (1) a
+general quote-synchronisation step in the prep, (2) the two vendor checks,
+(3) bucket rotation on Bloomberg only (Massive's REST layer dominates there).
+
+- **Quote synchronisation (`api/quote_sync.py`, `OptionQuote.spot`).** A quote
+  quoted at spot S_i minutes ago and inverted at today's forward mis-reads its
+  IV by ≈ Δ·ΔF/vega — measured on the golden case: a 0.1 % move ⇒ the ATM IV
+  off by **44.4 vol bp** naively, **0.0 bp** synchronised. The step: the quote's
+  forward at ITS spot (the app's forward-transport rule), de-Am + Black inversion
+  per distinct spot group, the regime correction Δw = w0(x + (R−1)δ) − w0(x)
+  on the node's last committed fit w0 (exactly 0 under sticky-strike; the
+  exact-LV regimes through `transported_w`'s map; no reference ⇒ Δw = 0,
+  `sync_reference="none"`), total variance held across the age, an age
+  uncertainty s = a·√age_min·(σ_atm/0.15) (a = `quoteSyncAgeBpPerSqrtMin`, 3.6
+  vol bp per √minute from the intraday campaign) widening the band in band /
+  haircut modes and down-weighting mids (re-normalised to mean 1). Settings
+  `quoteSync` (True; inert on a synchronous chain — byte-identity locked on
+  European and American chains) and `quoteSyncAgeBpPerSqrtMin`; both in the
+  fit key, the help schema, a Calibration-section row, SETTINGS_REFERENCE.
+  The merges tag quotes: Massive booked ticks = the chain's spot, REST-layer
+  fillers = the REST layer's PARITY FORWARD at the same expiry (not the
+  underlying price: the carry basis would read as a ~10 bp phantom move);
+  Bloomberg ticks / paints = the underlying's paint. `PreparedQuotes` gains
+  `age_min`, `sync_shift_bp`, `age_widen_bp`, `sync_reference`, `n_synced`.
+- **Vendor check 1, Massive (live, socket freed while the app was down):**
+  subscribe 900 → 900 acked; unsubscribe 500; subscribe 500 NEW → all 900 held
+  acked again; subscribe 200 more (1,100 held) → refused. The ~1,000 limit is
+  on the contracts HELD, released on unsubscribe — rotation is possible on
+  Massive but not used (no paint on subscribe, the per-minute REST snapshot
+  gives every last NBBO at once). A refused frame is answered with one status
+  per contract (27 for 200): the first is paired with its chunk and halved,
+  the rest now log at debug. In session the app's 420-contract NVDA plan
+  served 18,842 quotes in the first 8 s (≈ 550 msg/s). `Docs/massive_streaming.md` §2b.
+- **Vendor check 2, Bloomberg (live, unmetered):** 30 buckets × 40 SPY option
+  securities, three cycles: every bucket painted 40/40 in 0.8–3.0 s, 0
+  failures, no session error. `Docs/bloomberg_setup.md`.
+- **Bloomberg bucket rotation (`data/bloomberg_rotation.py`, `bloomberg_health.py`).**
+  Over the cap only: `rotation_slots` (env `VOLFIT_BBG_ROTATION_SLOTS`, 300,
+  ≤ M/4) are reserved, the live set is allocated from M − R, a daemon worker
+  cycles the remainder nearest-the-money in buckets of ≤ R (subscribe → poll
+  until painted or max(6 s, R/10 s) → paint memory with stamp + spot →
+  unsubscribe → next; failures retried next cycle); a re-plan never touches
+  a bucket in flight; `_chain_from_book` serves the paints with their own
+  `timestamp` + `spot` (the sync step transports them); `stream_stats()` +
+  a `rotation` block on the light. Under the cap byte-identical, no worker.
+  Live: SPY 12 expiries = 3,796 planned under a 400 cap / R 100: live 300,
+  pool 3,497, buckets 2.6–8.4 s (~18 paints/s), 0 failures, 160 msg/s, after
+  120 s 2,490 quoted of 3,796 (299 live + 2,191 paints), a full cycle ≈ 4 min
+  (a 1,000-contract overflow at the production cap ≈ 1 min), **0 hits**.
+- Ops: the app went down once mid-session (no trace; swept with the tool's
+  low-memory kills of the suite runs) and was relaunched through WMI
+  (`Invoke-CimMethod Win32_Process Create … restart.ps1`) so it lives outside
+  the tool's process tree; `TwoNames` reloaded, NVDA pinned to Massive.
+
+**Verification.** Backend suite in five chunks (a–c 801, d–g 673, h–o 438, p–s 520, t–z 184): **2,616 passed / 7 skipped** (`test_series_perf` excluded). Frontend: tsc clean, **829 vitest tests / 121 files**, production build green. Live after the commit: the app relaunched through WMI on this code, `TwoNames` reloaded, NVDA pinned to Massive.
+
+**Riders.** LV / compare / anchoring prep paths still take weights without the
+age factor; the Quote Table does not show `age_min` / `sync_shift_bp` yet; the
+frontend `StreamHealth` type lacks `rotation` (a tooltip line); rotation stamps
+on the 15-min delayed feed are "at most as fresh as the newest stamp" (honest
+ages, not absolute times); `quotes.py` 610 and `bloomberg.py` 632 lines.
+
 
 ### 🧭 SESSION WRAP (2026-09-24a + b) — THE FETCH + STREAM ARC: SIX FETCH PROPOSALS, THEN A LIVE BOOK THAT SERVES
 

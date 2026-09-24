@@ -286,6 +286,44 @@ def test_chain_from_book_merges_the_ticking_belly_with_rest_wings(fake_ws):
     assert all(q.timestamp == old and q.bid == 4.0 and q.ask == 4.4 and q.open_interest == 7 for q in wings)
     assert chain.timestamp == tick_ts.replace(tzinfo=None)
     assert chain.spot == pytest.approx(500.0, abs=0.2)
+    # QUOTE SYNC: booked ticks carry the book's spot at read time (the chain's);
+    # a flat 4.0 / 4.4 REST layer implies no parity forward, so its fillers carry
+    # no spot of their own (read as synchronous — no correction over a wrong one).
+    assert all(q.spot == chain.spot for q in belly)
+    assert all(q.spot is None for q in wings)
+    p.stop_streaming()
+
+
+def test_chain_from_book_layers_carry_their_own_spots_on_one_basis(fake_ws):
+    """QUOTE SYNC (2026-09-24): booked ticks carry the book's spot (the chain's),
+    REST fillers the REST layer's parity forward of the SAME expiry — not
+    Massive's underlying price (``rest.spot``), which sits a carry basis away
+    from a front-expiry parity forward — so the quote synchronisation reads the
+    true spot move between the layers (here 500 vs 499)."""
+    strikes = (480, 490, 495, 500, 505, 510, 520)
+    f_rest = 499.0
+    snapshot = []
+    for k in strikes:
+        for cp in ("call", "put"):
+            mid = (max(f_rest - k, 0.0) if cp == "call" else max(k - f_rest, 0.0)) + 2.0
+            snapshot.append(_snap(k, 30, cp, mid - 0.2, mid + 0.2))  # parity at F = 499, D = 1
+    p = _provider(_ladder(30, strikes), snapshot, stream_cap=6)
+    p._note_spot("SPY", SPOT)
+    p.start_streaming(p.option_tickers("SPY", [_exp(30)]))
+    book, live = p._live_book, p._sockets[0].contracts
+    rest = p.fetch_chain("SPY", [_exp(30)])  # seeds the REST memory
+    assert rest.spot == SPOT  # the REST chain's own spot IS the underlying price (500)
+    ns = int(datetime(2030, 1, 1, 15, 0, tzinfo=timezone.utc).timestamp() * 1e9)
+    for k, (c, pv) in {495: (7.0, 2.0), 500: (4.0, 4.0), 505: (2.0, 7.0)}.items():  # parity F = 500
+        for cp, px in (("C", c), ("P", pv)):
+            sym = next(x for x in live if p._stream_index[x][1]["strike"] == k and p._stream_index[x][1]["call_put"] == cp)
+            book.apply([{"ev": "Q", "sym": sym, "bp": px - 0.1, "ap": px + 0.1, "t": ns}])
+    chain = p.live_chain("SPY", [_exp(30)])
+    belly = [q for q in chain.quotes if q.strike in (495, 500, 505)]
+    wings = [q for q in chain.quotes if q.strike not in (495, 500, 505)]
+    assert chain.spot == pytest.approx(500.0, abs=1e-6)
+    assert all(q.spot == chain.spot for q in belly)
+    assert all(q.spot == pytest.approx(f_rest, abs=1e-6) for q in wings)  # same-basis REST spot
     p.stop_streaming()
 
 

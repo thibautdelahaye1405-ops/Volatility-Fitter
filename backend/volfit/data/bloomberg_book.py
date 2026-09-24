@@ -15,10 +15,14 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, replace
 from datetime import datetime
 
 from volfit.data.bloomberg_decode import flag, int_or_none, price_or_none
+
+#: The message rate of ``flow()`` is averaged over this many seconds.
+RATE_WINDOW_S = 10.0
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,11 @@ class BbgBook:
         self._ready = threading.Condition(self._lock)
         #: True once any subscription has been acknowledged (session alive).
         self.connected = False
+        #: Flow counters for the health block: data records applied, their
+        #: per-second buckets (the 10-s rate) and the last one's monotonic time.
+        self._messages = 0
+        self._buckets: deque[tuple[int, int]] = deque()
+        self._last_data_at: float | None = None
 
     # ------------------------------------------------------------ ingest
     def apply(self, records: list[dict]) -> None:
@@ -55,6 +64,7 @@ class BbgBook:
                 kind = rec.get("kind")
                 if kind == "data":
                     self._apply_data(rec)
+                    self._note_message()
                 elif kind == "started":
                     self._started.add(rec["sec"])
                     self._failed.pop(rec["sec"], None)
@@ -88,7 +98,30 @@ class BbgBook:
             updates["ts"] = stamp
         self._ticks[sec] = replace(tick, **updates) if updates else tick
 
+    def _note_message(self) -> None:
+        now = time.monotonic()
+        self._messages += 1
+        self._last_data_at = now
+        sec = int(now)
+        if self._buckets and self._buckets[-1][0] == sec:
+            self._buckets[-1] = (sec, self._buckets[-1][1] + 1)
+        else:
+            self._buckets.append((sec, 1))
+        floor = int(now - RATE_WINDOW_S)
+        while self._buckets and self._buckets[0][0] < floor:
+            self._buckets.popleft()
+
     # -------------------------------------------------------------- reads
+    def flow(self) -> dict:
+        """``{messages, rate, lastMessageAge}`` — the data records applied so
+        far, per second over the last ``RATE_WINDOW_S``, seconds since the last."""
+        now = time.monotonic()
+        with self._lock:
+            floor = int(now - RATE_WINDOW_S)
+            rate = sum(n for s, n in self._buckets if s >= floor) / RATE_WINDOW_S
+            age = None if self._last_data_at is None else max(0.0, now - self._last_data_at)
+            return {"messages": self._messages, "rate": round(rate, 2), "lastMessageAge": age}
+
     def quote(self, sec: str) -> BbgTick | None:
         with self._lock:
             return self._ticks.get(sec)

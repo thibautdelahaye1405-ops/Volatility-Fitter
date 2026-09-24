@@ -68,7 +68,7 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (2592 passed / 7 skipped as of 2026-09-24b, ~14 min — run it in SIX letter chunks [a-c d-g h-k l-o p-s t-z] on this box: a half gets killed for memory while the desk apps hold ~43 GB of commit — split it in two halves [tests/test_[a-k]*.py | test_[l-z]*.py] when a tool caps runs at 10 min, incl. the perf rails — NB the graph perf rail needs a quiet box [dense BLAS]; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (2616 passed / 7 skipped as of 2026-09-24d, ~14 min — run it in SIX letter chunks [a-c d-g h-k l-o p-s t-z] on this box: a half gets killed for memory while the desk apps hold ~43 GB of commit — split it in two halves [tests/test_[a-k]*.py | test_[l-z]*.py] when a tool caps runs at 10 min, incl. the perf rails — NB the graph perf rail needs a quiet box [dense BLAS]; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
 - Benchmark pack: `-m backtest.benchmark_pack run|report` (chunked/resumable
             graph-LOO parts under backtest\results\benchmark\ + HTML/JSON
             artifact); full sweep via backend\backtest\run_benchmark_pack.ps1

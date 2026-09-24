@@ -87,7 +87,12 @@ class AckMixin:
         with self._lock:
             chunk = self._take_refused_chunk()
             if chunk is None:
-                keep, drop = [], []
+                # The server answers a refused frame with one status message per
+                # contract (27 for a 200-contract frame, live-verified 2026-09-24):
+                # once the first one has been paired with its chunk, the rest
+                # carry nothing new — debug, not a warning per message.
+                log.debug("%s: refusal repeated with nothing pending (%s)", self._name, message.strip())
+                return
             else:
                 keep_n = len(chunk) // 2
                 keep, drop = chunk[:keep_n], chunk[keep_n:]

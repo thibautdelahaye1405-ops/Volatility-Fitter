@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-09",
+  "generatedAt": "2026-09-24",
   "models": {
     "fit": {
       "title": "FitSettings",
@@ -207,6 +207,18 @@
             "haircut"
           ],
           "default": "mid"
+        },
+        {
+          "name": "quoteSync",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "quoteSyncAgeBpPerSqrtMin",
+          "type": "float",
+          "default": 3.6,
+          "min": 0.0,
+          "max": 100.0
         },
         {
           "name": "dataAgeAmberMin",

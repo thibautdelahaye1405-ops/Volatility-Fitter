@@ -9,7 +9,13 @@ docstring).
   off the stream), then the contracts the shared allocation policy keeps
   within ``max_subscriptions`` (volfit.data.stream_allocation: the focus
   nodes' whole rungs, every ticker's floor, a fair share of the remainder —
-  each ticker ranked by |ln K/centre|), ``_stream_dropped`` = the rest;
+  each ticker ranked by |ln K/centre|), ``_stream_dropped`` = the rest.
+  BUCKET ROTATION (2026-09-24, volfit.data.bloomberg_rotation) engages ONLY
+  when the plan is over the cap: ``_rotation_slots`` (R) are then reserved
+  out of the budget, the allocation serves the live set from the remainder
+  and ``_rotation_pool`` = the dropped contracts in bucket order (nearest
+  the money across tickers); under the cap R = 0 and the whole budget is
+  live — the plan is byte-identical with the rotation on or off;
 * ``_interval_map(securities)`` — the per-security conflation: the
   underlyings and the FAST set at ``stream_interval`` (1 s), everything else
   at ``slow_interval`` (``VOLFIT_BBG_STREAM_INTERVAL_SLOW``, 5 s). The fast
@@ -25,7 +31,8 @@ docstring).
 Expects the host's ``_stream_index`` (sec -> (ticker, ParsedOption)),
 ``_stream_center``, ``_security``, ``_stream_interval``, ``_slow_interval``,
 ``_max_subscriptions``, ``_floor``, ``_focus``, ``_allocation``,
-``_requested``, ``_stream_dropped``, ``_stream_tickers``.
+``_requested``, ``_stream_dropped``, ``_stream_tickers``, ``_rotation_slots``
+(R, 0 = off), ``_rotation_pool`` / ``_rotation_active`` (written here).
 """
 
 from __future__ import annotations
@@ -34,6 +41,7 @@ import math
 import os
 from datetime import date
 
+from volfit.data.bloomberg_rotation import rotation_order
 from volfit.data.stream_allocation import allocate, normalize_focus
 
 #: The slow conflation tier (s) for the contracts nobody is looking at.
@@ -99,13 +107,22 @@ class BloombergPlanMixin:
         for ticker, mine in plans.items():
             if ticker:
                 mine.sort(key=self._distance)  # stable: the request's order breaks ties
+        budget = self._max_subscriptions - len(underlyings)
+        # Over the cap — and only then — R slots are reserved for the bucket
+        # rotation of the remainder (bloomberg_rotation); under it R = 0 and
+        # the allocation sees the whole budget, exactly as before.
+        slots = self._rotation_slots if len(self._requested) > budget else 0
         alloc = allocate(
-            plans, self._focus, self._max_subscriptions - len(underlyings), self._floor,
+            plans, self._focus, budget - slots, self._floor,
             expiry_of=lambda s: index[s][1].expiry.isoformat() if s in index else None,
         )
         self._allocation = alloc
         keep = set(alloc.live)
         self._stream_dropped = set(alloc.dropped)
+        self._rotation_active = slots
+        self._rotation_pool = (
+            rotation_order(alloc.dropped, lambda s: index[s][0] if s in index else "") if slots else []
+        )
         return underlyings + [s for s in self._requested if s in keep]
 
     def _fast_set(self, securities: list[str]) -> set[str]:
