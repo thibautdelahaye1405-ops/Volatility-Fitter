@@ -54,6 +54,10 @@ describe("table frames", () => {
     };
     const f = composeTableRows(table({ marketRows: [row(105, 0.2)] }), ticks);
     expect(f.live).toBe(true);
+    expect(f.tier).toBe("none"); // EMPTY_LIVE's tier: the fixture never named one
+    expect(composeTableRows(table(), { ...ticks, tier: "rest", restSeconds: 60 }).tier).toBe("rest");
+    expect(composeTableRows(table(), { ...ticks, tier: "rest", restSeconds: 60 }).restSeconds).toBe(60);
+    expect(composeTableRows(table(), { ...ticks, ready: false, tier: "rest" }).tier).toBe("none"); // not live: no tier
     expect(f.marketForward).toBe(101);
     const r105 = f.rows.find((r) => r.strike === 105)!;
     expect(r105.market?.midIv).toBe(0.21);

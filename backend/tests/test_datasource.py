@@ -187,3 +187,40 @@ def test_post_datasource_switches():
 def test_post_datasource_unknown_404():
     client = TestClient(_multi_app())
     assert client.post("/datasource/nope").status_code == 404
+
+
+# --------------------------------------------------------------- stream block
+
+def test_datasources_carry_the_stream_health_block():
+    """Each source carries ``stream``: None without a live book, the provider's
+    ``stream_stats()`` dict (volfit.data.massive_stream) while it streams —
+    the pill tooltip and the Data-sources card read it."""
+    from volfit.api.routers.datasource import StreamHealth
+
+    class Streaming(_StubProvider):
+        def __init__(self):
+            super().__init__()
+            self.stats = None
+
+        def stream_stats(self):
+            return self.stats
+
+    prov = Streaming()
+    app = create_app(reference_date=REF, providers={"stub": prov, "synthetic": SyntheticProvider(reference_date=REF)}, active_source="stub")
+    client = TestClient(app)
+    by_id = {s["id"]: s for s in client.get("/datasources").json()["sources"]}
+    assert by_id["stub"]["stream"] is None and by_id["synthetic"]["stream"] is None
+    prov.stats = {
+        "connected": True, "running": True, "connections": 1, "connectedCount": 1,
+        "url": "wss://delayed.polygon.io/options", "cluster": "delayed", "messages": 1200, "quotes": 1100,
+        "rate": 340.0, "lastMessageAge": 2.0, "lastQuoteAge": 2.0, "lastMessageUtc": "2026-09-24T14:35:00",
+        "reconnects": 0, "lastError": None, "lastErrorAge": None, "authFailed": False,
+        "subscribed": 950, "acknowledged": 812, "refused": 0, "overCap": 916, "requested": 1866,
+        "cap": 950, "sessionOpen": True, "tickers": {"SPY": True}, "level": "amber",
+        "detail": "streaming 812 · 340 msg/s · last 2 s",
+    }
+    stream = client.get("/datasources?refresh=true").json()["sources"][0]["stream"]
+    assert stream["acknowledged"] == 812 and stream["overCap"] == 916 and stream["tickers"] == {"SPY": True}
+    assert StreamHealth(**stream).detail.startswith("streaming 812")
+    prov.stats = {"connected": False}  # a minimal dict still validates (defaults)
+    assert client.get("/datasources?refresh=true").json()["sources"][0]["stream"]["subscribed"] == 0

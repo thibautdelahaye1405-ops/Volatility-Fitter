@@ -151,6 +151,20 @@ def session_close_utc(d: date) -> datetime:
     return _to_utc_naive(d, session_close(d))
 
 
+def session_open_now(now: datetime | None = None) -> bool:
+    """Whether the US OPTIONS session is open at ``now`` (an aware instant;
+    default the wall clock): a trading day, 09:30 ET up to the index options'
+    16:15 ET (13:00 on a half-day). The Massive stream's silence rule keys on
+    it (volfit.data.massive_ws): outside the session a quiet socket is
+    expected and kept; inside it, silence means a reconnect."""
+    moment = (now if now is not None else datetime.now(ET)).astimezone(ET)
+    day = moment.date()
+    if not is_trading_day(day):
+        return False
+    close = _HALF_CLOSE if is_half_day(day) else _INDEX_LAST_TRADE
+    return _AM_SETTLE <= moment.time() < close
+
+
 def latest_completed_session(now_utc: datetime) -> date:
     """The most recent trading day whose session has CLOSED at ``now_utc``
     (UTC-naive): today (ET) once past its close, else the previous trading day.

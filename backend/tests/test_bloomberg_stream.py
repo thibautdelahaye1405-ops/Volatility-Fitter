@@ -605,6 +605,127 @@ def test_app_state_prefers_incremental_update_streaming():
     assert prov.starts == 1 and prov.updates == [{"O:ALPHA1"}]  # incremental, no restart
 
 
+# ------------------------------------------------- conflation tiers, focus
+class FakeResubSession(FakeSession):
+    """A session with the SDK's ``resubscribe`` (the real adapter has it)."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.resubscribed: list[list[tuple[str, str, str]]] = []
+
+    def resubscribe(self, subs):
+        self.resubscribed.append(list(subs))
+
+
+def test_subscription_carries_a_per_security_interval_and_moves_only_the_changed_ones():
+    """Each item's options string is ITS interval (the fast / slow tiers mix in
+    one batch); ``set_intervals`` re-subscribes only the live securities whose
+    interval changed — ``resubscribe`` on a session that has it, unsubscribe +
+    subscribe on one that lacks it — and an unchanged map moves nothing."""
+    session = FakeResubSession()
+    book = BbgBook()
+    sub = BloombergSubscription(["A", "B", "C"], book, interval=1.0, intervals={"C": 5.0}, session_factory=lambda: session)
+    sub.start()
+    try:
+        assert _wait(lambda: book.started() == 3)
+        assert session.subscribed[0] == [("A", "BID,ASK,LAST_PRICE,VOLUME", "interval=1"),
+                                         ("B", "BID,ASK,LAST_PRICE,VOLUME", "interval=1"),
+                                         ("C", "BID,ASK,LAST_PRICE,VOLUME", "interval=5")]
+        assert sub.interval_of("C") == 5.0 and sub.interval_of("A") == 1.0
+        assert sub.set_intervals({"C": 5.0}) == []  # unchanged: nothing moves
+        assert sub.set_intervals({"B": 5.0, "C": 1.0, "Z": 5.0}) == ["B", "C"]  # Z is not live
+        assert _wait(lambda: len(session.resubscribed) == 1)
+        assert session.resubscribed[0] == [("B", "BID,ASK,LAST_PRICE,VOLUME", "interval=5"),
+                                           ("C", "BID,ASK,LAST_PRICE,VOLUME", "interval=1")]
+        assert session.unsubscribed == [] and len(session.subscribed) == 1  # A untouched, no repaint
+        assert sub.interval_of("B") == 5.0 and sub.interval_of("C") == 1.0
+        # a reconnect resubscribes the live set at its CURRENT intervals
+        session.push([{"kind": "session_down"}])
+    finally:
+        sub.stop()
+    plain = FakeSession()
+    sub2 = BloombergSubscription(["A", "B"], BbgBook(), interval=None, session_factory=lambda: plain)
+    sub2.start()
+    try:
+        assert _wait(lambda: plain.subscribed)
+        assert plain.subscribed[0][0] == ("A", "BID,ASK,LAST_PRICE,VOLUME", "")  # None = every tick
+        assert sub2.set_intervals({"A": 2.0}) == ["A"]
+        assert _wait(lambda: plain.unsubscribed == [["A"]] and len(plain.subscribed) == 2)  # the fallback
+        assert plain.subscribed[1] == [("A", "BID,ASK,LAST_PRICE,VOLUME", "interval=2")]
+    finally:
+        sub2.stop()
+
+
+FAR2 = _future(200)
+DESCRIPTORS3 = DESCRIPTORS + [f"SPY US {FAR2} C100 Equity", f"SPY US {FAR2} P100 Equity"]
+
+
+def _make_provider3(session, **kwargs):
+    bdp_values = {"SPY US Equity": {"PX_LAST": SPOT}}
+    for d in DESCRIPTORS3:
+        bdp_values[d] = {"BID": "9.0", "ASK": "9.5", "LAST_PRICE": "9.2", "VOLUME": "1", "OPEN_INT": "77", "OPT_EXER_TYP": "American"}
+    blp = FakeBlp(_opt_chain_frame(DESCRIPTORS3), bdp_values)
+    kwargs.setdefault("strike_window", (0.9, 1.1))
+    kwargs.setdefault("book_first_wait", 0.3)
+    return BloombergProvider(["SPY"], blp_module=blp, stream_session_factory=lambda: session, **kwargs), blp
+
+
+def _options_of(session) -> dict[str, str]:
+    return {sec: opts for batch in session.subscribed for sec, _f, opts in batch}
+
+
+def test_provider_tiers_the_nearest_two_rungs_fast_and_a_focus_moves_only_its_contracts():
+    """Without a focus the underlying and each ticker's nearest two rungs are
+    conflated at 1 s, the rest at the slow tier (5 s); a focus on the third
+    rung makes every SPY contract fast — re-subscribing ONLY the two whose
+    interval changed on the same session; clearing it moves them back."""
+    session = FakeResubSession(paint={"SPY US Equity": {"LAST_PRICE": "100"}})
+    prov, _ = _make_provider3(session)
+    near, far, far2 = _near_expiry(), TODAY + timedelta(days=120), TODAY + timedelta(days=200)
+    plan = prov.option_tickers("SPY", [near, far, far2])
+    assert len(plan) == 14
+    prov.start_streaming(plan)
+    try:
+        assert _wait(lambda: prov._book is not None and prov._book.started() == 15)
+        opts = _options_of(session)
+        slow = [s for s in plan if FAR2 in s]
+        assert opts["SPY US Equity"] == "interval=1"
+        assert all(opts[s] == "interval=1" for s in plan if FAR2 not in s)
+        assert len(slow) == 2 and all(opts[s] == "interval=5" for s in slow)
+        assert prov.stream_tier("SPY", far2) == "live"  # both tiers are live push feeds
+        n_batches = len(session.subscribed)
+        assert prov.set_stream_focus({("SPY", far2.isoformat())}) is True
+        assert prov.set_stream_focus({("SPY", far2.isoformat())}) is False
+        added, removed = prov.update_streaming(plan)  # same universe: only the tier moves
+        assert (added, removed) == ([], [])
+        assert _wait(lambda: len(session.resubscribed) == 1)
+        assert sorted(s for s, _f, _o in session.resubscribed[0]) == sorted(slow)
+        assert all(o == "interval=1" for _s, _f, o in session.resubscribed[0])
+        assert len(session.subscribed) == n_batches and session.unsubscribed == []  # nothing else touched
+        assert prov.update_streaming(plan) == ([], []) and len(session.resubscribed) == 1  # steady
+        assert prov.set_stream_focus(set()) is True
+        prov.update_streaming(plan)
+        assert _wait(lambda: len(session.resubscribed) == 2)
+        assert sorted(s for s, _f, _o in session.resubscribed[1]) == sorted(slow)
+        assert all(o == "interval=5" for _s, _f, o in session.resubscribed[1])
+        assert prov._allocation is not None and prov._allocation.shares["SPY"].live == 14
+    finally:
+        prov.stop_streaming()
+
+
+def test_slow_interval_knob(monkeypatch):
+    from volfit.data.bloomberg_plan import slow_interval_setting
+
+    monkeypatch.delenv("VOLFIT_BBG_STREAM_INTERVAL_SLOW", raising=False)
+    assert slow_interval_setting() == 5.0 and slow_interval_setting(2.5) == 2.5 and slow_interval_setting(0) is None
+    monkeypatch.setenv("VOLFIT_BBG_STREAM_INTERVAL_SLOW", "10")
+    assert slow_interval_setting() == 10.0
+    prov, _ = _make_provider(FakeSession())
+    assert prov._slow_interval == 10.0 and prov._floor == 60
+    monkeypatch.setenv("VOLFIT_BBG_STREAM_INTERVAL_SLOW", "junk")
+    assert slow_interval_setting() == 5.0
+
+
 def test_app_state_sync_streaming_drives_bloomberg():
     """AppState's provider-agnostic streaming hook opens the Bloomberg book for the
     active source (autoStream default ON) and tears it down when unwanted."""

@@ -12,6 +12,11 @@ if (-not $env:VOLFIT_MASSIVE_KEY)        { $env:VOLFIT_MASSIVE_KEY        = 'YOU
 # Massive options WebSocket cluster. This key is a DELAYED tier, so point the
 # live book straight at the delayed cluster (skips the ~6s real-time warmup).
 if (-not $env:VOLFIT_MASSIVE_WS_URL)     { $env:VOLFIT_MASSIVE_WS_URL     = 'wss://delayed.polygon.io/options' }
+# The live book's budget (Docs\massive_streaming.md): contracts per socket
+# (the server allows ~1,000; an over-limit frame is refused in full) and the
+# number of sockets the plan allows. Defaults 950 / 1.
+# if (-not $env:VOLFIT_MASSIVE_WS_CAP)         { $env:VOLFIT_MASSIVE_WS_CAP         = '950' }
+# if (-not $env:VOLFIT_MASSIVE_WS_CONNECTIONS) { $env:VOLFIT_MASSIVE_WS_CONNECTIONS = '1' }
 
 # Flat-file history (Tier 2): S3 Access Key ID + Secret + host for the
 # flat-file bucket. Enables past-day Close + historical intraday chains.

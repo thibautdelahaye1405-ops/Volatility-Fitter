@@ -68,7 +68,7 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (2459 passed / 7 skipped as of 2026-09-11b, ~13 min — split it in two halves [tests/test_[a-k]*.py | test_[l-z]*.py] when a tool caps runs at 10 min, incl. the perf rails — NB the graph perf rail needs a quiet box [dense BLAS]; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (2592 passed / 7 skipped as of 2026-09-24b, ~14 min — run it in SIX letter chunks [a-c d-g h-k l-o p-s t-z] on this box: a half gets killed for memory while the desk apps hold ~43 GB of commit — split it in two halves [tests/test_[a-k]*.py | test_[l-z]*.py] when a tool caps runs at 10 min, incl. the perf rails — NB the graph perf rail needs a quiet box [dense BLAS]; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
 - Benchmark pack: `-m backtest.benchmark_pack run|report` (chunked/resumable
             graph-LOO parts under backtest\results\benchmark\ + HTML/JSON
             artifact); full sweep via backend\backtest\run_benchmark_pack.ps1
@@ -98,7 +98,27 @@ Key commands (Windows, repo root):
             restart.local.ps1.example] — Massive API key, VOLFIT_MASSIVE_WS_URL
             [delayed-tier keys: wss://delayed.polygon.io/options], and the
             flat-file S3 creds VOLFIT_FLATFILES_KEY/_SECRET/_ENDPOINT
-            [files.massive.com] that light up Massive past-day history.)
+            [files.massive.com] that light up Massive past-day history.
+            Massive live book (2026-09-24, Docs\massive_streaming.md): VOLFIT_MASSIVE_WS_CAP
+            [contracts per socket, default 950 — the server allows ~1,000] and
+            VOLFIT_MASSIVE_WS_CONNECTIONS [sockets, default 1]; windowed nearest-the-money
+            plan under the cap, the wings from a per-minute REST snapshot, health in /datasources.)
+- Recorder: .\record.ps1 [-Tickers SPY,NVDA] [-Expiries all|monthly|weekly|<csv>] [-Store
+            backend\data\volfit.sqlite] [-NoStore] [-Status] [-Stop]   (TICK RECORDER 2026-09-24,
+            Docs\massive_streaming.md "Recorder": a detached process — backend\volfit\data\
+            tick_recorder.py [the loop] + tick_recorder_cli.py [record/replay/status/stop] — owns
+            the ONE Massive socket the key allows, records the live book into daily tick files
+            backend\data\ticks\ticks_<ET day>.sqlite [volfit\data\tick_store.py: changed ticks,
+            latest, meta/heartbeat] and every -FrameMinutes saves each ticker's chain into the
+            VolStore as an as-of frame [source massive, series_id _asof, the request ladder] so
+            the store-first as-of / the Series import find the day without a REST harvest. App
+            side: $env:VOLFIT_MASSIVE_BOOK='recorder:backend\data\ticks' [restart.local.ps1] →
+            serve.py's Massive provider READS that book [volfit\data\massive_recorded.py] and opens
+            NO socket; the light reads "recorded book · N acked · last tick 2 s · recorder alive"
+            or "recorder stale (42 s)" [red]. Replay an instant: cd backend ; ..\.venv\Scripts\python
+            -m volfit.data.tick_recorder replay --db data\ticks\ticks_<day>.sqlite --ticker SPY
+            --at 2026-09-24T15:45:00 --store data\volfit.sqlite. Logs backend\data\recorder.*.log;
+            locks tests\test_tick_store.py / test_tick_recorder.py / test_massive_recorded.py.)
 - API only: .venv\Scripts\python backend\serve.py   (uvicorn on :8000, CORS for Vite)
 - Live API: $env:VOLFIT_PROVIDER='yahoo'; $env:VOLFIT_TICKERS='SPY,QQQ,AAPL'; then serve.py
 - Snapshot: .venv\Scripts\python backend\snapshot.py SPY QQQ   (Yahoo -> SQLite + forwards)
@@ -121,7 +141,7 @@ Key commands (Windows, repo root):
             --regime spike_aug2024 --lv` then `-m backtest.analyze --results ...json`.
             Plan/params: backend\backtest\SPEC.md; module map: backend\backtest\README.md.
 - Frontend: cd frontend ; npm run dev   (talks to :8000 if up, else mock fallback + MOCK badge)
-- Frontend tests: cd frontend ; npm test   (vitest, 813 tests / 116 files as of 2026-09-12a) ; npm run smoke:ui
+- Frontend tests: cd frontend ; npm test   (vitest, 829 tests / 121 files as of 2026-09-24b) ; npm run smoke:ui
             (headless-Edge WORKBENCH smoke; LIVE on a synthetic single-origin
             server — backend\smoke_server.py on :4188, throw-away DB — when
             ..\.venv exists, else vite preview + mock: first-run Welcome, lenses,

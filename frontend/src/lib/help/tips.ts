@@ -58,6 +58,13 @@ export const TIPS: Tip[] = [
     action: { command: "layout.zen", label: "Try it: zen mode" },
   },
   {
+    id: "stream-health-pill",
+    title: "Read the live book's health off the market pill",
+    body: "Hover the market pill while a source streams: the tooltip lists how many contracts the socket acknowledged against its cap, the message rate, the last tick's age and any refusal. The same line sits under the source in the Data sources card; a red light there means the stream was refused or died.",
+    scope: "shell", level: "basic",
+    action: { command: "universe.manage", label: "Open the Data sources card" },
+  },
+  {
     id: "drop-a-json",
     title: "Drop a .json anywhere on the shell",
     body: "A workspace file restores the configuration and tabs; a snapshot file becomes the File data source with its quotes and fits. The drop is routed by the file's schema, so no menu is needed.",

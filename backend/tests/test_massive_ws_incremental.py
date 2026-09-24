@@ -65,7 +65,7 @@ def test_ops_are_sent_on_the_live_connection_and_book_forgets_dropped():
         return session.result()
 
     got = asyncio.run(drive())
-    assert got is True
+    assert got == "served"  # 2026-09-24: the session reports why it ended
     sent = _sent(conn)
     assert sent[0]["action"] == "auth" and sent[1] == {"action": "subscribe", "params": "Q.O:SPY1,Q.O:SPY2"}
     assert {"action": "subscribe", "params": "Q.O:NEW"} in sent

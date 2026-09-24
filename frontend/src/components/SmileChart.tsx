@@ -26,6 +26,7 @@ import { axisDisplayTicks, axisInvert, axisTransform, formatHoverValue } from ".
 import type { AxisContext, AxisMode } from "../lib/axisModes";
 import type { MarketFrame, SmileFrame } from "../lib/smileLayers";
 import { marketLayerKey } from "../lib/smileLayers";
+import { liveTierLabel } from "../state/useLiveTicks";
 import { useElementSize } from "../lib/useElementSize";
 import { useChartZoom } from "../lib/useChartZoom";
 import { DEFAULT_AUTOSCALE } from "../lib/autoScaleY";
@@ -428,20 +429,23 @@ export default function SmileChart({
         {market.live && (
           <span
             className="flex items-center gap-1.5"
+            data-testid="live-badge"
             title={
               market.warming
                 ? "The stream is up but the book has not served this node yet"
-                : `Live market off the streaming book (${quotes.length} quotes${tickStamp ? `, ${tickStamp}` : ""})`
+                : market.tier === "rest"
+                  ? `Belly live off the streaming book, wings from the ${liveTierLabel("rest", market.restSeconds ?? null)} snapshot (${quotes.length} quotes${tickStamp ? `, ${tickStamp}` : ""}) — the viewed node's rung goes fully live on the next re-plan`
+                  : `Live market off the streaming book — the whole rung (${quotes.length} quotes${tickStamp ? `, ${tickStamp}` : ""})`
             }
           >
             <span
               className={[
                 "inline-block h-1.5 w-1.5 rounded-full",
-                market.warming ? "bg-amber-400" : "bg-emerald-400 volfit-live-dot",
+                market.warming ? "bg-amber-400" : market.tier === "rest" ? "bg-sky-400" : "bg-emerald-400 volfit-live-dot",
               ].join(" ")}
             />
-            <span className={market.warming ? "text-amber-400" : "text-emerald-400"}>
-              {market.warming ? "live feed warming" : `LIVE ${tickStamp}`}
+            <span className={market.warming ? "text-amber-400" : market.tier === "rest" ? "text-sky-400" : "text-emerald-400"}>
+              {market.warming ? "live feed warming" : `${liveTierLabel(market.tier ?? "live", market.restSeconds ?? null)} ${tickStamp}`}
             </span>
           </span>
         )}

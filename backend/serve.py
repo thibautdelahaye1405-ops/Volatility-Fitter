@@ -16,6 +16,9 @@ Environment variables:
     VOLFIT_MASSIVE_HIST_NBBO  "0" pins Massive's past-day chains to aggregate
                      marks (bid = ask closes); default: real NBBO history per
                      contract (volfit.data.massive_history), marks as fallback.
+    VOLFIT_MASSIVE_BOOK  "recorder:<file or directory>" — serve Massive's live
+                     book from the tick recorder's store (record.ps1,
+                     volfit.data.tick_recorder) and open NO socket here.
     VOLFIT_DB        SQLite path for fit-history persistence (every fit is
                      recorded keyed by snapshot timestamp; GET /history/...).
                      Unset by default: no on-disk side effects unless opted in.
@@ -112,15 +115,23 @@ def _build_providers() -> dict:
             in ("1", "true", "yes", "on"),
             window_sigma_ref=_env_float("VOLFIT_BBG_WINDOW_SIGMA", 1.0),
         ),
+        # The live book's budget (volfit.data.massive_stream): contracts per
+        # socket (the server allows ~1,000; an over-limit frame is refused in
+        # full) and how many sockets the plan allows (one, today).
         "massive": MassiveProvider(
             tickers,
             api_key=os.environ.get("VOLFIT_MASSIVE_KEY", "").strip(),
             ws_url=(os.environ.get("VOLFIT_MASSIVE_WS_URL", "").strip() or None),
+            stream_cap=int(_env_float("VOLFIT_MASSIVE_WS_CAP", 950)),
+            stream_connections=int(_env_float("VOLFIT_MASSIVE_WS_CONNECTIONS", 1)),
             flat_store=_flat_store(),
             # Past-day chains as real two-sided NBBO (per-contract history);
             # VOLFIT_MASSIVE_HIST_NBBO=0 pins the aggregate-marks path instead.
             hist_nbbo=os.environ.get("VOLFIT_MASSIVE_HIST_NBBO", "1").strip().lower()
             not in ("0", "false", "no", "off"),
+            # The tick recorder's book (volfit.data.massive_recorded): set, this
+            # process reads the recorder's store and opens no socket of its own.
+            book_source=(os.environ.get("VOLFIT_MASSIVE_BOOK", "").strip() or None),
         ),
         "synthetic": SyntheticProvider(reference_date=date.today(), tickers=tuple(tickers)),
     }
@@ -232,8 +243,26 @@ def _pick_active(providers: dict, forced: str) -> str:
     return "synthetic"
 
 
+def _log_stream_events() -> None:
+    """Print the Massive stream's lifecycle (connect / auth / acknowledgement
+    counts / refusals / reconnects — ``volfit.massive_ws``, INFO) to stderr:
+    uvicorn configures only its own loggers, so without this handler the
+    stream stayed silent — the 2026-09-23 finding (a refused subscription
+    unnoticed for five days)."""
+    import logging
+
+    logger = logging.getLogger("volfit.massive_ws")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+
 def build_app():
     """App with all data sources registered and a best-reachable active one."""
+    _log_stream_events()
     providers = _build_providers()
     forced = os.environ.get("VOLFIT_PROVIDER", "").strip().lower()
     active = _pick_active(providers, forced)

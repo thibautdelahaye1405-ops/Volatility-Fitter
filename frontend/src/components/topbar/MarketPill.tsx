@@ -9,7 +9,9 @@
 // click hands off to the shell (the Universe dialog's Data-sources card);
 // the as-of picker lives under Fetch ▾ (AsOfRows). Tickers PINNED to another
 // source (state/tickerSources.ts) show as a "+N" after the source name, listed
-// in the tooltip.
+// in the tooltip — as are the health lines of a streaming source's live book
+// (acknowledged / cap, msg/s, last tick, errors: state/useDataSources.ts).
+import { streamHealthLines } from "../../state/useDataSources";
 import type { SourceStatus, UseDataSourcesResult } from "../../state/useDataSources";
 import type { UseAsOfResult } from "../../state/useAsOf";
 import { useSmileSession } from "../../state/smileSession";
@@ -46,6 +48,10 @@ export default function MarketPill({
   const pinNote = pinned.length
     ? `\nPinned: ${pinned.map(([t, sid]) => `${t} → ${labelOf(sid)}`).join(", ")}`
     : "";
+  // The live book's health, one line per aspect (empty when not streaming).
+  const streamNote = activeSource?.stream
+    ? `\n${streamHealthLines(activeSource.stream).map((l) => `Stream: ${l}`).join("\n")}`
+    : "";
   const historical = asof !== null && asof.mode !== "live";
   // Data-age staleness of the LIVE view (backend data_age; null off-live).
   // Red-stale live data means "live" is really the previous session — say so.
@@ -58,7 +64,7 @@ export default function MarketPill({
       title={
         (staleLive
           ? `Live view is pricing quotes ${dataAge!.label} old (worst: ${dataAge!.worstTicker})\n${TITLE}`
-          : TITLE) + pinNote
+          : TITLE) + pinNote + streamNote
       }
       className={[
         "flex items-center gap-2 rounded-md border px-2.5 py-1 hover:border-slate-600",

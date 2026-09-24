@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, API_BASE_URL } from "../state/api";
 import type { FitMode } from "../state/useSmile";
-import type { LiveTicksState } from "../state/useLiveTicks";
+import { liveTierLabel, type LiveTicksState } from "../state/useLiveTicks";
 import { useWeights } from "../state/useWeights";
 import type { SmileData } from "../lib/mockData";
 import { formatPct } from "../lib/chartScale";
@@ -239,20 +239,23 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile, ticks, show
         {ticks.streaming && (
           <span
             className="flex items-center gap-1.5 font-mono text-[10px]"
+            data-testid="live-badge"
             title={
-              frames.live
-                ? "Market frame off the streaming book (Model = the fit rolled to the live spot)"
-                : "The stream is up but the book has not served this node yet"
+              !frames.live
+                ? "The stream is up but the book has not served this node yet"
+                : frames.tier === "rest"
+                  ? `Belly off the streaming book, wings from the ${liveTierLabel(frames.tier, frames.restSeconds)} snapshot — open the node to put its whole rung live (Model = the fit rolled to the live spot)`
+                  : "Market frame off the streaming book — this node's whole rung is live (Model = the fit rolled to the live spot)"
             }
           >
             <span
               className={[
                 "inline-block h-1.5 w-1.5 rounded-full",
-                frames.live ? "bg-emerald-400 volfit-live-dot" : "bg-amber-400",
+                !frames.live ? "bg-amber-400" : frames.tier === "rest" ? "bg-sky-400" : "bg-emerald-400 volfit-live-dot",
               ].join(" ")}
             />
-            <span className={frames.live ? "text-emerald-400" : "text-amber-400"}>
-              {frames.live ? `LIVE ${tickTime(frames.marketTimestamp)}` : "live feed warming"}
+            <span className={!frames.live ? "text-amber-400" : frames.tier === "rest" ? "text-sky-400" : "text-emerald-400"}>
+              {frames.live ? `${liveTierLabel(frames.tier, frames.restSeconds)} ${tickTime(frames.marketTimestamp)}` : "live feed warming"}
             </span>
           </span>
         )}

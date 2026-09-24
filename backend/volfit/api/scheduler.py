@@ -101,9 +101,17 @@ class Scheduler:
         # follow_wall_clock (serve.py) and the day really moved. Exchange time
         # (ET), not UTC/local: expiry and session semantics live there.
         today = exchange_today()
-        if today != getattr(self, "_last_day", None):
+        last_day = getattr(self, "_last_day", None)
+        if today != last_day:
             self._last_day = today
             self._state.roll_reference_date(today)
+            if last_day is not None:
+                # The day MOVED under a running server: the providers' contract
+                # listings are yesterday's — drop them so the ladder and the
+                # stream plan re-derive (the sync below re-plans the streams:
+                # expired rungs unsubscribed, the new one subscribed). Not on
+                # the first tick: the day's listing on disk is fresh.
+                self._state.refresh_provider_contracts()
 
         # Keep the real-time WS stream (Massive) in sync with the active source +
         # spot mode; cheap no-op when already correct.
@@ -112,6 +120,11 @@ class Scheduler:
         opts = self._state.options()
         streaming = self._state.streaming_tickers()  # per ticker: a pinned Bloomberg
         request = self._state.request_tickers()  # name streams beside Cboe names
+        if streaming:
+            # The REST memory behind a capped live book (Massive): the wings the
+            # socket does not carry come from one windowed snapshot per ticker
+            # per minute (the provider throttles; a background pull).
+            self._state.refresh_stream_rest(streaming)
         if streaming and not opts.streamFreezeFit:
             # The live books: spot and quotes flow continuously — the market-
             # following tickers take the book spot at the sync cadence (a free

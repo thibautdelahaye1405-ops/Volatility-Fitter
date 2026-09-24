@@ -14,7 +14,7 @@
 // over at ~1 Hz (state/useLiveTicks). Calibration quotes keep the user's edits
 // (excluded / amended); market quotes are the market as quoted.
 import type { QuoteBand, SmileData, SmilePoint } from "./mockData";
-import type { LiveTicksState } from "../state/useLiveTicks";
+import type { LiveTicksState, LiveTier } from "../state/useLiveTicks";
 
 /** One drawable frame: quotes + curve in the frame's own moneyness. */
 export interface SmileFrame {
@@ -31,6 +31,9 @@ export interface MarketFrame extends SmileFrame {
   live: boolean;
   /** Stream up but the book has not served this node yet. */
   warming: boolean;
+  /** How the live node is served (LIVE vs "1-min REST"); absent = live. */
+  tier?: LiveTier;
+  restSeconds?: number | null;
   spot: number | null;
   /** ISO UTC stamp of the market (chain timestamp, or newest live tick). */
   timestamp: string | null;
@@ -112,6 +115,8 @@ export function composeFrames(smile: SmileData, ticks: LiveTicksState | null): S
         inferred: ticks.inferred ?? smile.market?.inferred ?? smile.graphInferred?.curve ?? null,
         live: true,
         warming: false,
+        tier: ticks.tier,
+        restSeconds: ticks.restSeconds,
         spot: ticks.spot,
         timestamp: ticks.ts,
       },

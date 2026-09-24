@@ -60,6 +60,7 @@ def test_one_listing_serves_the_ladder_the_keys_and_a_fresh_process(tmp_path, mo
     monkeypatch.setenv("VOLFIT_CACHE_DIR", str(tmp_path))
     ref = _Ref([_row(500, 30), _row(500, 30, "put"), _row(520, 120)])
     p = _provider(ref)
+    p._note_spot("SPY", 500.0)  # the stream plan is windowed around a centre (2026-09-24)
     exps = p.available_expiries("SPY")
     assert exps == [TODAY + timedelta(days=30), TODAY + timedelta(days=120)]
     keys = p.option_tickers("SPY", exps[:1])
@@ -71,6 +72,7 @@ def test_one_listing_serves_the_ladder_the_keys_and_a_fresh_process(tmp_path, mo
     assert set(payload["rows"][0]) == set(ROW_FIELDS)  # slimmed to what the provider reads
 
     fresh = _provider(_Ref([]))  # a new process: the fake would answer an EMPTY listing
+    fresh._note_spot("SPY", 500.0)
     assert fresh.available_expiries("SPY") == exps  # served from the day's file
     assert fresh.option_tickers("SPY", exps[:1]) == keys and fresh._listings.pulls == 0
 

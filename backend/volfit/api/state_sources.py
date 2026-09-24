@@ -14,7 +14,11 @@ iff ``autoStream`` is on and it serves at least one active ticker, on that
 ticker set's contracts; ``is_streaming(ticker)`` answers per ticker, so the
 scheduler runs its streaming branch for the streaming tickers and the
 Auto-update timer for the rest in the same tick (``streaming_tickers`` /
-``request_tickers``).
+``request_tickers``). The FOCUS (volfit.api.stream_focus: the nodes with an
+open tick-stream SSE) is pushed to each provider on every sync; a provider
+re-plans its live set only when its focus changed (``set_stream_focus``
+returns whether it did), and ``stream_tier(ticker, expiry)`` says how a node
+is served — live socket, the per-minute REST memory, or not at all.
 
 The pin value ``AUTO_SOURCE`` ("auto", volfit.api.source_policy) resolves to
 the fastest green source that can serve the ticker; the resolution is
@@ -27,8 +31,11 @@ caches and ``_lock``; ``_require_active`` comes from the universe mixin).
 
 from __future__ import annotations
 
+from datetime import date
+
 from volfit.api.source_policy import AUTO_SOURCE, SourcePolicy
 from volfit.api.state_universe import UnknownNodeError
+from volfit.api.stream_focus import Node, StreamFocus
 from volfit.data.provider import OptionChainProvider
 
 
@@ -173,6 +180,7 @@ class SourcesMixin:
         with self._lock:
             auto = self._options.autoStream
             providers = dict(self._providers)
+        focus = self.stream_focus()
         for sid, prov in providers.items():
             if not hasattr(prov, "start_streaming"):
                 continue
@@ -185,19 +193,29 @@ class SourcesMixin:
             desired = self._desired_stream_contracts(prov, mine)
             if not desired:
                 continue  # nothing fittable yet; leave any warm stream as-is
+            # The focus (the nodes on screen) is handed over BEFORE the plan so
+            # a fresh start honours it; a provider answers whether its focus
+            # changed — that, and only that, makes an unchanged universe re-plan.
+            set_focus = getattr(prov, "set_stream_focus", None)
+            refocused = bool(set_focus({n for n in focus if n[0] in mine})) if set_focus is not None else False
             if not streaming:
                 prov.start_streaming(desired)
-            else:
-                # Resubscribe only if the provider can report its current
-                # subscription (else we can't diff and must not thrash-restart).
-                # A provider that can edit its live subscription in place
-                # (``update_streaming`` — Bloomberg) gets the incremental path:
-                # only the new/gone contracts move, the rest keep ticking with no
-                # warming gap; otherwise the stream is restarted on the new set.
-                probe = getattr(prov, "streaming_contracts", None)
-                if probe is not None and set(desired) != set(probe()):
-                    updater = getattr(prov, "update_streaming", None)
-                    (updater or prov.start_streaming)(desired)  # universe changed
+                continue
+            # Resubscribe only if the provider can report its current
+            # subscription (else we can't diff and must not thrash-restart).
+            # A provider that can edit its live subscription in place
+            # (``update_streaming`` — Bloomberg, Massive) gets the incremental
+            # path: only the new/gone contracts move, the rest keep ticking with
+            # no warming gap; otherwise the stream is restarted on the new set.
+            # A focus change alone never restarts a stream: it re-plans in place.
+            probe = getattr(prov, "streaming_contracts", None)
+            if probe is None:
+                continue
+            updater = getattr(prov, "update_streaming", None)
+            if set(desired) != set(probe()):
+                (updater or prov.start_streaming)(desired)  # universe changed
+            elif refocused and updater is not None:
+                updater(desired)  # same universe, new focus: re-allocate the live set
 
     def _desired_stream_contracts(self, prov, tickers: list[str]) -> list[str]:
         """The option tickers ``prov`` should stream for ``tickers`` (cheap once
@@ -212,12 +230,109 @@ class SourcesMixin:
         return contracts
 
     def is_streaming(self, ticker: str | None = None) -> bool:
-        """With a ticker: its provider has a live real-time book. Without one:
-        any active ticker streams (the status-bar / scheduler summary)."""
+        """With a ticker: its provider SERVES it from a live book — a provider
+        that answers per ticker (``is_streaming_ticker``: Massive since
+        2026-09-24 — socket up, the ticker's contracts acknowledged, a quote
+        booked) is asked that way, so an unserved ticker stays on the request
+        path (Auto-update keeps working, the SSE says not streaming); else the
+        provider-level "a book is open". Without one: any active ticker
+        streams (the status-bar / scheduler summary)."""
         if ticker is None:
             return any(self.is_streaming(t) for t in self.active_tickers())
-        probe = getattr(self.provider_for(ticker), "is_streaming", None)
+        prov = self.provider_for(ticker)
+        per_ticker = getattr(prov, "is_streaming_ticker", None)
+        if per_ticker is not None:
+            return bool(per_ticker(ticker))
+        probe = getattr(prov, "is_streaming", None)
         return bool(probe is not None and probe())
+
+    def refresh_provider_contracts(self) -> list[str]:
+        """The exchange-day roll: every provider that keeps a contracts listing
+        (``refresh_contracts`` — Massive, Bloomberg) drops it so the ladder and
+        the stream plan re-derive on the new day; the next ``sync_streaming``
+        re-plans (expired rungs unsubscribed, the new one subscribed). Returns
+        the source ids refreshed; a failing provider never blocks the rest."""
+        with self._lock:
+            providers = dict(self._providers)
+        done: list[str] = []
+        for sid, prov in providers.items():
+            refresh = getattr(prov, "refresh_contracts", None)
+            if refresh is None:
+                continue
+            try:
+                refresh()
+                done.append(sid)
+            except Exception:  # noqa: BLE001 — a bad provider never blocks the roll
+                continue
+        return done
+
+    def refresh_stream_rest(self, tickers: list[str]) -> None:
+        """The streaming branch's REST memory: for each streaming ticker whose
+        provider merges a REST snapshot behind its live book
+        (``refresh_stream_rest`` — Massive), ask for a refresh; the provider
+        throttles it to one windowed snapshot per ticker per minute."""
+        for ticker in tickers:
+            prov = self.provider_for(ticker)
+            refresh = getattr(prov, "refresh_stream_rest", None)
+            if refresh is None:
+                continue
+            try:
+                refresh(ticker, self.selected_expiries(ticker))
+            except Exception:  # noqa: BLE001 — the memory keeps its last snapshot
+                continue
+
+    def stream_tier(self, ticker: str, expiry: date) -> str:
+        """How the node is served: ``"live"`` (its whole planned rung is on
+        the socket — the focus, or a universe that fits the budget),
+        ``"rest"`` (served with the provider's REST memory behind the belly:
+        Massive's per-minute snapshot), ``"none"`` (not streaming). A
+        provider without a tier reading (Bloomberg, the synthetic fakes) is
+        live whenever it streams."""
+        if not self.is_streaming(ticker):
+            return "none"
+        tier = getattr(self.provider_for(ticker), "stream_tier", None)
+        return str(tier(ticker, expiry)) if tier is not None else "live"
+
+    def stream_rest_seconds(self, ticker: str) -> float | None:
+        """The REST cadence behind the ticker's live book (None when the
+        provider has none) — the per-node SSE says it in its badge."""
+        value = getattr(self.provider_for(ticker), "rest_seconds", None)
+        return float(value) if value is not None else None
+
+    # ---------------------------------------------------------------- focus
+    @property
+    def _focus_registry(self) -> StreamFocus:
+        """Process-scoped like ``source_policy`` (never workspace state);
+        created atomically on first use so ``AppState.__init__`` is untouched."""
+        reg = self.__dict__.get("_stream_focus_registry")
+        if reg is None:
+            reg = self.__dict__.setdefault("_stream_focus_registry", StreamFocus())
+        return reg
+
+    def stream_focus(self) -> set[Node]:
+        """The ``(TICKER, expiry ISO)`` nodes with an open tick-stream SSE."""
+        return self._focus_registry.nodes()
+
+    def focus_node(self, ticker: str, expiry_iso: str) -> Node:
+        """The registry key of a node: the upper-cased ticker and the expiry
+        resolved against its selection when it resolves (so ``2026-10-16``
+        matches the plan's date however the URL spelt it), else as given."""
+        sym = ticker.strip().upper()
+        try:
+            iso = self.resolve_expiry(sym, expiry_iso).isoformat()
+        except Exception:  # noqa: BLE001 — an unknown node still gets a key (the SSE errors out)
+            iso = expiry_iso.strip()
+        return (sym, iso)
+
+    def focus_open(self, ticker: str, expiry_iso: str) -> Node:
+        """A tick stream opened on the node (reference-counted). Returns the
+        key ``focus_close`` must be given back."""
+        node = self.focus_node(ticker, expiry_iso)
+        self._focus_registry.open(node)
+        return node
+
+    def focus_close(self, node: Node) -> None:
+        self._focus_registry.close(node)
 
     def streaming_tickers(self) -> list[str]:
         """The active tickers served from a live book right now."""

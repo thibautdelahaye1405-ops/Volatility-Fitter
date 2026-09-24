@@ -3,7 +3,9 @@
 // pinned — a radio list with a status light and the count of tickers each
 // source serves now), *Open a snapshot file*, and the per-ticker pins summary
 // (the pins themselves are edited on each ticker row of the matrix,
-// state/tickerSources.ts).
+// state/tickerSources.ts). A streaming source shows one health line under its
+// row — acknowledged count, msg/s, last tick (state/useDataSources.ts).
+import { streamHealthLine, streamHealthLines } from "../../state/useDataSources";
 import type { DataSourceInfo, SourceStatus } from "../../state/useDataSources";
 import type { useOptionalSnapshotFile } from "../../state/snapshotFile";
 
@@ -58,8 +60,8 @@ export default function DataSourcesCard({
               served.length ? `serves ${served.join(", ")}` : "serves no ticker right now",
             ].filter(Boolean).join("\n");
             return (
+              <div key={s.id} className="flex flex-col">
               <button
-                key={s.id}
                 role="radio"
                 aria-checked={isActive}
                 disabled={switching}
@@ -85,6 +87,16 @@ export default function DataSourcesCard({
                   {s.detail}
                 </span>
               </button>
+              {s.stream && (
+                <div
+                  className={`pb-1 pl-6 pr-2 font-mono text-[10px] ${s.stream.level === "red" ? "text-rose-400" : "text-slate-500"}`}
+                  data-testid={`stream-health-${s.id}`}
+                  title={streamHealthLines(s.stream).join("\n")}
+                >
+                  {streamHealthLine(s.stream)}
+                </div>
+              )}
+              </div>
             );
           })}
         </div>

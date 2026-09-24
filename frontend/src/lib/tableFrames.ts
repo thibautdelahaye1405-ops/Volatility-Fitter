@@ -11,7 +11,7 @@
 //                      calibration spot and the calibration weight.
 //
 // Pure and unit-tested; the component only renders what this composes.
-import type { LiveTickRow, LiveTicksState } from "../state/useLiveTicks";
+import type { LiveTickRow, LiveTicksState, LiveTier } from "../state/useLiveTicks";
 
 /** One row of GET /smiles/{ticker}/{expiry}/table (either frame). */
 export interface TableRow {
@@ -69,6 +69,9 @@ export interface TableFrames {
   live: boolean;
   /** Stream up but the book has not served this node yet. */
   warming: boolean;
+  /** How the live node is served (LIVE vs "1-min REST"); "none" off-live. */
+  tier: LiveTier;
+  restSeconds: number | null;
 }
 
 export const strikeKey = (strike: number): string => strike.toFixed(4);
@@ -142,6 +145,8 @@ export function composeTableRows(table: TableResponse, ticks: LiveTicksState | n
     calibForward: table.forward,
     live: liveReady,
     warming: !!ticks && ticks.streaming && !ticks.ready,
+    tier: liveReady && ticks ? ticks.tier : "none",
+    restSeconds: liveReady && ticks ? ticks.restSeconds : null,
   };
 }
 

@@ -236,3 +236,89 @@ def test_scheduler_thread_runs_when_enabled():
     """create_app(enable_scheduler=True) starts the daemon under the lifespan."""
     with TestClient(create_app(reference_date=REF_DATE, enable_scheduler=True)) as client:
         assert client.get("/scheduler").json()["running"] is True
+
+
+# ------------------------------------------------- day roll + the REST memory
+
+def test_day_roll_refreshes_provider_contracts_and_replans_the_stream(monkeypatch):
+    """The exchange-day roll (2026-09-24): the providers' contract listings are
+    dropped (``refresh_contracts``) — not on the first tick, whose listing is
+    the day's — and the next ``sync_streaming`` re-plans the stream on the new
+    ladder (the expired rung unsubscribed, the new one subscribed)."""
+    from datetime import timedelta
+
+    from volfit.api import scheduler as sched_mod
+    from volfit.data.provider import SyntheticProvider
+
+    class Rolling(SyntheticProvider):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.refreshes = 0
+            self.subscribed: list[str] = []
+            self.updates: list[list[str]] = []
+            self.streaming = False
+
+        def refresh_contracts(self):
+            self.refreshes += 1
+
+        def option_tickers(self, ticker, expiries):
+            return [f"O:{ticker}:day{self.refreshes}"]  # a new rung after the roll
+
+        def start_streaming(self, contracts):
+            self.streaming, self.subscribed = True, list(contracts)
+
+        def update_streaming(self, contracts):
+            self.updates.append(list(contracts))
+            self.subscribed = list(contracts)
+            return (contracts, [])
+
+        def stop_streaming(self):
+            self.streaming = False
+
+        def is_streaming(self):
+            return self.streaming
+
+        def streaming_contracts(self):
+            return set(self.subscribed)
+
+    prov = Rolling(reference_date=REF_DATE, tickers=("ALPHA",))
+    state = AppState(REF_DATE, providers={"massive": prov}, active_source="massive")
+    days = {"today": REF_DATE}
+    monkeypatch.setattr(sched_mod, "exchange_today", lambda: days["today"])
+    sched = Scheduler(state)
+    sched.tick(now=0.0)
+    assert prov.refreshes == 0 and prov.subscribed == ["O:ALPHA:day0"]  # first tick: no refresh
+    sched.tick(now=1.0)
+    assert prov.refreshes == 0
+    days["today"] = REF_DATE + timedelta(days=1)  # the day moved
+    sched.tick(now=2.0)
+    assert prov.refreshes == 1 and prov.updates == [["O:ALPHA:day1"]]
+    assert state.refresh_provider_contracts() == ["massive"] and prov.refreshes == 2
+
+
+def test_streaming_branch_refreshes_the_rest_memory_every_tick(monkeypatch):
+    """The streaming branch asks each streaming ticker's provider for its REST
+    memory refresh (the provider throttles to one snapshot a minute); the
+    request path never does."""
+    from volfit.api import workflow
+    from volfit.data.provider import SyntheticProvider
+
+    class WithMemory(SyntheticProvider):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.asked: list[tuple[str, list]] = []
+
+        def refresh_stream_rest(self, ticker, expiries, block=False):
+            self.asked.append((ticker, list(expiries or [])))
+
+    prov = WithMemory(reference_date=REF_DATE, tickers=(TICKER,))
+    state = AppState(REF_DATE, providers={"massive": prov}, active_source="massive")
+    state.set_options(state.options().model_copy(update={"autoCalibrate": False, "autoUpdate": "off"}))
+    monkeypatch.setattr(workflow, "sync_market_shifts", lambda *a, **k: None)
+    state.is_streaming = lambda ticker=None: False
+    sched = Scheduler(state)
+    sched.tick(now=100.0)
+    assert prov.asked == []  # the request path: no REST memory
+    state.is_streaming = lambda ticker=None: True
+    sched.tick(now=101.0)
+    assert prov.asked == [(TICKER, state.selected_expiries(TICKER))]

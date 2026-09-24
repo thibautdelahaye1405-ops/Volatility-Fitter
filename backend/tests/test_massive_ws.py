@@ -100,7 +100,10 @@ class SilentConn(FakeConn):
 
 def test_consume_loop_advances_past_a_silent_cluster():
     """The real-time cluster connects but streams nothing (gated); the client must
-    advance to the delayed candidate and book its quotes."""
+    advance to the delayed candidate and book its quotes. Since 2026-09-24 the
+    rotation applies only DURING the US session (outside it a quiet socket is
+    kept — silence is expected), so the session clock is injected open, and
+    ``_session`` reports WHY it ended ("silent" / "served")."""
     streaming = FakeConn([
         json.dumps([{"ev": "status", "status": "auth_success"}]),
         json.dumps([{"ev": "Q", "sym": "O:SPY1", "bp": 1.0, "ap": 1.2, "t": 1}]),
@@ -114,15 +117,16 @@ def test_consume_loop_advances_past_a_silent_cluster():
         urls=["wss://socket.massive.com/options", "wss://delayed.polygon.io/options"],
         connect=lambda: conns.pop(0),
         quote_grace=0.05,
+        session_open=lambda: True,
     )
 
     async def drive():
-        # One sweep: silent session returns False (advances idx), then the streaming
-        # session books the quote. Stop the loop right after it locks on.
-        await ws._session(ws._urls[0])  # silent -> no data
+        # One sweep: the silent session reports "silent" (the loop advances idx),
+        # then the streaming session books the quote and reports "served".
+        assert await ws._session(ws._urls[0]) == "silent"
         assert book.size() == 0
         got = await ws._session(ws._urls[1])  # streaming cluster
-        assert got is True and book.quote("O:SPY1").bid == 1.0
+        assert got == "served" and book.quote("O:SPY1").bid == 1.0
 
     asyncio.run(drive())
 

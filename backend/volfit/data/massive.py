@@ -43,6 +43,17 @@ REST fetch plumbing (2026-09-24, split out to keep this file readable):
 - volfit.data.massive_snapshot — the chain request plan: the nearest expiry
   first and unwindowed (it yields the spot), the rest under a strike window
   that contains the prep's band, the whole horizon as two date shards.
+
+Streaming (2026-09-24 rework, the 2026-09-23 finding: ~1,000 contracts per
+socket, an over-limit frame refused in full — the old client subscribed the
+whole selection in one frame and never served):
+- volfit.data.massive_stream — ``MassiveStreamMixin``: the windowed, capped,
+  nearest-the-money plan, the live/REST merge, per-ticker honesty, health;
+- volfit.data.massive_ws / massive_book — the chunked, acknowledged
+  transport and the live book + health counters it feeds;
+- volfit.data.massive_recorded — ``book_source="recorder:<path>"``: the book
+  is READ from the tick recorder's store (volfit.data.tick_recorder owns the
+  one socket in its own process); this process never opens a socket then.
 """
 
 from __future__ import annotations
@@ -57,14 +68,21 @@ from volfit.core.black import black_call
 from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.roots import is_index_root, normalize_root
 from volfit.data.expiry_time import is_trading_day, session_close_utc
+from volfit.data.massive_book import ns_to_utc_naive
 from volfit.data.massive_history import MassiveHistoryMixin
 from volfit.data.massive_http import MassiveEntitlement, MassiveError, MassiveHttp
 from volfit.data.massive_listing import ListingCache
+from volfit.data.massive_recorded import MassiveRecordedMixin
 from volfit.data.massive_snapshot import (
     DEFAULT_HORIZON_SHARDS,
     SNAPSHOT_LIMIT,
     SNAPSHOT_WORKERS,
     MassiveSnapshotMixin,
+)
+from volfit.data.massive_stream import (
+    DEFAULT_STREAM_CAP,
+    DEFAULT_STREAM_CONNECTIONS,
+    MassiveStreamMixin,
 )
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
 from volfit.data.strike_window import DEFAULT_SIGMA_REF
@@ -100,26 +118,8 @@ _INTRADAY_AGG_MAX = 1500
 _US_OPTION_TICK = US_OPTION_TICK
 
 
-def _ns_to_utc_naive(ns) -> datetime | None:
-    """Provider epoch timestamp -> UTC-naive datetime (the stored form).
-
-    The WS feed's ``t`` is nominally nanoseconds but Polygon channels have
-    shipped ms too, so the unit is inferred from magnitude; values outside
-    2001..2286 (epoch 1e9..1e10 seconds) return None rather than stamping a
-    chain with a nonsense date (callers then fall back to the wall clock)."""
-    if ns is None:
-        return None
-    try:
-        seconds = float(ns)
-    except (TypeError, ValueError):
-        return None
-    while seconds >= 1e10:  # ns -> us -> ms -> s, whichever the feed sent
-        seconds /= 1e3
-    if not 1e9 <= seconds < 1e10:
-        return None
-    return datetime.fromtimestamp(seconds, tz=timezone.utc).replace(
-        tzinfo=None, microsecond=0
-    )
+#: The WS tick-time conversion now lives beside the book (massive_book).
+_ns_to_utc_naive = ns_to_utc_naive
 
 
 def _settlement_for(quotes, ticker: str):
@@ -141,7 +141,9 @@ def _iso_date(value) -> date | None:
         return None
 
 
-class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProvider):
+class MassiveProvider(
+    MassiveSnapshotMixin, MassiveHistoryMixin, MassiveRecordedMixin, MassiveStreamMixin, OptionChainProvider
+):
     """Live option chains for a watchlist via the Massive REST API.
 
     Parameters
@@ -162,6 +164,16 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
                 the whole-horizon date shards (1 = one stream).
     listing_cache : persist the contracts listing on disk (None = only when the
                 HTTP layer is real — an injected fake never writes the cache).
+    stream_cap / stream_connections : the live subscription budget per socket
+                (env VOLFIT_MASSIVE_WS_CAP, default 950 — the server allows
+                ~1,000) and how many sockets to open (VOLFIT_MASSIVE_WS_CONNECTIONS,
+                default 1: the current plan allows one); volfit.data.massive_stream.
+    ws_connect / session_open : injectable connection factory and session clock
+                for offline tests of the stream.
+    book_source : ``"recorder:<file or directory>"`` (env VOLFIT_MASSIVE_BOOK)
+                — serve the live book from the tick recorder's store instead
+                of a socket of this process (volfit.data.massive_recorded);
+                None (default) = the in-process socket(s).
     """
 
     def __init__(
@@ -181,6 +193,11 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
         window_vol: float | None = DEFAULT_SIGMA_REF,
         horizon_shards: int = DEFAULT_HORIZON_SHARDS,
         listing_cache: bool | None = None,
+        stream_cap: int = DEFAULT_STREAM_CAP,
+        stream_connections: int = DEFAULT_STREAM_CONNECTIONS,
+        ws_connect=None,
+        session_open=None,
+        book_source=None,
     ) -> None:
         self._tickers = [t.strip().upper() for t in tickers]
         self.api_key = api_key
@@ -208,21 +225,24 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
         #: persisted under data/cache when the HTTP layer is real
         #: (volfit.data.massive_listing).
         self._listings = ListingCache(disk=(http_get is None) if listing_cache is None else bool(listing_cache))
-        #: Optional explicit real-time WS cluster override (env
-        #: VOLFIT_MASSIVE_WS_URL via serve.py). When unset the cluster is derived
-        #: from the REST host, with the delayed cluster as an auto-fallback —
-        #: see ``_ws_urls``.
-        self._ws_url_override = ws_url
+        #: The live book (volfit.data.massive_stream): the WS cluster override
+        #: (env VOLFIT_MASSIVE_WS_URL — else derived from the REST host, the
+        #: delayed cluster as the auto-fallback), the subscription budget, the
+        #: plan / merge / health state. ``fetch_chain(live)`` serves from the
+        #: book while it streams (``_chain_from_book``).
+        self._init_streaming(
+            ws_url=ws_url, stream_cap=stream_cap, stream_connections=stream_connections,
+            ws_connect=ws_connect, session_open=session_open,
+        )
+        #: A recorded book (volfit.data.massive_recorded): with one configured
+        #: the streaming lifecycle attaches the recorder's store and never
+        #: opens a socket in this process (the key allows one socket).
+        self._init_recorded(book_source)
         #: When the live NBBO quotes are gated (base tier) but the snapshot still
         #: carries Massive's per-contract implied vol, synthesize zero-spread
         #: quotes from those IVs so the surface is still fittable. See
         #: ``_chain_from_iv``. Off => raise the usual entitlement error instead.
         self.iv_fallback = iv_fallback
-        #: Optional real-time NBBO book (volfit.data.massive_ws). When streaming,
-        #: ``fetch_chain(live)`` reads bid/ask from it instead of a REST snapshot
-        #: poll. Started/stopped via ``start_streaming``/``stop_streaming``.
-        self._live_book = None
-        self._ws = None
         #: Optional flat-file history store (volfit.data.flatfiles, ROADMAP Tier
         #: 2). When present + credentialed it serves the official daily Close
         #: (day aggregates) for ANY recent trading day and reconstructs a chain at
@@ -264,11 +284,12 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
         red without a key / when the contracts reference is unauthorized or
         unreachable; amber when the snapshot endpoint is authorized (a typically
         delayed tier) or only the reference works (quotes gated). While
-        streaming, the detail carries the WS book's freshness — computed live
-        on every call: the book keeps each contract's LAST tick across quiet
-        periods (overnight/premarket), so 'stream idle since …' is the tell
-        that a "live" fetch would serve yesterday's quotes. The call meter's
-        " · N calls/h" is appended live too."""
+        streaming, the detail carries the stream's HEALTH — computed live on
+        every call (volfit.data.massive_stream._stream_status): acknowledged
+        count, message rate, last-message age; red on a refused / dead /
+        unauthenticated stream (the light's colour follows it), green once the
+        real-time cluster delivers quotes. The call meter's " · N calls/h" is
+        appended live too."""
         if not self.api_key:
             return ("red", "no API key")
         tickers = self.list_tickers()
@@ -282,7 +303,10 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
         else:
             colour, base, streamy = self._probe_status(tickers[0])
             self._status_memo = (now, colour, base, streamy)
-        detail = f"{base}{self._stream_freshness() if streamy else ''}"
+        detail = base
+        stream = self._stream_status() if streamy else None
+        if stream is not None:
+            colour, detail = stream[0], f"{base} · {stream[1]}"
         calls = self._meter.per_hour()
         return (colour, f"{detail} · {calls} calls/h" if calls else detail)
 
@@ -309,20 +333,6 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
         if snap.get("status") == "NOT_AUTHORIZED":
             return ("amber", "reference only (quotes gated)", False)
         return ("amber", "delayed feed", True)
-
-    def _stream_freshness(self) -> str:
-        """' · streaming' / ' · stream idle since HH:MM' suffix (empty when not
-        streaming). Idle = the newest booked tick is over ~20 min old."""
-        if self._live_book is None:
-            return ""
-        newest = _ns_to_utc_naive(self._live_book.newest_ts())
-        if newest is None:
-            return " · stream warming"
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        if (now - newest).total_seconds() <= 20 * 60:
-            return " · streaming"
-        day = "" if newest.date() == now.date() else f"{newest:%b %d} "
-        return f" · stream idle since {day}{newest:%H:%M} UTC"
 
     # -- HTTP plumbing -------------------------------------------------------
 
@@ -412,16 +422,6 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
         if result:  # don't freeze a transient empty miss — let the next call re-probe
             self._expiries_cache[key] = result
         return result
-
-    def book_spot(self, ticker: str, expiries: list[date] | None = None) -> float | None:
-        """Book-only spot: the nearest selected expiry's live-book chain spot
-        (its parity-implied forward), never a REST call; None when not
-        streaming or the book cannot imply a forward yet."""
-        if self._live_book is None:
-            return None
-        nearest = sorted(expiries)[:1] if expiries else None
-        chain = self._chain_from_book(ticker, nearest)
-        return float(chain.spot) if chain is not None and chain.spot else None
 
     def spot(self, ticker: str, expiries: list[date] | None = None) -> float:
         """Underlying spot WITHOUT pulling the whole chain.
@@ -523,147 +523,6 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
         "latest" is Live on every provider and is never an intraday pick."""
         return bool(self.api_key) or self._flat_ready()
 
-    # -- real-time streaming (WebSocket live book) ---------------------------
-
-    def option_tickers(self, ticker: str, expiries: list[date] | None) -> list[str]:
-        """The Polygon option tickers (``O:…``) for a ticker's selected expiries —
-        what to subscribe to on the WebSocket."""
-        return [c["ticker"] for c in self._intraday_contracts(ticker, expiries)]
-
-    def _ws_url(self) -> str:
-        """Real-time options-cluster WS endpoint derived from the REST host."""
-        host = self.base_url.split("://")[-1].rstrip("/").replace("api.", "socket.")
-        return f"wss://{host}/options"
-
-    def _ws_urls(self) -> list[str]:
-        """Candidate WS clusters, tried in order by the live-book client.
-
-        Primary = the explicit override (``VOLFIT_MASSIVE_WS_URL``) or the
-        real-time cluster derived from the REST host. The **delayed** cluster
-        (``wss://delayed.polygon.io/options``) is appended as an auto-fallback:
-        a delayed-tier key connects + auths on the real-time cluster but is served
-        no quotes there, so the client advances to the delayed cluster (verified
-        2026-06-15 to stream live SPY NBBO on this plan)."""
-        primary = self._ws_url_override or self._ws_url()
-        candidates = [primary]
-        for fallback in ("wss://delayed.polygon.io/options",):
-            if fallback not in candidates:
-                candidates.append(fallback)
-        return candidates
-
-    def start_streaming(self, contracts: list[str]) -> None:
-        """Open the WebSocket and stream NBBO for ``contracts`` into a live book;
-        ``fetch_chain(live)`` then serves from it. Replaces any current stream."""
-        from volfit.data.massive_ws import LiveBook, MassiveWebSocket
-
-        self.stop_streaming()
-        self._live_book = LiveBook()
-        self._ws = MassiveWebSocket(
-            self.api_key, list(contracts), self._live_book, urls=self._ws_urls()
-        )
-        self._ws.start()
-
-    def update_streaming(self, contracts: list[str]) -> tuple[list[str], list[str]]:
-        """INCREMENTAL universe edit on the live WebSocket (volfit.data.massive_ws):
-        subscribe only the new contracts, unsubscribe only the gone ones — no
-        reconnect, the rest keeps ticking; the book forgets the dropped ones.
-        Starts a stream when none is running, stops on an empty universe.
-        Returns ``(added, removed)``."""
-        if not self.is_streaming() or self._ws is None:
-            self.start_streaming(contracts)
-            return (list(dict.fromkeys(contracts)), [])
-        if not contracts:
-            self.stop_streaming()
-            return ([], [])
-        wanted = list(dict.fromkeys(contracts))
-        have = set(self._ws.contracts)
-        added = self._ws.subscribe([c for c in wanted if c not in have])
-        removed = self._ws.unsubscribe([c for c in have if c not in set(wanted)])
-        return (added, removed)
-
-    def stop_streaming(self) -> None:
-        """Tear down the WebSocket and drop the live book (back to REST live)."""
-        if self._ws is not None:
-            self._ws.stop()
-            self._ws = None
-        self._live_book = None
-
-    def is_streaming(self) -> bool:
-        return self._ws is not None and self._ws.is_running()
-
-    def streaming_contracts(self) -> set[str]:
-        """The contract set currently subscribed on the WS (empty if not streaming)
-        — lets the scheduler detect a universe change and resubscribe."""
-        return set(self._ws.contracts) if self._ws is not None else set()
-
-    def live_chain(self, ticker: str, expiries: list[date] | None) -> ChainSnapshot | None:
-        """BOOK-ONLY live chain (no REST, ever): the streamed NBBO for the selected
-        expiries, or None when not streaming / the book cannot imply a forward yet.
-        The live quote-table tick stream (volfit.api.table_stream) polls this at
-        1 Hz, so unlike ``fetch_chain`` it must never fall back to a request."""
-        if self._live_book is None:
-            return None
-        return self._chain_from_book(ticker, expiries)
-
-    def _spot_from_quotes(self, quotes: list[OptionQuote]) -> float | None:
-        """Parity forward (spot proxy) from already-built two-sided quotes."""
-        by_exp: dict[date, dict[float, dict[str, float]]] = {}
-        for q in quotes:
-            if q.bid is None or q.ask is None or q.ask < q.bid:
-                continue
-            by_exp.setdefault(q.expiry, {}).setdefault(q.strike, {})[q.call_put] = 0.5 * (q.bid + q.ask)
-        return _parity_forward(by_exp)
-
-    def _chain_from_book(
-        self, ticker: str, expiries: list[date] | None
-    ) -> ChainSnapshot | None:
-        """Build the live chain from the streamed NBBO book for the selected
-        contracts. None until enough two-sided quotes are booked to imply a
-        forward (so the caller can REST-fetch the first frame).
-
-        The chain (and each quote) is stamped with the PROVIDER tick times, not
-        the wall clock: the book retains each contract's last tick across quiet
-        periods, so a premarket fetch otherwise relabels yesterday's closing
-        NBBO as a fresh "live" snapshot — the timestamp is the only honest
-        staleness signal the viewer gets."""
-        contracts = self._intraday_contracts(ticker, expiries)
-        if not contracts:
-            return None
-        now = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
-        newest: datetime | None = None
-        quotes: list[OptionQuote] = []
-        styles: list[str] = []
-        for c in contracts:
-            tick = self._live_book.quote(c["ticker"]) if self._live_book else None
-            tick_ts = _ns_to_utc_naive(tick.ts) if tick is not None else None
-            if tick_ts is not None and (newest is None or tick_ts > newest):
-                newest = tick_ts
-            quotes.append(
-                OptionQuote(
-                    ticker=ticker.upper(),
-                    expiry=c["expiry"],
-                    strike=c["strike"],
-                    call_put=c["call_put"],
-                    bid=tick.bid if tick else None,
-                    ask=tick.ask if tick else None,
-                    last=None,
-                    volume=None,
-                    open_interest=None,
-                    timestamp=tick_ts or now,
-                )
-            )
-            if c["style"] in ("american", "european"):
-                styles.append(c["style"])
-        spot = self._spot_from_quotes(quotes)
-        if spot is None:
-            return None
-        return ChainSnapshot(
-            ticker=ticker.upper(), spot=spot, timestamp=newest or now,
-            quotes=quotes, exercise_style=_resolve_style(styles),
-            tick_size=_US_OPTION_TICK,
-            settlement=_settlement_for(quotes, ticker),
-        )
-
     def fetch_chain(
         self,
         ticker: str,
@@ -725,6 +584,16 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
             from volfit.data.expiry_time import latest_completed_session
 
             timestamp = session_close_utc(latest_completed_session(timestamp))
+        return self._rest_chain(ticker, results, timestamp, prev_close)
+
+    def _rest_chain(
+        self, ticker: str, results: list[dict], timestamp: datetime, prev_close: bool
+    ) -> ChainSnapshot:
+        """A chain from raw snapshot ``results`` (the REST path of ``fetch_chain``
+        and the streaming branch's per-minute REST memory refresh). A live
+        two-sided chain is remembered as the ticker's last REST snapshot — the
+        wings the capped live book does not carry are served from it
+        (volfit.data.massive_stream._chain_from_book)."""
         quotes: list[OptionQuote] = []
         styles: list[str] = []
         spot: float | None = None
@@ -779,7 +648,7 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
         if spot is None:
             spot = self._spot(ticker)  # last resort: STOCKS snapshot (separate plan)
         self._note_spot(ticker, spot)  # the whole-horizon window's spot next time
-        return ChainSnapshot(
+        chain = ChainSnapshot(
             ticker=ticker.upper(),
             spot=spot,
             timestamp=timestamp,
@@ -789,6 +658,9 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
             settlement=_settlement_for(quotes, ticker),
             quote_kind="marks" if prev_close else "quotes",  # prev close = day-close marks
         )
+        if not prev_close and two_sided:
+            self._remember_rest_chain(chain)
+        return chain
 
     def _chain_from_iv(
         self, ticker: str, results: list[dict], spot: float | None
@@ -1023,9 +895,12 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
 
     def refresh_contracts(self) -> None:
         """Drop the day's contract listings (memory AND the on-disk file) plus
-        the derived ladders / contract keys, so the next call re-pulls."""
+        the derived ladders / contract keys / stream plans, so the next call
+        re-pulls (the scheduler calls it on the exchange-day roll: the next
+        ``sync_streaming`` re-plans — expired rungs out, the new one in)."""
         self._contracts_cache.clear()
         self._expiries_cache.clear()
+        self._drop_stream_plans()
         self._listings.drop()
 
     def refresh_listing(self, ticker: str) -> list[dict]:
@@ -1033,6 +908,7 @@ class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProv
         mid-session); the derived views follow on their next call."""
         self._contracts_cache.clear()
         self._expiries_cache.clear()
+        self._drop_stream_plans()
         return self._listing(ticker, refresh=True)
 
     def _quote_le(

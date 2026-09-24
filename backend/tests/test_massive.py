@@ -108,6 +108,7 @@ def test_option_tickers_caches_contract_listing():
     }
     fake = FakeHttp(pages)
     provider = MassiveProvider(["SPY"], api_key="k", http_get=fake)
+    provider._note_spot("SPY", 500.0)  # the plan is windowed around a centre (2026-09-24)
     exps = [date.fromisoformat(_exp(30))]
 
     a = provider.option_tickers("SPY", exps)

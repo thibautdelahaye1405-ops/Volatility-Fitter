@@ -332,7 +332,14 @@ export const DOCS_CATALOG: DocEntry[] = [
     title: "Exchange-published delayed option chains — source catalog",
     abstract: "Why the exchanges' own delayed books (Cboe, Nasdaq, ASX, HKEX, SGX, Eurex) carry a full bid/ask Yahoo does not, and the one adapter seam that ingests them.",
     markdown: { root: "docs", name: "exchange_delayed_sources.md" },
-    related: ["docs_bloomberg_setup"],
+    related: ["docs_bloomberg_setup", "docs_massive_streaming"],
+  },
+  {
+    id: "docs_massive_streaming", kind: "guide", topic: "Data",
+    title: "The Massive live book — plan, cap, health, merge",
+    abstract: "How the app streams from Massive's options socket within its ~1,000-contract limit: the windowed nearest-the-money plan under a cap, chunked and acknowledged subscriptions, the stream-health model behind the light, the book + REST merge, the day roll and the session-aware silence rule.",
+    markdown: { root: "docs", name: "massive_streaming.md" },
+    related: ["docs_exchange_delayed", "help:glossary:stream-health"],
   },
   {
     id: "docs_mcp_connector", kind: "guide", topic: "Connector",

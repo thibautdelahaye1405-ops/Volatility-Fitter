@@ -13,39 +13,40 @@ its WebSocket book (volfit.data.massive_ws).
 
 Two layers, mirroring massive_ws:
 
-* ``BbgBook`` — a pure, thread-safe ``{security -> BbgTick}`` store. Bloomberg
-  sends DELTAS (a message carries only the fields that changed, after an initial
-  ``INITPAINT`` summary), so ``apply`` MERGES each record onto the security's
-  current tick. Also tracks subscription status (started / failed + reason),
-  the ``IS_DELAYED_STREAM`` flag, and the newest provider stamp (freshness).
+* ``BbgBook`` (volfit.data.bloomberg_book, re-exported here) — a pure,
+  thread-safe ``{security -> BbgTick}`` store that MERGES Bloomberg's deltas
+  and tracks subscription status, the delayed flag and the newest stamp.
 * ``BloombergSubscription`` — a daemon thread owning a blpapi session: start →
   open ``//blp/mktdata`` → subscribe (in batches) → ``nextEvent`` loop →
   ``decode_event`` (volfit.data.bloomberg_decode) → ``book.apply``; reconnects
   with capped backoff on a session drop. The session is injectable
-  (``session_factory``) and ``decode_event`` passes pre-decoded record lists
-  through, so tests drive the loop offline.
+  (``session_factory``; the real one is volfit.data.bloomberg_session) and
+  ``decode_event`` passes pre-decoded record lists through, so tests drive
+  the loop offline.
 
 Wire facts confirmed live against the Terminal (2026-08-20): SPX streams
 real-time, US equities + their options are flagged ``IS_DELAYED_STREAM`` (15 min)
 on a non-entitled exchange; ``interval=1.0`` conflation is honoured; a bad
 security yields ``SubscriptionFailure``; OPEN_INT is not subscribable.
+
+Conflation is PER SECURITY (2026-09-24, the tiered-cadence layer): each item
+carries its own ``interval=N`` option (``intervals`` overrides the default
+``interval``), and ``set_intervals`` moves live securities between tiers
+with the SDK's ``resubscribe`` (an unsubscribe + subscribe on the same
+session when the session lacks it) — only the securities whose interval
+changed are touched, so a focus change never repaints the rest.
 """
 
 from __future__ import annotations
 
 import queue
 import threading
-import time
-from dataclasses import dataclass, replace
-from datetime import datetime
+from collections.abc import Mapping
 
-from volfit.data.bloomberg_decode import (
-    STREAM_FIELDS,
-    decode_event,
-    flag,
-    int_or_none,
-    price_or_none,
-)
+from volfit.data.bloomberg_book import BbgBook, BbgTick  # noqa: F401 — re-exported
+from volfit.data.bloomberg_decode import STREAM_FIELDS, decode_event
+
+__all__ = ["BbgBook", "BbgTick", "BloombergSubscription", "DEFAULT_HOST", "DEFAULT_PORT", "SUBSCRIBE_BATCH"]
 
 #: Securities per ``subscribe()`` call — keeps each request modest and lets the
 #: SubscriptionStarted statuses (and INITPAINTs) interleave with the next batch.
@@ -53,135 +54,6 @@ SUBSCRIBE_BATCH = 200
 
 #: Default Desktop API endpoint (the local bbcomm of the logged-in Terminal).
 DEFAULT_HOST, DEFAULT_PORT = "localhost", 8194
-
-
-@dataclass(frozen=True)
-class BbgTick:
-    """Latest known state of one streamed security (merged across deltas)."""
-
-    bid: float | None = None
-    ask: float | None = None
-    last: float | None = None
-    volume: int | None = None
-    ts: datetime | None = None  # newest provider stamp seen (UTC-naive)
-    delayed: bool = False  # IS_DELAYED_STREAM reported true on this security
-
-
-class BbgBook:
-    """Thread-safe live book fed by decoded subscription records (see
-    volfit.data.bloomberg_decode for the record shapes). A field present with
-    value ``None`` means Bloomberg sent a NULL (side withdrawn) and clears it;
-    an absent field keeps the previous value (delta semantics)."""
-
-    def __init__(self) -> None:
-        self._ticks: dict[str, BbgTick] = {}
-        self._started: set[str] = set()
-        self._failed: dict[str, str] = {}
-        self._lock = threading.Lock()
-        self._ready = threading.Condition(self._lock)
-        #: True once any subscription has been acknowledged (session alive).
-        self.connected = False
-
-    # ------------------------------------------------------------ ingest
-    def apply(self, records: list[dict]) -> None:
-        with self._lock:
-            for rec in records:
-                kind = rec.get("kind")
-                if kind == "data":
-                    self._apply_data(rec)
-                elif kind == "started":
-                    self._started.add(rec["sec"])
-                    self._failed.pop(rec["sec"], None)
-                    self.connected = True
-                elif kind == "failure":
-                    self._failed[rec["sec"]] = rec.get("reason") or "subscription failed"
-                elif kind == "terminated":
-                    self._started.discard(rec["sec"])
-                elif kind == "session_down":
-                    self.connected = False
-            self._ready.notify_all()
-
-    def _apply_data(self, rec: dict) -> None:
-        sec, fields = rec.get("sec"), rec.get("fields") or {}
-        if not sec:
-            return
-        tick = self._ticks.get(sec, BbgTick())
-        updates: dict = {}
-        if "BID" in fields:
-            updates["bid"] = price_or_none(fields["BID"])
-        if "ASK" in fields:
-            updates["ask"] = price_or_none(fields["ASK"])
-        if "LAST_PRICE" in fields:
-            updates["last"] = price_or_none(fields["LAST_PRICE"])
-        if "VOLUME" in fields:
-            updates["volume"] = int_or_none(fields["VOLUME"])
-        if "IS_DELAYED_STREAM" in fields:
-            updates["delayed"] = flag(fields["IS_DELAYED_STREAM"])
-        stamp = rec.get("ts")
-        if stamp is not None and (tick.ts is None or stamp > tick.ts):
-            updates["ts"] = stamp
-        self._ticks[sec] = replace(tick, **updates) if updates else tick
-
-    # -------------------------------------------------------------- reads
-    def quote(self, sec: str) -> BbgTick | None:
-        with self._lock:
-            return self._ticks.get(sec)
-
-    def size(self) -> int:
-        with self._lock:
-            return len(self._ticks)
-
-    def started(self) -> int:
-        with self._lock:
-            return len(self._started)
-
-    def failures(self) -> dict[str, str]:
-        with self._lock:
-            return dict(self._failed)
-
-    def newest_ts(self) -> datetime | None:
-        """Newest provider stamp across the book (the freshness signal)."""
-        with self._lock:
-            stamps = [t.ts for t in self._ticks.values() if t.ts is not None]
-        return max(stamps) if stamps else None
-
-    def delayed(self, secs: list[str] | None = None) -> bool:
-        """Whether the stream is delayed — judged on ``secs`` (e.g. the
-        underlyings) or, when None, on any booked security."""
-        with self._lock:
-            pool = [self._ticks.get(s) for s in secs] if secs is not None else list(self._ticks.values())
-        return any(t is not None and t.delayed for t in pool)
-
-    def wait_for(self, sec: str, timeout: float) -> BbgTick | None:
-        """Block up to ``timeout`` s for ``sec`` to have a price (its INITPAINT
-        lands within ~1 s of subscribing), so the first fetch after a stream
-        start can be served from the book instead of a metered reference hit."""
-        deadline = time.monotonic() + timeout
-        with self._lock:
-            while True:
-                tick = self._ticks.get(sec)
-                if tick is not None and (tick.last is not None or tick.bid is not None):
-                    return tick
-                remaining = deadline - time.monotonic()
-                if remaining <= 0.0 or sec in self._failed:
-                    return tick
-                self._ready.wait(remaining)
-
-    def remove(self, secs: list[str]) -> None:
-        """Forget securities that were unsubscribed (ticks, status) so a stale
-        last tick can never be served for a contract the universe dropped."""
-        with self._lock:
-            for s in secs:
-                self._ticks.pop(s, None)
-                self._started.discard(s)
-                self._failed.pop(s, None)
-
-    def clear(self) -> None:
-        with self._lock:
-            self._ticks.clear()
-            self._started.clear()
-            self._failed.clear()
-            self.connected = False
 
 
 # ------------------------------------------------------------- transport
@@ -193,14 +65,18 @@ class BloombergSubscription:
     securities      : full Bloomberg security strings to subscribe to.
     book            : the ``BbgBook`` to update.
     fields          : subscribed fields (``STREAM_FIELDS``).
-    interval        : conflation interval in seconds (``interval=N`` subscription
-                      option; None = every tick). 1 s keeps a 2k-contract chain
-                      to ~2k updates/s worst case — plenty for a 5 s refit loop.
+    interval        : the DEFAULT conflation interval in seconds (``interval=N``
+                      subscription option; None = every tick). 1 s keeps a
+                      2k-contract chain to ~2k updates/s worst case — plenty
+                      for a 5 s refit loop.
+    intervals       : per-security overrides of ``interval`` (sec -> seconds
+                      or None) — the fast / slow tiers of the provider's plan.
     session_factory : zero-arg callable returning a started session-like object
                       with ``openService(name)``, ``subscribe(list)``,
-                      ``nextEvent(timeout_ms)`` and ``stop()``, plus a
-                      ``subscription_list(items)`` builder — injected by tests;
-                      defaults to a real blpapi session (``host``/``port``).
+                      ``unsubscribe(list)``, ``nextEvent(timeout_ms)`` and
+                      ``stop()``, plus a ``subscription_list(items)`` builder
+                      and (optionally) ``resubscribe(list)`` — injected by
+                      tests; defaults to a real blpapi session (``host``/``port``).
     """
 
     SERVICE = "//blp/mktdata"
@@ -215,11 +91,13 @@ class BloombergSubscription:
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
         max_backoff: float = 30.0,
+        intervals: Mapping[str, float | None] | None = None,
     ) -> None:
         self._securities = list(dict.fromkeys(securities))  # dedupe, keep order
         self._book = book
         self._fields = tuple(fields)
         self._interval = interval
+        self._intervals: dict[str, float | None] = dict(intervals or {})
         self._factory = session_factory
         self._host, self._port = host, port
         self._max_backoff = max_backoff
@@ -253,6 +131,27 @@ class BloombergSubscription:
         """The LIVE subscribed set (pending ops included)."""
         with self._lock:
             return list(self._securities)
+
+    def interval_of(self, sec: str) -> float | None:
+        """The conflation interval ``sec`` is (or will be) subscribed at."""
+        with self._lock:
+            return self._intervals.get(sec, self._interval)
+
+    def set_intervals(self, intervals: Mapping[str, float | None]) -> list[str]:
+        """Adopt a new per-security interval map; the LIVE securities whose
+        interval changes are re-subscribed on the same session (a ``resub``
+        op: ``resubscribe`` when the session has it, else unsubscribe +
+        subscribe). Returns them — an unchanged map moves nothing."""
+        new = dict(intervals)
+        with self._lock:
+            changed = [
+                s for s in self._securities
+                if self._intervals.get(s, self._interval) != new.get(s, self._interval)
+            ]
+            self._intervals = new
+        if changed:
+            self._ops.put(("resub", changed))
+        return changed
 
     # ------------------------------------------------ incremental updates
     def subscribe(self, securities: list[str]) -> list[str]:
@@ -297,7 +196,12 @@ class BloombergSubscription:
     def _session_pass(self) -> bool:
         """One start → open → subscribe → consume pass. Returns whether any data
         record was booked (so the loop resets its backoff)."""
-        session = self._factory() if self._factory is not None else self._blpapi_session()
+        if self._factory is not None:
+            session = self._factory()
+        else:
+            from volfit.data.bloomberg_session import blpapi_session
+
+            session = blpapi_session(self._host, self._port)
         got_data = False
         try:
             if not session.openService(self.SERVICE):
@@ -325,9 +229,13 @@ class BloombergSubscription:
         return got_data
 
     def _items(self, securities: list[str]) -> list[tuple[str, str, str]]:
-        options = f"interval={self._interval:g}" if self._interval else ""
+        """``(security, fields, options)`` per item — the options string carries
+        the security's OWN conflation interval (``interval=N``, empty = every
+        tick), so one batch can mix the fast and slow tiers."""
         fields = ",".join(self._fields)
-        return [(s, fields, options) for s in securities]
+        with self._lock:
+            intervals = {s: self._intervals.get(s, self._interval) for s in securities}
+        return [(s, fields, f"interval={iv:g}" if iv else "") for s, iv in intervals.items()]
 
     def _subscribe_all(self, session) -> None:
         with self._lock:
@@ -346,7 +254,11 @@ class BloombergSubscription:
                 return
 
     def _drain_ops(self, session) -> None:
-        """Apply queued incremental ops on the worker's session (batched)."""
+        """Apply queued incremental ops on the worker's session (batched).
+        ``resub`` (an interval change) uses the session's ``resubscribe`` —
+        the SDK primitive that swaps a live subscription's options in place —
+        and falls back to unsubscribe + subscribe on a session without it."""
+        resubscribe = getattr(session, "resubscribe", None)
         while True:
             try:
                 kind, secs = self._ops.get_nowait()
@@ -356,51 +268,10 @@ class BloombergSubscription:
                 batch = session.subscription_list(self._items(secs[start : start + SUBSCRIBE_BATCH]))
                 if kind == "sub":
                     session.subscribe(batch)
+                elif kind == "unsub":
+                    session.unsubscribe(batch)
+                elif resubscribe is not None:
+                    resubscribe(batch)
                 else:
                     session.unsubscribe(batch)
-
-    def _blpapi_session(self):
-        """A started real blpapi session wrapped with the small interface the loop
-        uses (so the fake session in tests only has to mimic that interface)."""
-        import blpapi
-
-        opts = blpapi.SessionOptions()
-        opts.setServerHost(self._host)
-        opts.setServerPort(self._port)
-        opts.setAutoRestartOnDisconnection(True)
-        session = blpapi.Session(opts)
-        if not session.start():
-            raise RuntimeError(f"blpapi session failed to start ({self._host}:{self._port})")
-        return _BlpapiSession(session, blpapi)
-
-
-class _BlpapiSession:
-    """Thin adapter over ``blpapi.Session`` exposing the loop's interface."""
-
-    def __init__(self, session, blpapi) -> None:
-        self._s = session
-        self._blpapi = blpapi
-
-    def openService(self, name: str) -> bool:  # noqa: N802 — blpapi naming
-        return bool(self._s.openService(name))
-
-    def subscription_list(self, items: list[tuple[str, str, str]]):
-        subs = self._blpapi.SubscriptionList()
-        for sec, fields, options in items:
-            subs.add(sec, fields, options, self._blpapi.CorrelationId(sec))
-        return subs
-
-    def subscribe(self, subs) -> None:
-        self._s.subscribe(subs)
-
-    def unsubscribe(self, subs) -> None:
-        # blpapi matches on CorrelationId VALUE, so a fresh CorrelationId(sec)
-        # identifies the original subscription of that security.
-        self._s.unsubscribe(subs)
-
-    def nextEvent(self, timeout_ms: int):  # noqa: N802 — blpapi naming
-        event = self._s.nextEvent(timeout_ms)
-        return None if event.eventType() == self._blpapi.Event.TIMEOUT else event
-
-    def stop(self) -> None:
-        self._s.stop()
+                    session.subscribe(batch)

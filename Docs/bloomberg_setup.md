@@ -108,8 +108,20 @@ as its live book (`volfit/data/bloomberg_stream.py` book + blpapi transport,
   (`*_UPDATE_STAMP_RT`), not the wall clock; un-stamped INITPAINT quotes take the
   chain's newest stamp. On a 15-min delayed exchange that reads 15 min behind —
   the honest data age.
+- **Focus, fair share and two conflation tiers** (2026-09-24): the subscription
+  budget is split by the same policy as the Massive book (`volfit/data/
+  stream_allocation.py`, see `Docs/massive_streaming.md` §7 — the on-screen
+  node's whole rung first, every ticker's floor, a fair share of the rest),
+  and each security carries its own `interval=`: the underlyings and the
+  focus ticker's contracts (without a focus, every ticker's nearest two rungs)
+  at `VOLFIT_BBG_STREAM_INTERVAL` (1 s), the rest at
+  `VOLFIT_BBG_STREAM_INTERVAL_SLOW` (5 s); a focus change `resubscribe`s only
+  the securities whose interval changed (probe 2026-09-24, SX5E + DAX: gaps
+  5.1 s at `interval=5`, 1.0–1.2 s after the move to `interval=1`, no
+  repaint of the rest).
 - Env knobs (`serve.py`): `VOLFIT_BBG_STREAM_INTERVAL` (conflation s, 0 = every
-  tick), `VOLFIT_BBG_MAX_SUBS`, `VOLFIT_BBG_HOST` / `VOLFIT_BBG_PORT` (DAPI
+  tick), `VOLFIT_BBG_STREAM_INTERVAL_SLOW` (the slow tier, 5),
+  `VOLFIT_BBG_MAX_SUBS`, `VOLFIT_BBG_HOST` / `VOLFIT_BBG_PORT` (DAPI
   endpoint, default `localhost:8194`), `VOLFIT_BBG_BOOK_WAIT` (book-first
   seconds, 5), `VOLFIT_BBG_BOOK_ONLY` (1 = never a metered quote pull while
   streaming), `VOLFIT_BBG_WINDOW_SIGMA` (the window's reference vol, 1.0),

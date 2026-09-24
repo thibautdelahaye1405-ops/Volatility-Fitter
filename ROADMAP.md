@@ -1990,7 +1990,115 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-23a (resume here)
+## STATUS — updated 2026-09-24b (resume here)
+
+### 🧭 SESSION WRAP (2026-09-24a + b) — THE FETCH + STREAM ARC: SIX FETCH PROPOSALS, THEN A LIVE BOOK THAT SERVES
+
+User (after the 2026-09-23 reviews in `Docs/deck/presentation_prep_QA_2026-09-23.md`
+§10): "Fetching: do all 6 proposals sequentially. Then Streaming: implement what you
+propose as well, carefully. Proceed until completion". Two waves of agents on disjoint
+file groups; the lead pre-set the shared contracts (`data/strike_window.py`,
+`data/cache_dir.py`), verified per agent, ran the suite in memory-sized chunks (the
+box holds ~43 GB of commit charge for Bloomberg + apps; a suite half got killed).
+
+**Fetching (commit 296108b, 2026-09-24a).**
+- Massive REST: `massive_http.py` (retry with backoff + jitter on transport / 5xx /
+  429 / a rate-limit body, `Retry-After` honoured, typed outcomes, entitlement never
+  retried; a thread-safe `CallMeter` → `call_stats()` and " · N calls/h" on the light;
+  `feed_status` memoised 300 s; the httpx keep-alive pool 20 → 48 — the real ~115
+  req/s ceiling was TLS re-handshakes, not the vendor). History degrades PER FRAME
+  (only entitlement gates the session; a throttled contract is retried then skipped;
+  an AIMD window 12 → 40 over a 40-worker pool): an as-of frame 13.0 s → **5.3 s**.
+  `massive_listing.py`: ONE contracts listing per (underlying, ET day) on disk
+  (`data/cache/massive`, gitignored): cold 1.88 s → warm **0.03 s**, 0 calls.
+  `massive_snapshot.py`: nearest expiry first + unwindowed (it yields the spot), the
+  rest with `strike_price.gte/lte` from the shared per-expiry window, the whole
+  horizon as two contract-balanced `expiration_date` shards: 5.64 s → **3.05 s**;
+  prepared quotes byte-identical with the window on / off (live-locked on 9 rungs).
+  `strike_window.py`: half_width = clip(4·σ_ref·√T, 5 %, 3.0), σ_ref 1.0 (nearly
+  inert on an index ETF's ladder; the saving is on short rungs and metered /
+  capped sources); the cap is a sanity bound (a 2.0 cap dropped 11 deep SPY strikes
+  and moved a 1-year parity forward 1.4 bp — the forward regression weighs every
+  paired strike).
+- Store-first as-of (`api/asof_cache.py`, store v11 → **v12**: `snapshots.quote_kind`
+  + `request_json`): eod / intraday instants are looked up in the VolStore first
+  (series frames + earlier reconstructions, tagged `series_id = "_asof"` so the
+  picker keeps excluding them), served when the row covers the selection, else
+  fetched and saved; only final instants; marks never shadow quotes.
+- UI Fetch ▸ Snapshot sends `maxAgeSeconds: 15` ("2 fresh, skipped" in the Last
+  chip). The "auto" pin (`api/source_policy.py`): the fastest green source that can
+  serve the ticker, an EWMA of measured live walls seeded Cboe → Massive → Nasdaq →
+  Yahoo → Bloomberg, remembered and re-ranked at Fetch time only, `resolvedSources`
+  in `GET /universe`, "Auto → Cboe (delayed)" on the ticker row; a default-source
+  switch keeps an auto-pinned ticker's feed.
+- Bloomberg (`bloomberg_fields.py`, `bloomberg_listing.py`): the metered pull is
+  BID/ASK only (SPY 2 expiries 4,152 → **1,800 hits**), OPT_EXER_TYP once per ticker
+  per day, LAST / VOLUME / OI on demand (`enrich_reference`), a hit / unique-security
+  meter on the light, per-expiry windows on the pull AND the stream plan, book first
+  (5 s paint wait, `VOLFIT_BBG_BOOK_ONLY`), a paint clears a stale refusal, the
+  3-bds listing cached per exchange day on disk. `//blp/mktlist` chain topics tried
+  live: none yields securities (documented in `Docs/bloomberg_setup.md`).
+
+**Streaming (this commit, 2026-09-24b; `Docs/massive_streaming.md`).** The
+2026-09-23 finding: Massive's quotes socket allows ~1,000 contracts per connection,
+refuses an over-cap frame in full, one connection per plan; the app subscribed
+everything in one frame (SPY 10,560) and dropped the error — the book never served.
+- `massive_stream.py` + `massive_stream_plan.py` + `massive_ws.py` + `massive_book.py`
+  + `massive_ws_acks.py`: the PLAN = the listed contracts inside the shared window
+  around a 5 %-hysteresis centre, ranked nearest-the-money; capped at
+  `stream_cap × stream_connections` (950 × 1; env `VOLFIT_MASSIVE_WS_CAP` /
+  `_CONNECTIONS`); frames chunked (≤ 200), kept PENDING until acknowledged, a
+  "Subscription limit" refusal halves the offending chunk (far half dropped, near
+  half re-sent), `auth_failed` red + backoff, everything logged on
+  `volfit.massive_ws` (serve.py attaches a handler); N sockets feed one book.
+  Honesty: `is_streaming_ticker` = socket ∧ acked ∧ a quote booked, so an unserved
+  ticker stays on the request path; a dead thread is revived in place, counted.
+  Health: `StreamStats` → `stream_stats()` → the `stream` block of every
+  `/datasources` source (`StreamHealth`), the pill tooltip, a line in the
+  Data-sources card, glossary + tip; the light reads streaming N · msg/s · last s
+  / warming / refused (red) / idle · closed session / dead · reconnecting (red).
+  Merge: `_chain_from_book` emits every planned contract — booked ones with their
+  tick, the rest from the ticker's last REST snapshot refreshed once a minute
+  (`VOLFIT_MASSIVE_REST_SECONDS`, 60, floor 15). Roll: the day move calls
+  `refresh_provider_contracts()` and the next sync re-plans. Silence: outside
+  09:30–16:15 ET a quiet socket is kept (0 reconnects locked); inside, a first
+  quote-less connection rotates after `quote_grace`, a serving one reconnects after
+  30 s without any message.
+- `stream_allocation.py` (+ `bloomberg_plan.py`, `api/stream_focus.py`): focus
+  rungs (the nodes with an open tick-stream SSE) first, then a per-ticker floor
+  (`VOLFIT_MASSIVE_WS_FLOOR`, 60), then a water-filled fair share; deterministic,
+  each ticker's live set a rank prefix of its plan (stable under a no-op re-plan).
+  Offline on the app's universe (cap 950): no focus SPY 475 / NVDA 475 (was 874 /
+  76); NVDA Oct-16 on screen → its rung 170/170 live. `LiveTableFrame.tier`
+  (`live | rest | none`) + `restSeconds`; the badge reads LIVE vs 1-min REST.
+  Bloomberg: per-security `interval=` (focus tickers' contracts at 1 s, the rest at
+  `VOLFIT_BBG_STREAM_INTERVAL_SLOW` = 5), `resubscribe` on a focus change —
+  live-verified on SX5E + DAX (5.1 s gaps at 5, 1.0–1.2 s at 1).
+- The recorder (`tick_store.py`, `tick_recorder.py`, `tick_recorder_cli.py`,
+  `massive_recorded.py`, `record.ps1`): a separate process owns the socket(s)
+  through the provider's own plan, appends changed ticks to a daily WAL SQLite
+  (`ticks_<day>.sqlite`: `ticks`, `latest`, `meta` with heartbeat + stats + plan),
+  materialises one-minute chain frames into the VolStore under the `_asof` tag (the
+  store-first as-of and the Series lens find them without a REST harvest),
+  `replay --at` rebuilds a chain at any instant; the API with
+  `VOLFIT_MASSIVE_BOOK=recorder:<dir>` reads the recorder's `latest` table as its
+  book and never opens a socket (locked) — the one-connection rule is respected
+  with the API and the recorder side by side.
+
+**Verification.** Backend suite in six chunks (a–c 789, d–g 673, h–k 26, l–o 411, p–s 509, t–z 184): **2,592 passed / 7 skipped**, `test_series_perf` excluded (needs a quiet box). Frontend: tsc clean, **829 vitest tests / 121 files**, production build green.
+Live: the app restarted on this code right after the commit — see the follow-up line below.
+
+**Riders (recorded, not done).** A per-name `sigma_ref` from the last fit's ATM vol
+(the window is nearly inert on SPY at 1.0); in RECORDED mode the API's focus cannot
+re-plan the recorder's socket and every node reads tier `rest` (pass the focus / live
+set through the recorder's meta); a Bloomberg `stream_stats()` block; a UI action
+for `enrich_reference` (OI / volume on the REST path); a settings toggle for
+`book_only`; `store.py` (730 lines) and `massive.py` (1,063) still over the 400-line
+policy — split; `tests/test_api_compare_anchoring.py` (two tests) and
+`tests/test_graph_inferred.py::test_inferred_smile_transports_with_the_spot` fail
+only under `-k` keyword selection (order-dependent, pre-existing; green in their
+files and in the chunked suite).
+
 
 ### 🧭 SESSION WRAP (2026-09-23a) — SPX ON MASSIVE: THE CONTRACTS REFERENCE KEYS AN INDEX BY ITS BARE ROOT
 

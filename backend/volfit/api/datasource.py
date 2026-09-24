@@ -96,12 +96,26 @@ def probe_statuses(
     return {sid: cache.get(sid, (0.0, PENDING_STATUS))[1] for sid in providers}
 
 
+def stream_health(provider: object | None) -> dict | None:
+    """The provider's live-stream health block (``stream_stats()`` — Massive:
+    volfit.data.massive_stream), None for a source without one or not
+    streaming. Read live, never a probe; a failing reader is "no block"."""
+    reader = getattr(provider, "stream_stats", None) if provider is not None else None
+    if reader is None:
+        return None
+    try:
+        return reader()
+    except Exception:  # noqa: BLE001 — health must never fail the payload
+        return None
+
+
 def datasources_payload(state, refresh: bool = False, probe: bool = True) -> dict:
     """The selector payload: every source with its status + the active one,
-    plus the worst loaded-chain data age (volfit.api.data_age; None when not
-    live / nothing fetched) — the TopBar market pill and the Calibrate
-    stale-data hint both read it off this poll. ``probe=False`` answers from
-    the status cache only (the switch must never wait on a feed)."""
+    its live-stream health when it streams (``stream``), plus the worst
+    loaded-chain data age (volfit.api.data_age; None when not live / nothing
+    fetched) — the TopBar market pill and the Calibrate stale-data hint both
+    read it off this poll. ``probe=False`` answers from the status cache only
+    (the switch must never wait on a feed)."""
     from volfit.api.data_age import universe_age
 
     statuses = state.source_statuses(refresh=refresh, probe=probe)
@@ -115,6 +129,7 @@ def datasources_payload(state, refresh: bool = False, probe: bool = True) -> dic
             "detail": detail,
             "active": sid == active,
             "tickers": state.tickers_of(sid),  # what it serves now (pins + followers)
+            "stream": stream_health(providers.get(sid)),
         }
         for sid, (level, detail) in statuses.items()
     ]

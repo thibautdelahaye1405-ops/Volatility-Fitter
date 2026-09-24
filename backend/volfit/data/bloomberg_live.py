@@ -24,7 +24,14 @@ per Terminal, so contracts are (1) windowed by the provider's ``strike_window``
 rung costs a few percent of the ladder, a 1-year rung the wide band) around a
 HYSTERESIS-held spot centre (re-centred only after a > ``RECENTER_PCT`` move —
 otherwise a spot wobbling across a strike boundary would restart the stream
-every tick) and (2) capped at ``max_subscriptions`` by nearest-the-money first.
+every tick) and (2) capped at ``max_subscriptions`` by the shared allocation
+policy (volfit.data.bloomberg_plan / stream_allocation: the focus nodes'
+whole rungs, every ticker's floor, a fair share of the remainder — since
+2026-09-24; nearest-the-money within each ticker). The same plan sets each
+security's conflation ``interval``: the focus tickers (or, without a focus,
+every ticker's nearest two rungs) and the underlyings at ``stream_interval``
+(1 s), the rest at the slow tier (``VOLFIT_BBG_STREAM_INTERVAL_SLOW``, 5 s);
+a focus change re-subscribes ONLY the securities whose interval changed.
 ``streaming_contracts`` reports the REQUESTED set (pre-cap) so the scheduler's
 universe diff stays stable; ``feed_status`` surfaces the dropped count.
 
@@ -37,12 +44,13 @@ book clears a stale reference refusal from the status light.
 
 from __future__ import annotations
 
-import math
 import time
 from datetime import date, datetime, timezone
 
 from volfit.data.bloomberg_parse import ParsedOption
+from volfit.data.bloomberg_plan import BloombergPlanMixin, slow_interval_setting
 from volfit.data.bloomberg_stream import BbgBook, BloombergSubscription
+from volfit.data.stream_allocation import Allocation, ticker_floor
 from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
 #: Re-centre the strike window only after the spot moves this far from the
@@ -58,10 +66,11 @@ _WARMUP_WAIT = 2.0
 _IDLE_SECONDS = 20 * 60.0
 
 
-class BloombergStreamingMixin:
+class BloombergStreamingMixin(BloombergPlanMixin):
     """Streaming contract for ``BloombergProvider`` (expects the host class to
     provide ``_security``, ``_select_contracts``, ``_window_contracts``,
-    ``_spot``, ``strike_window``)."""
+    ``_spot``, ``strike_window``; the plan / allocation / conflation tiers in
+    volfit.data.bloomberg_plan)."""
 
     # ---------------------------------------------------------------- init
     def _init_streaming(
@@ -71,8 +80,17 @@ class BloombergStreamingMixin:
         stream_session_factory=None,
         stream_host: str | None = None,
         stream_port: int | None = None,
+        stream_interval_slow: float | None = None,
+        stream_floor: int | None = None,
     ) -> None:
         self._stream_interval = stream_interval
+        #: The slow conflation tier (None = env VOLFIT_BBG_STREAM_INTERVAL_SLOW,
+        #: 5 s) and the per-ticker floor of the allocation (None = env
+        #: VOLFIT_MASSIVE_WS_FLOOR, 60 — shared with the Massive book).
+        self._slow_interval = slow_interval_setting(stream_interval_slow)
+        self._floor = ticker_floor() if stream_floor is None else max(0, int(stream_floor))
+        self._focus: set[tuple[str, str]] = set()  # (TICKER, expiry ISO) on screen
+        self._allocation: Allocation | None = None
         self._max_subscriptions = max(1, int(max_subscriptions))
         self._stream_factory = stream_session_factory
         self._stream_host, self._stream_port = stream_host, stream_port
@@ -129,26 +147,17 @@ class BloombergStreamingMixin:
         return [c.security for c in plan]
 
     # ------------------------------------------------------------ lifecycle
-    def _plan_subscriptions(self, contracts: list[str]) -> list[str]:
-        """Record the requested set and return the securities to stream for it:
-        the underlyings first, then the contracts capped nearest-the-money
-        (``_stream_dropped`` holds the over-cap remainder)."""
-        self._requested = list(dict.fromkeys(contracts))
-        self._stream_tickers = {
-            self._stream_index[s][0] for s in self._requested if s in self._stream_index
-        }
-        underlyings = [self._security(t) for t in sorted(self._stream_tickers)]
-        kept, dropped = self._cap(self._requested, self._max_subscriptions - len(underlyings))
-        self._stream_dropped = set(dropped)
-        return underlyings + kept
-
     def start_streaming(self, contracts: list[str]) -> None:
-        """Subscribe the underlyings + ``contracts`` (capped nearest-the-money) on a
-        fresh session and serve live reads from the book. Replaces any stream."""
+        """Subscribe the underlyings + ``contracts`` (the allocation's live set,
+        each at its tier's conflation interval) on a fresh session and serve
+        live reads from the book. Replaces any stream."""
         self.stop_streaming()
         securities = self._plan_subscriptions(contracts)
         self._book = BbgBook()
-        kwargs = {"interval": self._stream_interval, "session_factory": self._stream_factory}
+        kwargs = {
+            "interval": self._stream_interval, "session_factory": self._stream_factory,
+            "intervals": self._interval_map(securities),
+        }
         if self._stream_host:
             kwargs["host"] = self._stream_host
         if self._stream_port:
@@ -159,10 +168,11 @@ class BloombergStreamingMixin:
     def update_streaming(self, contracts: list[str]) -> tuple[list[str], list[str]]:
         """INCREMENTAL universe edit: re-plan for ``contracts`` and diff against the
         live subscription — subscribe only the new securities, unsubscribe only
-        the gone ones, on the SAME session (no restart, no repaint of the rest,
-        no warming gap). Covers ticker/expiry edits, a strike-window re-centre
-        and cap re-ranking alike. Starts a stream when none is running; stops it
-        when the universe empties. Returns ``(added, removed)``."""
+        the gone ones, move only the ones whose conflation tier changed, on the
+        SAME session (no restart, no repaint of the rest, no warming gap).
+        Covers ticker/expiry edits, a strike-window re-centre, cap re-ranking
+        and a focus change alike. Starts a stream when none is running; stops
+        it when the universe empties. Returns ``(added, removed)``."""
         if not self.is_streaming() or self._sub is None:
             self.start_streaming(contracts)
             return (list(self._sub.securities) if self._sub else [], [])
@@ -173,28 +183,8 @@ class BloombergStreamingMixin:
         have = set(self._sub.securities)
         added = self._sub.subscribe([s for s in wanted if s not in have])
         removed = self._sub.unsubscribe([s for s in have if s not in set(wanted)])
+        self._sub.set_intervals(self._interval_map(wanted))  # the tiers of the kept ones
         return (added, removed)
-
-    def _cap(self, contracts: list[str], budget: int) -> tuple[list[str], list[str]]:
-        """Keep at most ``budget`` contracts, nearest-the-money first (by
-        |log(K/centre)|; unknown contracts rank last). Order of the kept list is
-        the input order, so a no-op cap leaves the request untouched."""
-        if len(contracts) <= budget:
-            return list(contracts), []
-
-        def distance(sec: str) -> float:
-            entry = self._stream_index.get(sec)
-            if entry is None:
-                return math.inf
-            ticker, c = entry
-            center = self._stream_center.get(ticker)
-            if not center or c.strike <= 0.0:
-                return math.inf
-            return abs(math.log(c.strike / center))
-
-        ranked = sorted(contracts, key=distance)
-        keep = set(ranked[: max(budget, 0)])
-        return [s for s in contracts if s in keep], [s for s in contracts if s not in keep]
 
     def stop_streaming(self) -> None:
         if self._sub is not None:

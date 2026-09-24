@@ -34,11 +34,20 @@ export interface LiveTickRow {
   modelIv?: number | null;
 }
 
+/** How the node is served (backend AppState.stream_tier): its whole planned
+ *  rung on the socket ("live"), the belly live with the wings from the
+ *  provider's per-minute REST memory ("rest"), or not streaming ("none"). */
+export type LiveTier = "live" | "rest" | "none";
+
 /** One SSE event of the tick stream (backend LiveTableFrame). */
 export interface LiveTableFrame {
   type: "ticks" | "status";
   streaming: boolean;
   ready: boolean;
+  /** The node's tier (absent on an older backend = live). */
+  tier?: LiveTier;
+  /** The REST cadence (s) behind a "rest" node. */
+  restSeconds?: number | null;
   full?: boolean;
   ts?: string | null;
   /** The FRAME's spot (a manual dial move's when one is set) and forward. */
@@ -64,6 +73,9 @@ export interface LiveTicksState {
   streaming: boolean;
   /** The book served this node (false = "warming"). */
   ready: boolean;
+  /** How the node is served — the badge says LIVE vs "1-min REST". */
+  tier: LiveTier;
+  restSeconds: number | null;
   /** Newest provider stamp of the live chain (ISO UTC), its spot and the live
    *  forward (the k reference of `rows` and `model`). */
   ts: string | null;
@@ -87,6 +99,8 @@ export const EMPTY_LIVE: LiveTicksState = {
   rows: new Map(),
   streaming: false,
   ready: false,
+  tier: "none",
+  restSeconds: null,
   ts: null,
   spot: null,
   forward: null,
@@ -105,6 +119,24 @@ export const liveKey = (strike: number): string => strike.toFixed(4);
 /** Smallest band move (vol units, 0.5 bp) that counts as a visible tick. */
 export const FLASH_EPS = 5e-5;
 
+/** The badge text of a served node: "LIVE" on the socket, "1-min REST" (the
+ *  cadence spelt in minutes when whole, else seconds) when the wings come
+ *  from the REST memory; an older backend without a tier reads LIVE. */
+export function liveTierLabel(tier: LiveTier, restSeconds: number | null): string {
+  if (tier !== "rest") return "LIVE";
+  const s = restSeconds ?? 60;
+  const cadence = s % 60 === 0 ? `${s / 60}-min` : `${s}-s`;
+  return `${cadence} REST`;
+}
+
+/** The tier a frame carries, folded onto the previous state: a frame that
+ *  names its tier is authoritative (its restSeconds too — null once live);
+ *  a frame without one keeps what we had. */
+function tierOf(prev: LiveTicksState, frame: LiveTableFrame): Pick<LiveTicksState, "tier" | "restSeconds"> {
+  if (frame.tier === undefined) return { tier: prev.tier === "none" ? "live" : prev.tier, restSeconds: prev.restSeconds };
+  return { tier: frame.tier, restSeconds: frame.restSeconds ?? null };
+}
+
 /** Fold one frame into the state (pure). A `status` frame with streaming=false
  *  drops the overlay (the table falls back to its calibrated rows); a `ticks`
  *  frame merges (or, when `full`, replaces) rows and removes the `gone` keys. */
@@ -112,11 +144,11 @@ export function applyFrame(prev: LiveTicksState, frame: LiveTableFrame): LiveTic
   if (frame.type === "status") {
     if (!frame.streaming) {
       return {
-        ...prev, rows: new Map(), streaming: false, ready: false, flash: new Set(),
-        ts: null, spot: null, forward: null, liveSpot: null, model: null, inferred: null,
+        ...prev, rows: new Map(), streaming: false, ready: false, tier: "none", restSeconds: null,
+        flash: new Set(), ts: null, spot: null, forward: null, liveSpot: null, model: null, inferred: null,
       };
     }
-    return { ...prev, streaming: true, ready: frame.ready, rows: frame.ready ? prev.rows : new Map() };
+    return { ...prev, ...tierOf(prev, frame), streaming: true, ready: frame.ready, rows: frame.ready ? prev.rows : new Map() };
   }
   const rows = frame.full ? new Map<string, LiveTickRow>() : new Map(prev.rows);
   const flash = new Set<string>();
@@ -134,6 +166,7 @@ export function applyFrame(prev: LiveTicksState, frame: LiveTableFrame): LiveTic
   for (const key of frame.gone ?? []) rows.delete(key);
   return {
     ...prev,
+    ...tierOf(prev, frame),
     rows,
     streaming: true,
     ready: true,

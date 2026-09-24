@@ -2,7 +2,7 @@
 // status-off frame drops the overlay; `full` repaints; `gone` removes; the
 // flash set is exactly the rows that moved in the last frame.
 import { describe, expect, it } from "vitest";
-import { EMPTY_LIVE, FLASH_EPS, applyFrame, liveKey, type LiveTickRow } from "./useLiveTicks";
+import { EMPTY_LIVE, FLASH_EPS, applyFrame, liveKey, liveTierLabel, type LiveTickRow } from "./useLiveTicks";
 import { frameK as liveK } from "../lib/smileLayers";
 
 const row = (type: "C" | "P", strike: number, midIv: number): LiveTickRow => ({
@@ -101,6 +101,41 @@ describe("live ticks reducer · spot frames", () => {
     const off = applyFrame(delta, { type: "status", streaming: false, ready: false });
     expect(off.liveSpot).toBeNull();
     expect(off.spot).toBeNull();
+  });
+});
+
+describe("live ticks reducer · tier (LIVE vs REST)", () => {
+  it("carries the tier and the REST cadence; a status frame alone can move it; off resets it", () => {
+    expect(EMPTY_LIVE.tier).toBe("none");
+    const rest = applyFrame(EMPTY_LIVE, {
+      type: "ticks", streaming: true, ready: true, full: true, tier: "rest", restSeconds: 60, rows: [row("C", 100, 0.2)],
+    });
+    expect(rest.tier).toBe("rest");
+    expect(rest.restSeconds).toBe(60);
+    // a tier-less delta keeps the tier
+    const quiet = applyFrame(rest, { type: "ticks", streaming: true, ready: true, rows: [] });
+    expect(quiet.tier).toBe("rest");
+    expect(quiet.restSeconds).toBe(60);
+    // the node came into focus: a status frame (no rows) flips it to live, rows kept
+    const live = applyFrame(quiet, { type: "status", streaming: true, ready: true, tier: "live", restSeconds: null });
+    expect(live.tier).toBe("live");
+    expect(live.restSeconds).toBeNull();
+    expect(live.rows.size).toBe(1);
+    // an older backend never names a tier: a served node reads live
+    const legacy = applyFrame(EMPTY_LIVE, { type: "ticks", streaming: true, ready: true, full: true, rows: [] });
+    expect(legacy.tier).toBe("live");
+    const off = applyFrame(live, { type: "status", streaming: false, ready: false });
+    expect(off.tier).toBe("none");
+    expect(off.restSeconds).toBeNull();
+  });
+
+  it("labels the badge: LIVE, or the REST cadence in minutes / seconds", () => {
+    expect(liveTierLabel("live", null)).toBe("LIVE");
+    expect(liveTierLabel("none", null)).toBe("LIVE");
+    expect(liveTierLabel("rest", 60)).toBe("1-min REST");
+    expect(liveTierLabel("rest", 120)).toBe("2-min REST");
+    expect(liveTierLabel("rest", 30)).toBe("30-s REST");
+    expect(liveTierLabel("rest", null)).toBe("1-min REST");
   });
 });
 

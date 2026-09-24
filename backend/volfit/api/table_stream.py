@@ -28,17 +28,22 @@ Contract (what keeps this honest and cheap):
   only rows whose band moved (``full`` on the first / after a reset) plus the
   keys that went one-sided (``gone``). Status frames flag streaming / ready so
   the UI shows a LIVE badge or "warming" instead of silently going stale.
+* **Focus and tier.** An open stream is the app's signal of what the desk is
+  looking at: ``table_events`` registers its node in the focus registry on
+  entry and drops it on exit (``AppState.focus_open`` / ``focus_close``,
+  volfit.api.stream_focus), so the allocation policy puts the node's whole
+  planned rung on the socket. Every frame says the node's ``tier`` — ``live``
+  (the whole rung ticks), ``rest`` (the belly ticks, the wings come from the
+  provider's per-minute REST memory; ``restSeconds`` names the cadence) or
+  ``none`` — and a tier change alone pushes a status frame, so the badge can
+  say LIVE vs "1-min REST" honestly.
 """
 
 from __future__ import annotations
 
 import hashlib
 import math
-from dataclasses import dataclass
-from datetime import date, datetime
-from typing import Literal
-
-from pydantic import BaseModel, Field
+from datetime import date
 
 from volfit.api.quotes import prepare_quotes
 from volfit.api.schemas import SmilePoint
@@ -47,64 +52,16 @@ from volfit.api.service import displayed_base, node_clock, spot_forward_shift, v
 from volfit.api.smile_layers import model_iv_at, rolled_record, stream_frame, strike_key
 from volfit.api.state import AppState
 from volfit.api.table import _price as band_price
+from volfit.api.table_stream_frames import (  # noqa: F401 — re-exported wire shapes
+    LiveSlice,
+    LiveTableFrame,
+    LiveTickRow,
+    LiveTier,
+    row_key,
+)
 from volfit.calib.band import resolve_band
 from volfit.data.forwards import ResolvedForward
 from volfit.data.types import ChainSnapshot
-
-
-class LiveTickRow(BaseModel):
-    """One live OTM quote of the node's slice, in the table's conventions."""
-
-    key: str  # "<strike .4f>" — joins the table row / chart quote by strike
-    strike: float
-    type: str
-    k: float
-    bidIv: float
-    midIv: float
-    askIv: float
-    bidPrice: float
-    midPrice: float
-    askPrice: float
-    #: Fit-target band of the requested fit mode (None in "mid"), the market as
-    #: quoted (no edits) — the chart's live target ribbon.
-    targetLo: float | None = None
-    targetHi: float | None = None
-    #: The calibration quote at the same strike (click-through), -1 when none.
-    index: int = -1
-    #: The fit ROLLED to the live spot, at this row's live moneyness (the table's
-    #: "Model IV" of the market frame); None when the node has no fit.
-    modelIv: float | None = None
-
-
-class LiveTableFrame(BaseModel):
-    """One SSE event of the table tick stream."""
-
-    type: Literal["ticks", "status"]
-    streaming: bool  # the active source has a live book
-    ready: bool  # the book served this node's chain (painted + covered)
-    full: bool = False  # rows are the whole live slice (first frame / reset)
-    ts: str | None = None  # newest provider stamp of the live chain (ISO, UTC)
-    spot: float | None = None  # the FRAME's spot (the manual dial's when one is set)
-    forward: float | None = None
-    #: The book's actual underlying spot (independent of the dial) — the Spot
-    #: panel's streamed readout.
-    liveSpot: float | None = None
-    rows: list[LiveTickRow] = Field(default_factory=list)
-    gone: list[str] = Field(default_factory=list)  # keys no longer two-sided
-    nLive: int = 0  # live two-sided rows in the slice after this frame
-    #: The graph-INFERRED smile of the last Run (api/graph_inferred) ROLLED to
-    #: the live spot, sent on the same occasions as ``model`` (and after a new
-    #: Run); None = unchanged (or no inferred smile).
-    inferred: list[SmilePoint] | None = None
-    #: The displayed fit ROLLED to the live spot (k relative to ``forward``),
-    #: sent whenever the live forward moved / the calibration changed; None =
-    #: unchanged (or no fit).
-    model: list[SmilePoint] | None = None
-
-
-def row_key(strike: float) -> str:
-    """The overlay join key: the strike at 4 dp (the table's precision)."""
-    return f"{strike:.4f}"
 
 
 def live_forward(
@@ -127,17 +84,6 @@ def live_forward(
 
 
 # ------------------------------------------------------------ live slice
-@dataclass(frozen=True)
-class LiveSlice:
-    rows: list[LiveTickRow]
-    ts: datetime | None
-    spot: float
-    forward: float
-    fingerprint: str
-    shift: float = 0.0  # the FRAME's return vs the calibration anchor (rolls the fit)
-    live_spot: float = 0.0  # the book's actual spot (the frame's unless a manual dial is set)
-
-
 def live_chain(state: AppState, ticker: str, expiry: date) -> ChainSnapshot | None:
     """The node's live chain straight from the provider's streaming book, or None
     (not streaming, no book reader, book not ready). NEVER a request."""
@@ -264,7 +210,7 @@ class LiveTableTracker:
         self._fit_mode = fit_mode
         self._sent: dict[str, tuple[float, float, float]] = {}
         self._fingerprint: str | None = None
-        self._announced: tuple[bool, bool] | None = None  # (streaming, ready)
+        self._announced: tuple[bool, bool, str] | None = None  # (streaming, ready, tier)
         self._model_shift: float | None = None  # shift the last sent rolled model was at
         self._frame_shift: float | None = None  # shift the last sent ROWS were framed at
         self._base_id: int | None = None  # identity of the calibration record last seen
@@ -274,33 +220,38 @@ class LiveTableTracker:
         #: a spot move, a new Run, or a full repaint.
         self._inferred_at: tuple[str | None, float] | None = None
 
-    def _status(self, streaming: bool, ready: bool) -> LiveTableFrame | None:
-        """A status frame if (streaming, ready) changed since the last push."""
-        if self._announced == (streaming, ready):
+    def _status(
+        self, streaming: bool, ready: bool, tier: str = "none", rest_s: float | None = None
+    ) -> LiveTableFrame | None:
+        """A status frame if (streaming, ready, tier) changed since the last push."""
+        if self._announced == (streaming, ready, tier):
             return None
-        self._announced = (streaming, ready)
-        return LiveTableFrame(type="status", streaming=streaming, ready=ready)
+        self._announced = (streaming, ready, tier)
+        return LiveTableFrame(type="status", streaming=streaming, ready=ready, tier=tier, restSeconds=rest_s)
 
     def frame(self, state: AppState, ticker: str, expiry_iso: str) -> LiveTableFrame | None:
         if not state.is_streaming(ticker):
             self._sent.clear()
             self._fingerprint = None
             return self._status(False, False)
-        iso = state.resolve_expiry(ticker, expiry_iso).isoformat()
+        expiry = state.resolve_expiry(ticker, expiry_iso)
+        iso = expiry.isoformat()
+        tier = state.stream_tier(ticker, expiry)
+        rest_s = state.stream_rest_seconds(ticker) if tier == "rest" else None
         base = displayed_base(state, ticker, iso, self._fit_mode)  # the calibration (no transport)
         sl = live_slice(state, ticker, expiry_iso, self._fit_mode, _calib_index(base))
         if sl is None:
             self._sent.clear()
             self._fingerprint = None
-            return self._status(True, False)
-        self._announced = (True, True)  # a ticks frame announces ready itself
+            return self._status(True, False, tier, rest_s)
         base_changed = id(base) != self._base_id  # a refit: full repaint + new rolled fit
         # The frame moved (a manual dial move, or the live spot ticked): every
         # row's moneyness changed, so every row is re-sent (not a `full` reset —
         # the UI flashes only material IV moves, and the map is unchanged).
         frame_moved = self._frame_shift is not None and sl.shift != self._frame_shift
         if sl.fingerprint == self._fingerprint and self._sent and not base_changed and not frame_moved:
-            return None
+            return self._status(True, True, tier, rest_s)  # None unless the tier moved (a re-plan)
+        self._announced = (True, True, tier)  # a ticks frame announces ready + tier itself
         self._fingerprint = sl.fingerprint
         self._frame_shift = sl.shift
         full = not self._sent or base_changed
@@ -343,6 +294,8 @@ class LiveTableTracker:
             type="ticks",
             streaming=True,
             ready=True,
+            tier=tier,
+            restSeconds=rest_s,
             full=full,
             ts=sl.ts.isoformat() if sl.ts is not None else None,
             spot=sl.spot,
@@ -382,7 +335,9 @@ async def table_events(
 ):
     """Async generator of SSE chunks for one node's tick stream. The prepare
     (de-Am on American chains) runs in a worker thread so the event loop stays
-    responsive; a bad node ends the stream with an ``error`` event."""
+    responsive; a bad node ends the stream with an ``error`` event. The node
+    is in the stream FOCUS for the life of the generator (the ``finally``
+    runs on a client disconnect, an error and a generator close alike)."""
     import asyncio
     from time import monotonic
 
@@ -390,21 +345,25 @@ async def table_events(
 
     tracker = LiveTableTracker(fit_mode)
     last_beat = monotonic()
-    while True:
-        if await is_disconnected():
-            return
-        try:
-            frame = await asyncio.to_thread(tracker.frame, state, ticker, expiry_iso)
-        except UnknownNodeError as exc:
-            yield f"event: error\ndata: {str(exc)!r}\n\n"
-            return
-        except Exception:  # noqa: BLE001 — a transient failure never kills the stream
-            frame = None
-        now = monotonic()
-        if frame is not None:
-            last_beat = now
-            yield f"data: {frame.model_dump_json()}\n\n"
-        elif now - last_beat >= HEARTBEAT_SECONDS:
-            last_beat = now
-            yield ": keepalive\n\n"
-        await asyncio.sleep(tick)
+    node = state.focus_open(ticker, expiry_iso)
+    try:
+        while True:
+            if await is_disconnected():
+                return
+            try:
+                frame = await asyncio.to_thread(tracker.frame, state, ticker, expiry_iso)
+            except UnknownNodeError as exc:
+                yield f"event: error\ndata: {str(exc)!r}\n\n"
+                return
+            except Exception:  # noqa: BLE001 — a transient failure never kills the stream
+                frame = None
+            now = monotonic()
+            if frame is not None:
+                last_beat = now
+                yield f"data: {frame.model_dump_json()}\n\n"
+            elif now - last_beat >= HEARTBEAT_SECONDS:
+                last_beat = now
+                yield ": keepalive\n\n"
+            await asyncio.sleep(tick)
+    finally:
+        state.focus_close(node)

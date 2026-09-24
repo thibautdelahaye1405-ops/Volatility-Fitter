@@ -267,9 +267,9 @@ def test_sse_without_a_stream_says_so_and_never_reads_the_book(rig):
     assert len(chunks) == 1
     frame = json.loads(chunks[0][len("data:"):].strip())
     assert frame == {
-        "type": "status", "streaming": False, "ready": False, "full": False, "ts": None,
-        "spot": None, "forward": None, "liveSpot": None, "rows": [], "gone": [], "nLive": 0,
-        "model": None, "inferred": None,
+        "type": "status", "streaming": False, "ready": False, "tier": "none", "restSeconds": None,
+        "full": False, "ts": None, "spot": None, "forward": None, "liveSpot": None, "rows": [],
+        "gone": [], "nLive": 0, "model": None, "inferred": None,
     }
     assert prov.live_reads == 0
 
@@ -286,3 +286,74 @@ def test_stream_route_is_registered(rig):
     app = create_app(reference_date=REF)
     assert "/smiles/{ticker}/{expiry}/table/stream" in {getattr(r, "path", "") for r in app.routes}
     assert table_stream.TICK_SECONDS == 1.0
+
+
+# ------------------------------------------------------------ focus + tier
+def test_sse_registers_the_node_in_the_focus_for_its_lifetime(rig):
+    """Opening the SSE puts (TICKER, expiry) in the focus, closing it (the
+    generator's finally: a disconnect, an error, a close) takes it out; two
+    streams on one node are ONE focus until the last one closes; the
+    registry's version bumps only on membership changes."""
+    state, prov, expiry, _ = rig
+    prov.streaming = True
+    reg = state._focus_registry
+    assert state.stream_focus() == set() and reg.version == 0
+
+    async def two_streams():
+        seen = []
+        gen_a = table_events(state, "alpha", expiry, _never, tick=0.0)
+        gen_b = table_events(state, "ALPHA", expiry, _never, tick=0.0)
+        await gen_a.__anext__()  # entered: in focus
+        seen.append((state.stream_focus(), reg.version))
+        await gen_b.__anext__()  # a second tab on the same node: still one focus
+        seen.append((state.stream_focus(), reg.version, reg.count(("ALPHA", expiry))))
+        await gen_a.aclose()
+        seen.append((state.stream_focus(), reg.version))
+        await gen_b.aclose()
+        seen.append((state.stream_focus(), reg.version))
+        return seen
+
+    a, b, c, d = asyncio.run(two_streams())
+    assert a == ({("ALPHA", expiry)}, 1)
+    assert b == ({("ALPHA", expiry)}, 1, 2)
+    assert c == ({("ALPHA", expiry)}, 1)  # one tab left: the node stays in focus
+    assert d == (set(), 2)  # the last close ends the focus
+    # an unknown node ends with an error event AND leaves the focus clean
+    chunks = asyncio.run(_chunks(state, "ALPHA", "2099-01-01", 3))
+    assert chunks[0].startswith("event: error") and state.stream_focus() == set()
+
+
+async def _never() -> bool:
+    return False
+
+
+def test_frames_carry_the_tier_and_a_tier_change_pushes_a_status(rig):
+    """The frame says how the node is served (the provider's ``stream_tier``:
+    live / rest); a re-plan that moves the tier with no tick pushes ONE status
+    frame (rows kept: streaming + ready), and the REST cadence rides along."""
+    state, prov, expiry, _ = rig
+    prov.streaming = True
+    tiers = {"tier": "rest"}
+    prov.stream_tier = lambda ticker, exp: tiers["tier"]
+    prov.rest_seconds = 60.0
+    tracker = LiveTableTracker()
+    first = tracker.frame(state, "ALPHA", expiry)
+    assert first.type == "ticks" and first.tier == "rest" and first.restSeconds == 60.0
+    assert tracker.frame(state, "ALPHA", expiry) is None  # steady
+    tiers["tier"] = "live"  # the node came into focus: its whole rung is live now
+    status = tracker.frame(state, "ALPHA", expiry)
+    assert status is not None and status.type == "status"
+    assert (status.streaming, status.ready, status.tier, status.restSeconds) == (True, True, "live", None)
+    assert tracker.frame(state, "ALPHA", expiry) is None  # announced once
+    prov.ready = False  # warming: the tier still rides on the status frame
+    warm = tracker.frame(state, "ALPHA", expiry)
+    assert warm.type == "status" and warm.ready is False and warm.tier == "live"
+    # a provider without a tier reading is "live" whenever it streams
+    del prov.stream_tier
+    prov.ready = True
+    assert tracker.frame(state, "ALPHA", expiry).tier == "live"
+    from datetime import date as _date
+
+    assert state.stream_tier("ALPHA", _date.fromisoformat(expiry)) == "live"
+    prov.streaming = False
+    assert state.stream_tier("ALPHA", _date.fromisoformat(expiry)) == "none"
