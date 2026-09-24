@@ -8,24 +8,45 @@
 // default) drops that ticker's chain caches, refetches it from the new feed
 // and bumps its data version (its nodes read STALE). Pins are saved in the
 // backend workspace doc and with named universes — nothing is persisted here.
+//
+// The pin value AUTO_SOURCE ("auto", 2026-09-24) is a POLICY, not a source:
+// the backend resolves it per ticker to the fastest green source that can
+// serve the name (volfit.api.source_policy) and reports the pick beside the
+// pin (`resolvedSources` of GET /universe) — re-ranked at Fetch time only, so
+// a ticker never hops between feeds between two Fetches. The row's select
+// shows "Auto → Cboe" so the pick is never silent.
 import { useCallback, useState } from "react";
 import { api, ApiError } from "./api";
 import { useSmileSession } from "./smileSession";
 
-/** Effective source of a ticker: its pin when set, else the universe source. */
+/** The pin value that means "the fastest green source for this ticker". */
+export const AUTO_SOURCE = "auto";
+
+/** Effective source of a ticker: its pin when set — an auto pin reads the
+ *  backend's resolution (`resolved`), the default until it is known — else
+ *  the universe source. */
 export function resolveTickerSource(
   pins: Record<string, string> | undefined,
   defaultSource: string,
   ticker: string,
+  resolved?: Record<string, string>,
 ): string {
-  return pins?.[ticker] ?? defaultSource;
+  const pin = pins?.[ticker];
+  if (pin === AUTO_SOURCE) return resolved?.[ticker] ?? defaultSource;
+  return pin ?? defaultSource;
+}
+
+/** The select's label for the auto option: "Auto → Cboe" once the backend
+ *  resolved the ticker's pin, the plain policy name before / on other pins. */
+export function autoPinLabel(resolvedId: string | undefined, labelOf: (id: string) => string): string {
+  return resolvedId ? `Auto → ${labelOf(resolvedId)}` : "Auto (fastest green source)";
 }
 
 /** Short badge text for a source id (the Nodes-pane pill on a pinned ticker). */
 export function shortSourceLabel(id: string): string {
   const known: Record<string, string> = {
     bloomberg: "BBG", massive: "MSV", yahoo: "YHOO", cboe: "CBOE", synthetic: "SYN", file: "FILE",
-    nasdaq: "NDAQ", asx: "ASX", hkex: "HKEX", sgx: "SGX", eurex: "EURX",
+    nasdaq: "NDAQ", asx: "ASX", hkex: "HKEX", sgx: "SGX", eurex: "EURX", [AUTO_SOURCE]: "AUTO",
   };
   return known[id] ?? id.slice(0, 4).toUpperCase();
 }
@@ -35,6 +56,7 @@ export function sourceLabel(id: string): string {
   const known: Record<string, string> = {
     bloomberg: "Bloomberg", massive: "Massive", yahoo: "Yahoo", cboe: "Cboe", synthetic: "Synthetic",
     file: "File", nasdaq: "Nasdaq", asx: "ASX", hkex: "HKEX", sgx: "SGX", eurex: "Eurex",
+    [AUTO_SOURCE]: "Auto",
   };
   return known[id] ?? id;
 }
@@ -56,9 +78,12 @@ function messageOf(err: unknown): string {
 export interface UseTickerSourcesResult {
   /** The universe's default source id (the Data Source selector). */
   defaultSource: string;
-  /** Explicit pins only: ticker → source id. */
+  /** Explicit pins only: ticker → source id (or AUTO_SOURCE). */
   pins: Record<string, string>;
-  /** Effective source of a ticker (pin, else the default). */
+  /** ticker → the source it fetches from NOW per the backend (an auto pin's
+   *  resolution made visible; the pin or the default for the others). */
+  resolved: Record<string, string>;
+  /** Effective source of a ticker (pin — an auto pin's resolution — else the default). */
   sourceOf: (ticker: string) => string;
   /** Pin a ticker to a source; null = follow the universe source. */
   setTickerSource: (ticker: string, sourceId: string | null) => Promise<void>;
@@ -74,10 +99,11 @@ export function useTickerSources(): UseTickerSourcesResult {
   const [error, setError] = useState<string | null>(null);
   const defaultSource = universe?.defaultSource ?? "";
   const pins = universe?.tickerSources ?? {};
+  const resolved = universe?.resolvedSources ?? {};
 
   const sourceOf = useCallback(
-    (ticker: string) => resolveTickerSource(pins, defaultSource, ticker),
-    [pins, defaultSource],
+    (ticker: string) => resolveTickerSource(pins, defaultSource, ticker, resolved),
+    [pins, defaultSource, resolved],
   );
 
   const setTickerSource = useCallback(
@@ -100,5 +126,5 @@ export function useTickerSources(): UseTickerSourcesResult {
     [refreshUniverse],
   );
 
-  return { defaultSource, pins, sourceOf, setTickerSource, busy, error };
+  return { defaultSource, pins, resolved, sourceOf, setTickerSource, busy, error };
 }

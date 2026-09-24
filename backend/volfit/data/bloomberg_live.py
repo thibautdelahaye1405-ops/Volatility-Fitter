@@ -19,12 +19,20 @@ ticker): the ``OPT_CHAIN`` listing (``bds``) and ONE ``PX_LAST`` to centre the
 strike window before the stream exists.
 
 Subscription budget: the Desktop API caps concurrent real-time subscriptions
-per Terminal, so contracts are (1) windowed to ``strike_window`` around a
+per Terminal, so contracts are (1) windowed by the provider's ``strike_window``
+(the shared PER-EXPIRY rule of volfit.data.strike_window by default — a 2-day
+rung costs a few percent of the ladder, a 1-year rung the wide band) around a
 HYSTERESIS-held spot centre (re-centred only after a > ``RECENTER_PCT`` move —
 otherwise a spot wobbling across a strike boundary would restart the stream
 every tick) and (2) capped at ``max_subscriptions`` by nearest-the-money first.
 ``streaming_contracts`` reports the REQUESTED set (pre-cap) so the scheduler's
 universe diff stays stable; ``feed_status`` surfaces the dropped count.
+
+Book first: ``fetch_chain(live)`` calls ``_chain_from_book_first``, which waits
+up to the provider's ``book_first_wait`` for the underlying's paint AND the
+selection's coverage (a selection edit is resubscribed on the next scheduler
+tick) before the metered fallback is even considered; any paint read off the
+book clears a stale reference refusal from the status light.
 """
 
 from __future__ import annotations
@@ -76,10 +84,8 @@ class BloombergStreamingMixin:
         self._stream_index: dict[str, tuple[str, ParsedOption]] = {}  # sec -> (ticker, contract)
         self._stream_center: dict[str, float] = {}  # ticker -> spot the window is centred on
         self._center_failed_at: dict[str, float] = {}
-        #: Reference-only fields the stream cannot carry, remembered from the last
-        #: metered chain fetch so a streamed chain still reports them.
-        self._oi_cache: dict[str, int] = {}
-        self._style_cache: dict[str, str] = {}
+        # ``_oi_cache`` / ``_style_cache`` (the reference-only facts a streamed
+        # chain reports) are owned by BloombergReferenceMixin._init_reference.
 
     # ------------------------------------------------------- what to stream
     def _window_center(self, ticker: str) -> float | None:
@@ -224,25 +230,52 @@ class BloombergStreamingMixin:
         tick = self._book.wait_for(sec, wait) if wait > 0.0 else self._book.quote(sec)
         if tick is None:
             return None
-        if tick.last is not None:
-            return tick.last
-        if tick.bid is not None and tick.ask is not None:
-            return 0.5 * (tick.bid + tick.ask)
-        return None
+        value = tick.last
+        if value is None and tick.bid is not None and tick.ask is not None:
+            value = 0.5 * (tick.bid + tick.ask)
+        if value is not None:
+            # A subscription paint is a request Bloomberg answered: a refusal the
+            # light still shows from an earlier reference call is stale.
+            self._last_error = None
+        return value
 
-    def _chain_from_book(self, ticker: str, expiries: list[date] | None) -> ChainSnapshot | None:
+    def _chain_from_book_first(self, ticker: str, expiries: list[date] | None) -> ChainSnapshot | None:
+        """BOOK FIRST: the book's chain, waiting up to ``book_first_wait`` s for
+        the underlying's paint and the selection's coverage (polled every 0.1 s
+        — the scheduler resubscribes an edited selection within a tick). None
+        once the budget is spent, or at once when the underlying was refused
+        (nothing to wait for) or the stream stopped."""
+        deadline = time.monotonic() + float(getattr(self, "book_first_wait", _WARMUP_WAIT))
+        while True:
+            if not self.is_streaming() or self._book is None:
+                return None
+            if self._security(ticker) in self._book.failures():
+                return None
+            remaining = deadline - time.monotonic()
+            snap = self._chain_from_book(ticker, expiries, wait=max(remaining, 0.0))
+            if snap is not None:
+                return snap
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.0:
+                return None
+            time.sleep(min(0.1, remaining))
+
+    def _chain_from_book(
+        self, ticker: str, expiries: list[date] | None, wait: float = _WARMUP_WAIT
+    ) -> ChainSnapshot | None:
         """The live chain for ``ticker``'s selection built from the book.
 
         None (caller falls back to the metered reference fetch) when not streaming,
-        when the underlying has not painted yet, or when the selection is not fully
-        covered by the subscription (a selection edit the scheduler has not
-        resubscribed for yet) — an explicit fetch must never silently miss
-        contracts. Over-cap contracts are the exception: they are carried unquoted.
-        Quotes are stamped with the PROVIDER tick times (the honest staleness
-        signal across quiet periods), the chain with the newest of them."""
+        when the underlying has not painted within ``wait`` s, or when the
+        selection is not fully covered by the subscription (a selection edit the
+        scheduler has not resubscribed for yet) — an explicit fetch must never
+        silently miss contracts. Over-cap contracts are the exception: they are
+        carried unquoted. Quotes are stamped with the PROVIDER tick times (the
+        honest staleness signal across quiet periods), the chain with the newest
+        of them."""
         if not self.is_streaming() or self._book is None or self._sub is None:
             return None
-        spot = self._book_spot(ticker)
+        spot = self._book_spot(ticker, wait=wait)
         if spot is None:
             return None
         plan = self._stream_plan(ticker, expiries)

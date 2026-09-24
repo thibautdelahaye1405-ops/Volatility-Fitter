@@ -284,43 +284,30 @@ def test_available_expiries_includes_weeklies_and_dailies():
     assert provider.available_expiries("SPY") == sorted(ladder)
 
 
-class _FakeClock:
-    """Injectable monotonic clock for the chain-cache TTL tests."""
-
-    def __init__(self, start: float = 1000.0):
-        self.t = start
-
-    def __call__(self) -> float:
-        return self.t
-
-    def advance(self, seconds: float) -> None:
-        self.t += seconds
-
-
 def _chain_bds_count(blp) -> int:
     """Chain RESOLUTIONS sent: one OPT_CHAIN per resolution (the CHAIN_TICKERS
     series requests ride along with it)."""
     return sum(1 for c in blp.bds_calls if c[1] == "OPT_CHAIN")
 
 
-def test_chain_cache_ttl_and_explicit_refresh():
-    """The OPT_CHAIN cache must EXPIRE (chains list new dailies intraday — the
-    old cache lived forever): stable within the TTL, one fresh bds after it,
-    and refresh_chain_cache() invalidates without waiting the TTL out."""
-    clock = _FakeClock()
-    provider, blp = _make_provider(chain_ttl=600.0, clock=clock)
+def test_chain_listing_is_cached_per_exchange_day_and_refreshable():
+    """The listing is requested ONCE per ET exchange day (a ladder changes
+    overnight, never mid-session — the old 600 s TTL re-touched thousands of
+    securities per refresh on a monthly unique-securities budget): stable
+    within the day, one fresh listing on the next day, and
+    refresh_chain_cache() / refresh_contracts() invalidate inside the day."""
+    day = [date(2026, 9, 24)]
+    provider, blp = _make_provider(exchange_day=lambda: day[0])
     provider.available_expiries("SPY")
-    provider.available_expiries("SPY")  # same instant: served from cache
-    clock.advance(599.0)
-    provider.available_expiries("SPY")  # still inside the TTL
+    provider.available_expiries("SPY")  # same day: served from memory
     assert _chain_bds_count(blp) == 1
-    clock.advance(2.0)  # past the 600 s TTL
+    day[0] += timedelta(days=1)  # the exchange day rolls
     provider.available_expiries("SPY")
     assert _chain_bds_count(blp) == 2
-    provider.refresh_chain_cache("SPY")  # explicit invalidation, no TTL wait
+    provider.refresh_chain_cache("SPY")  # explicit invalidation inside the day
     provider.available_expiries("SPY")
     assert _chain_bds_count(blp) == 3
-    provider.refresh_chain_cache()  # no ticker = drop everything
+    provider.refresh_contracts()  # every provider's day-roll hook
     provider.available_expiries("SPY")
     assert _chain_bds_count(blp) == 4
 
@@ -328,17 +315,24 @@ def test_chain_cache_ttl_and_explicit_refresh():
 # --------------------------------------------------------------- chain
 
 def test_fetch_chain_builds_quotes_and_spot():
+    """A live fetch carries BID/ASK (the only fields the fit reads) and the
+    once-a-day exercise style; LAST / VOLUME / OI are reference colour that
+    arrives with the explicit ``enrich_reference`` (never with a fetch)."""
     provider, _ = _make_provider()
     snap = provider.fetch_chain("SPY")
     assert snap.spot == 741.75
-    assert snap.exercise_style == "american"  # from OPT_EXER_TYP
+    assert snap.exercise_style == "american"  # from the OPT_EXER_TYP probe
     by_strike = {(q.strike, q.call_put): q for q in snap.quotes}
     near_call = by_strike[(500.0, "C")]
     assert near_call.bid == 246.10 and near_call.ask == 248.90
-    assert near_call.volume == 12 and near_call.open_interest == 340
-    # 0-bid put: bid -> None, NaN volume -> None, ask kept.
+    assert near_call.volume is None and near_call.open_interest is None  # not fetched
+    # 0-bid put: bid -> None, ask kept.
     near_put = by_strike[(500.0, "P")]
-    assert near_put.bid is None and near_put.ask == 0.5 and near_put.volume is None
+    assert near_put.bid is None and near_put.ask == 0.5
+    provider.enrich_reference("SPY")
+    by_strike = {(q.strike, q.call_put): q for q in provider.fetch_chain("SPY").quotes}
+    assert by_strike[(500.0, "C")].volume == 12 and by_strike[(500.0, "C")].open_interest == 340
+    assert by_strike[(500.0, "P")].volume is None  # NaN volume -> None
 
 
 def test_fetch_chain_only_bdps_selected_expiries():
@@ -368,8 +362,10 @@ def test_spot_is_a_single_underlying_hit_not_a_chain_pull():
 
 
 def test_fetch_chain_windows_far_strikes():
-    """A far-OTM strike outside [0.5, 1.5]*spot is dropped from the bulk bdp so
-    the per-fetch security count (and quota burn) stays bounded."""
+    """The LEGACY uniform band (a tuple): a far-OTM strike outside
+    [0.5, 1.5]*spot is dropped from the bulk bdp so the per-fetch security
+    count (and quota burn) stays bounded. The per-expiry "auto" rule is locked
+    in tests/test_bloomberg_fields.py."""
     near = _future(30)
     descriptors = [
         f"SPY US {near} C740 Equity",   # ~ATM (741.75) -> kept
@@ -381,7 +377,7 @@ def test_fetch_chain_windows_far_strikes():
     for d in descriptors:
         bdp_values[d] = {"BID": "1.0", "ASK": "1.2", "OPT_EXER_TYP": "American"}
     blp = FakeBlp(_opt_chain_frame(descriptors), bdp_values)
-    provider = BloombergProvider(["SPY"], blp_module=blp)
+    provider = BloombergProvider(["SPY"], blp_module=blp, strike_window=(0.5, 1.5))
     snap = provider.fetch_chain("SPY")
     strikes = sorted(q.strike for q in snap.quotes)
     assert strikes == [380.0, 740.0]  # the two far strikes were never bdp'd
@@ -505,7 +501,9 @@ def test_successful_fetch_clears_cached_refusal():
     provider, _ = _make_provider()
     provider._last_error = "daily capacity reached"  # a stale refusal on the light
     provider.fetch_chain("SPY")  # a successful on-demand fetch
-    assert provider.feed_status() == ("green", "real-time (Terminal)")
+    level, detail = provider.feed_status()
+    assert level == "green" and detail.startswith("real-time (Terminal)")
+    assert "hits today" in detail  # the metered usage rides on the light's detail
 
 
 def test_short_blp_reason_maps_subcategory():

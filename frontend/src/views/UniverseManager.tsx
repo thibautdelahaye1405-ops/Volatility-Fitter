@@ -19,7 +19,7 @@ import { useState } from "react";
 import { FolderOpen, Plus, Save, Trash2 } from "lucide-react";
 import { useUniverse } from "../state/useUniverse";
 import { useWorkflowContext } from "../state/workflowContext";
-import { useTickerSources } from "../state/tickerSources";
+import { AUTO_SOURCE, autoPinLabel, useTickerSources } from "../state/tickerSources";
 import { useOptionalSnapshotFile } from "../state/snapshotFile";
 import DataSourcesCard from "../components/universe/DataSourcesCard";
 import ExpiryPicker from "../components/ExpiryPicker";
@@ -200,18 +200,29 @@ export default function UniverseManager() {
             onToggleExpand={(t) => setExpanded((cur) => (cur === t ? null : t))}
             renderExpanded={(t) => <ExpiryPicker ticker={t} onChanged={refreshUniverse} />}
             sourceColumn={{
-              // The ticker's PIN ("" = follows the universe source); a change
+              // The ticker's PIN ("" = follows the universe source, "auto" =
+              // the fastest green source, re-ranked at Fetch time); a change
               // refetches it from the chosen feed and marks its nodes stale.
               label: (t) => pinsHook.pins[t] ?? "",
-              options: [
+              options: (t) => [
                 { id: "", label: `Default (${labelOf(active)})` },
+                {
+                  id: AUTO_SOURCE,
+                  // "Auto → Cboe" on a row pinned to auto: the pick is never silent.
+                  label: autoPinLabel(
+                    pinsHook.pins[t] === AUTO_SOURCE ? pinsHook.resolved[t] : undefined,
+                    labelOf,
+                  ),
+                },
                 ...sources.map((s) => ({
                   id: s.id,
                   label: s.status === "red" ? `${s.label} (red)` : s.label,
                 })),
               ],
               disabled: pinsHook.busy !== null,
-              title: "Data source this ticker fetches from — pinned here, or the universe source",
+              title:
+                "Data source this ticker fetches from — pinned here, the universe source, " +
+                "or Auto (the fastest green source, re-chosen at each Fetch)",
               onChange: (t, id) => void pinsHook.setTickerSource(t, id || null),
             }}
             actions={(t) => (

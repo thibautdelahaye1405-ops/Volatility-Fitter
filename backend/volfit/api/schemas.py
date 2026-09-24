@@ -1322,6 +1322,10 @@ class UniverseResponse(BaseModel):
     #: default) — the multi-source engine (volfit.api.state_sources).
     defaultSource: str = ""
     tickerSources: dict[str, str] = {}
+    #: ticker -> the source it fetches from NOW, every active ticker: the
+    #: resolution of an "auto" pin made visible beside the pin (never silent —
+    #: volfit.api.source_policy), the pin or the default for the others.
+    resolvedSources: dict[str, str] = {}
 
 
 class PriorSavedResponse(BaseModel):

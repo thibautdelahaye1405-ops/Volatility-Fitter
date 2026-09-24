@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from volfit.api.source_policy import AUTO_SOURCE
 from volfit.data.expiry_select import default_selection
 from volfit.data.file import SOURCE_ID as FILE_SOURCE_ID
 from volfit.data.forwards import implied_forwards
@@ -27,12 +28,13 @@ class UnknownNodeError(KeyError):
 
 def _pins_for(wanted: list[str], sources: dict[str, str] | None, providers: dict) -> dict[str, str]:
     """The saved per-ticker source pins worth keeping: tickers of the universe
-    being installed, sources still registered (volfit.api.state_sources)."""
+    being installed, sources still registered (volfit.api.state_sources) — or
+    the ``AUTO_SOURCE`` policy pin, which names no source and always applies."""
     keep = set(wanted)
     return {
         portable_ticker(t.strip().upper()): s
         for t, s in (sources or {}).items()
-        if portable_ticker(t.strip().upper()) in keep and s in providers
+        if portable_ticker(t.strip().upper()) in keep and (s in providers or s == AUTO_SOURCE)
     }
 
 

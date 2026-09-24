@@ -31,11 +31,24 @@ gated, falls back to aggregate MARKS (bid = ask closes) for the session.
 Robustness / conventions:
 - ``httpx`` is imported lazily; tests inject ``http_get`` and stay offline.
 - Missing/zero price fields map to ``None`` (volfit.data.types convention).
+
+REST fetch plumbing (2026-09-24, split out to keep this file readable):
+- volfit.data.massive_http — every GET retries with backoff on transport
+  errors / 5xx / 429 / a rate-limit ERROR body (an entitlement body is never
+  retried), and a ``CallMeter`` counts calls (``call_stats``; ``feed_status``
+  appends " · N calls/h" and memoises its probe for ``STATUS_TTL_S``);
+- volfit.data.massive_listing — the contracts reference is pulled ONCE per
+  (underlying, ET exchange day) into a gitignored JSON file, and BOTH the
+  expiry ladder and the per-expiry contract keys derive from it;
+- volfit.data.massive_snapshot — the chain request plan: the nearest expiry
+  first and unwindowed (it yields the spot), the rest under a strike window
+  that contains the prep's band, the whole horizon as two date shards.
 """
 
 from __future__ import annotations
 
 import math
+import time as _time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Callable, Iterator, Sequence
@@ -45,21 +58,34 @@ from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.roots import is_index_root, normalize_root
 from volfit.data.expiry_time import is_trading_day, session_close_utc
 from volfit.data.massive_history import MassiveHistoryMixin
+from volfit.data.massive_http import MassiveEntitlement, MassiveError, MassiveHttp
+from volfit.data.massive_listing import ListingCache
+from volfit.data.massive_snapshot import (
+    DEFAULT_HORIZON_SHARDS,
+    SNAPSHOT_LIMIT,
+    SNAPSHOT_WORKERS,
+    MassiveSnapshotMixin,
+)
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
+from volfit.data.strike_window import DEFAULT_SIGMA_REF
 from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
 #: Default REST host (api.polygon.io still works for legacy keys).
 DEFAULT_BASE_URL = "https://api.massive.com"
 
-#: Snapshot page size cap (Massive limits to 250).
-_SNAPSHOT_LIMIT = 250
+#: Snapshot page size / concurrency now live in volfit.data.massive_snapshot;
+#: the old names stay as aliases for readers of this module.
+_SNAPSHOT_LIMIT = SNAPSHOT_LIMIT
+_SNAPSHOT_WORKERS = SNAPSHOT_WORKERS
 
-#: Max concurrent per-expiry snapshot fetches. Each selected expiry is an independent
-#: REST query, so they paginate in parallel over the pooled (thread-safe) httpx client.
-#: Kept DELIBERATELY LOW: the snapshot endpoint is heavy and the delayed tier throttles
-#: concurrency — measured on live SPY, 2 workers cut a 6-expiry fetch ~1.7x (5.6s->3.3s),
-#: but 3-4 ran SLOWER than sequential and 8 hit read-timeouts. 2 is the safe sweet spot.
-_SNAPSHOT_WORKERS = 2
+#: ``feed_status`` memoises its two-GET probe for this long (the UI re-probes
+#: every 30 s; the entitlement does not change between probes). A red outcome
+#: is memoised for at most 30 s so a transient blip clears within one cycle.
+STATUS_TTL_S = 300.0
+_STATUS_RED_TTL_S = 30.0
+
+#: The contracts reference page size (the endpoint's max).
+_LISTING_LIMIT = 1000
 
 #: Tier 3 aggregate reconstruction (``_fetch_agg_chain``): concurrent per-contract
 #: minute-aggregate fetches for TODAY's intraday (no flat file published yet), and
@@ -115,7 +141,7 @@ def _iso_date(value) -> date | None:
         return None
 
 
-class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
+class MassiveProvider(MassiveSnapshotMixin, MassiveHistoryMixin, OptionChainProvider):
     """Live option chains for a watchlist via the Massive REST API.
 
     Parameters
@@ -127,6 +153,15 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
     http_get  : ``(url, params) -> dict`` performing one GET and returning the
                 parsed JSON body; defaults to an httpx call carrying the Bearer
                 header, injectable for offline tests.
+    retries   : retries per GET on transport / 5xx / rate-limit outcomes
+                (volfit.data.massive_http; 0 = one attempt, for tests that
+                assert single calls); ``retry_sleep`` the backoff sleep.
+    status_ttl_s : how long ``feed_status`` memoises its probe (0 = every call).
+    window_vol : the strike window's reference vol (volfit.data.strike_window;
+                None = no window, the pre-window requests); ``horizon_shards``
+                the whole-horizon date shards (1 = one stream).
+    listing_cache : persist the contracts listing on disk (None = only when the
+                HTTP layer is real — an injected fake never writes the cache).
     """
 
     def __init__(
@@ -140,18 +175,39 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
         ws_url: str | None = None,
         flat_store=None,
         hist_nbbo: bool = True,
+        retries: int | None = None,
+        retry_sleep: Callable[[float], None] | None = None,
+        status_ttl_s: float = STATUS_TTL_S,
+        window_vol: float | None = DEFAULT_SIGMA_REF,
+        horizon_shards: int = DEFAULT_HORIZON_SHARDS,
+        listing_cache: bool | None = None,
     ) -> None:
         self._tickers = [t.strip().upper() for t in tickers]
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.max_days = max_days
         self._http_get = http_get
-        #: Lazily-built pooled httpx.Client reused for the process lifetime, so
-        #: the paginated O(pages) GETs of one chain fetch — and every repeat
-        #: fetch / spot poll — share keep-alive connections instead of paying a
-        #: fresh TCP + TLS handshake per call. Bypassed entirely when ``http_get``
-        #: is injected (offline tests). See ``_client``.
-        self._http_client = None
+        #: The pooled httpx.Client + retry policy + call meter
+        #: (volfit.data.massive_http): every ``_get`` shares keep-alive
+        #: connections and retries transient failures; bypassed to the injected
+        #: ``http_get`` (offline tests) — which is retried on transport errors too.
+        http_kwargs = {"http_get": http_get, "sleep": retry_sleep}
+        if retries is not None:
+            http_kwargs["retries"] = retries
+        self._http = MassiveHttp(api_key, **http_kwargs)
+        self._meter = self._http.meter
+        #: ``feed_status`` memo: (monotonic stamp, colour, base detail, streamy).
+        self._status_ttl_s = float(status_ttl_s)
+        self._status_memo: tuple[float, str, str, bool] | None = None
+        #: The snapshot request plan's knobs (volfit.data.massive_snapshot) and
+        #: the last usable spot per ticker it windows the whole horizon with.
+        self.window_vol = window_vol
+        self.horizon_shards = horizon_shards
+        self._last_spot: dict[str, float] = {}
+        #: The contracts listing, one pull per (underlying, exchange day),
+        #: persisted under data/cache when the HTTP layer is real
+        #: (volfit.data.massive_listing).
+        self._listings = ListingCache(disk=(http_get is None) if listing_cache is None else bool(listing_cache))
         #: Optional explicit real-time WS cluster override (env
         #: VOLFIT_MASSIVE_WS_URL via serve.py). When unset the cluster is derived
         #: from the REST host, with the delayed cluster as an auto-fallback —
@@ -185,56 +241,74 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
         #: so the flat-file cache covers them and they aren't dropped on a past-day
         #: switch. Falls back to ``list_tickers()`` when unset.
         self._flat_universe: list[str] | None = None
-        #: Cache of the listed contracts per (ticker, frozenset(expiries)) so the
-        #: WS read path (``_chain_from_book``) and the scheduler's per-tick
-        #: resubscribe diff (``option_tickers``) don't re-paginate the contracts
-        #: reference every call. The listing is static intra-session for a fixed
-        #: (ticker, expiry set); cleared on ``refresh_contracts`` if a fresh pull
-        #: is wanted (e.g. a brand-new listing appears mid-session).
-        self._contracts_cache: dict[tuple[str, frozenset | None], list[dict]] = {}
-        #: Cache of the listed expiry ladder per ticker. The contracts reference is
-        #: static intra-day, so a switch back to this source (or any re-resolve) reuses
-        #: it instead of re-paginating; cleared by ``refresh_contracts``.
-        self._expiries_cache: dict[str, list[date]] = {}
+        #: Views DERIVED from the day's listing (no second pagination): the
+        #: listed contracts per (ticker, frozenset(expiries), exchange day) —
+        #: the WS read path (``_chain_from_book``) and the scheduler's per-tick
+        #: resubscribe diff (``option_tickers``) read them every call — and the
+        #: expiry ladder per (ticker, today). Cleared with the listing by
+        #: ``refresh_contracts``.
+        self._contracts_cache: dict[tuple[str, frozenset | None, date], list[dict]] = {}
+        self._expiries_cache: dict[tuple[str, date], list[date]] = {}
 
     def list_tickers(self) -> list[str]:
         return list(self._tickers)
 
+    def call_stats(self) -> dict:
+        """The REST call meter (volfit.data.massive_http.CallMeter.snapshot):
+        calls per minute / hour / total, retries, events per class, last error."""
+        return self._meter.snapshot()
+
     def feed_status(self) -> tuple[str, str]:
-        """Cheap liveness probe (two single-page GETs, never full pagination):
+        """Cheap liveness probe (two single-page GETs, never full pagination,
+        no retries), memoised for ``STATUS_TTL_S`` (red for at most 30 s):
         red without a key / when the contracts reference is unauthorized or
         unreachable; amber when the snapshot endpoint is authorized (a typically
         delayed tier) or only the reference works (quotes gated). While
-        streaming, the detail carries the WS book's freshness — the book keeps
-        each contract's LAST tick across quiet periods (overnight/premarket),
-        so 'stream idle since …' is the tell that a "live" fetch would serve
-        yesterday's quotes."""
+        streaming, the detail carries the WS book's freshness — computed live
+        on every call: the book keeps each contract's LAST tick across quiet
+        periods (overnight/premarket), so 'stream idle since …' is the tell
+        that a "live" fetch would serve yesterday's quotes. The call meter's
+        " · N calls/h" is appended live too."""
         if not self.api_key:
             return ("red", "no API key")
         tickers = self.list_tickers()
         if not tickers:
             return ("red", "no tickers configured")
-        symbol = self._underlying(tickers[0])
+        now = _time.monotonic()
+        memo = self._status_memo
+        ttl = self._status_ttl_s
+        if memo is not None and now - memo[0] < (min(ttl, _STATUS_RED_TTL_S) if memo[1] == "red" else ttl):
+            _stamp, colour, base, streamy = memo
+        else:
+            colour, base, streamy = self._probe_status(tickers[0])
+            self._status_memo = (now, colour, base, streamy)
+        detail = f"{base}{self._stream_freshness() if streamy else ''}"
+        calls = self._meter.per_hour()
+        return (colour, f"{detail} · {calls} calls/h" if calls else detail)
+
+    def _probe_status(self, ticker: str) -> tuple[str, str, bool]:
+        """The two-GET probe behind ``feed_status``: (colour, base detail,
+        whether the streaming suffix applies)."""
+        symbol = self._underlying(ticker)
         try:
             ref = self._get(
                 f"{self.base_url}/v3/reference/options/contracts",
-                {"underlying_ticker": self._contracts_underlying(tickers[0]), "limit": 1},
+                {"underlying_ticker": self._contracts_underlying(ticker), "limit": 1},
+                retries=0,
             )
         except Exception:
-            return ("red", "unreachable")
+            return ("red", "unreachable", False)
         if ref.get("status") == "NOT_AUTHORIZED":
-            return ("red", ref.get("message", "not entitled"))
+            return ("red", ref.get("message", "not entitled"), False)
         if not ref.get("results"):
-            return ("red", "no contracts")
+            return ("red", "no contracts", False)
         try:
-            snap = self._get(
-                f"{self.base_url}/v3/snapshot/options/{symbol}", {"limit": 1}
-            )
+            snap = self._get(f"{self.base_url}/v3/snapshot/options/{symbol}", {"limit": 1}, retries=0)
         except Exception:
-            return ("amber", "reference only")
+            return ("amber", "reference only", False)
         if snap.get("status") == "NOT_AUTHORIZED":
-            return ("amber", "reference only (quotes gated)")
-        return ("amber", f"delayed feed{self._stream_freshness()}")
+            return ("amber", "reference only (quotes gated)", False)
+        return ("amber", "delayed feed", True)
 
     def _stream_freshness(self) -> str:
         """' · streaming' / ' · stream idle since HH:MM' suffix (empty when not
@@ -253,38 +327,39 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
     # -- HTTP plumbing -------------------------------------------------------
 
     def _client(self):
-        """The pooled httpx.Client (built on first use), carrying the Bearer auth
-        and default timeout so every ``_get`` reuses keep-alive connections."""
-        if self._http_client is None:
-            import httpx
+        """The pooled httpx.Client (volfit.data.massive_http; built on first use)."""
+        return self._http.client()
 
-            self._http_client = httpx.Client(
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                timeout=15.0,
-            )
-        return self._http_client
-
-    def _get(self, url: str, params: dict | None = None) -> dict:
-        """One GET returning parsed JSON (does not raise on NOT_AUTHORIZED)."""
-        if self._http_get is not None:
-            return self._http_get(url, params)
-        return self._client().get(url, params=params).json()
+    def _get(
+        self,
+        url: str,
+        params: dict | None = None,
+        *,
+        retries: int | None = None,
+        on_retry: Callable[[str], None] | None = None,
+    ) -> dict:
+        """One GET returning parsed JSON, retried on transient outcomes
+        (volfit.data.massive_http: transport / 5xx / rate limit; never on
+        NOT_AUTHORIZED, whose body is returned for the caller to surface).
+        ``on_retry(kind)`` lets a caller shrink its concurrency window."""
+        return self._http.get(url, params, retries=retries, on_retry=on_retry)
 
     def close(self) -> None:
         """Release the pooled HTTP connections (idempotent; safe if never built)."""
-        if self._http_client is not None:
-            self._http_client.close()
-            self._http_client = None
+        self._http.close()
 
     @staticmethod
     def _raise_if_unauthorized(body: dict) -> None:
-        """Turn a NOT_AUTHORIZED body into an actionable RuntimeError."""
+        """Turn a NOT_AUTHORIZED body into an actionable ``MassiveEntitlement``
+        (a RuntimeError — the history path gates the session on this class only)."""
         if body.get("status") == "NOT_AUTHORIZED":
             message = body.get("message", "not entitled to this Massive data")
-            raise RuntimeError(f"Massive: {message}")
+            raise MassiveEntitlement(f"Massive: {message}")
 
     def _paginate(self, path: str, params: dict) -> Iterator[dict]:
-        """Yield ``results`` across pages, following ``next_url`` (Bearer auth)."""
+        """Yield ``results`` across pages, following ``next_url`` (Bearer auth).
+        A page still rate-limited after the retries raises (``_get``) rather
+        than silently truncating the stream."""
         url: str | None = f"{self.base_url}{path}"
         page_params: dict | None = params
         while url:
@@ -294,27 +369,42 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
             url = body.get("next_url")
             page_params = None  # next_url already carries the cursor + filters
 
+    # -- the contracts listing (one pull per underlying and exchange day) ------
+
+    def _listing(self, ticker: str, refresh: bool = False) -> list[dict]:
+        """The day's contracts reference rows for ``ticker``'s underlying
+        (volfit.data.massive_listing: memory, else the day's file, else ONE
+        pagination of the endpoint) — the single source of the expiry ladder
+        and the per-expiry contract keys."""
+        underlying = self._contracts_underlying(ticker)
+
+        def pull() -> list[dict]:
+            params = {
+                "underlying_ticker": underlying,
+                "expired": "false",
+                "order": "asc",
+                "sort": "expiration_date",
+                "limit": _LISTING_LIMIT,
+            }
+            return list(self._paginate("/v3/reference/options/contracts", params))
+
+        return self._listings.get(underlying, pull, refresh=refresh)
+
     # -- expiries ------------------------------------------------------------
 
     def available_expiries(self, ticker: str) -> list[date]:
-        """All listed (unexpired) expiries inside (0, max_days] via the contracts
-        reference endpoint (cheap; entitled on all tiers). Cached per ticker for the
-        session (the listing is static intra-day), so a data-source switch back here or
-        any re-resolve is instant; ``refresh_contracts`` clears it for a fresh pull."""
-        key = ticker.upper()
+        """All listed (unexpired) expiries inside (0, max_days] from the day's
+        contracts listing (cheap; entitled on all tiers). The ladder is derived
+        once per (ticker, day) and the listing itself is pulled once per
+        (underlying, exchange day) — a data-source switch back here, any
+        re-resolve or a restart is instant; ``refresh_contracts`` re-pulls."""
+        today = date.today()
+        key = (ticker.upper(), today)
         cached = self._expiries_cache.get(key)
         if cached is not None:
             return list(cached)
-        today = date.today()
         expiries: set[date] = set()
-        params = {
-            "underlying_ticker": self._contracts_underlying(ticker),
-            "expired": "false",
-            "order": "asc",
-            "sort": "expiration_date",
-            "limit": 1000,
-        }
-        for contract in self._paginate("/v3/reference/options/contracts", params):
+        for contract in self._listing(ticker):
             expiry = _iso_date(contract.get("expiration_date"))
             if expiry is not None and 0 < (expiry - today).days <= self.max_days:
                 expiries.add(expiry)
@@ -354,50 +444,17 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
         for result in results:
             px = price_or_none((result.get("underlying_asset") or {}).get("price"))
             if px is not None:
+                self._note_spot(ticker, float(px))
                 return float(px)
         parity = self._spot_from_parity(results)
         if parity is not None:
+            self._note_spot(ticker, float(parity))
             return float(parity)
         return self._spot(ticker)
 
     # -- chain ---------------------------------------------------------------
-
-    def _snapshot_results(
-        self, ticker: str, expiries: list[date] | None
-    ) -> list[dict]:
-        """Raw snapshot ``results`` for the selected expiries (or the horizon).
-
-        Per-expiry snapshots are INDEPENDENT REST queries, so for more than one expiry
-        they are paginated CONCURRENTLY (a small thread pool over the pooled, thread-safe
-        httpx client) — wall-clock drops from the sum of per-expiry fetches to ~the
-        slowest single one. Results are concatenated in sorted-expiry order, so the
-        output is deterministic regardless of completion order."""
-        path = f"/v3/snapshot/options/{self._underlying(ticker)}"
-
-        def fetch_expiry(expiry: date) -> list[dict]:
-            return list(
-                self._paginate(
-                    path, {"expiration_date": expiry.isoformat(), "limit": _SNAPSHOT_LIMIT}
-                )
-            )
-
-        if expiries:
-            exps = sorted(expiries)
-            if len(exps) == 1:
-                return fetch_expiry(exps[0])
-            if self._http_get is None:
-                self._client()  # warm the pooled client once before fanning out (no race)
-            out: list[dict] = []
-            with ThreadPoolExecutor(max_workers=min(_SNAPSHOT_WORKERS, len(exps))) as pool:
-                for chunk in pool.map(fetch_expiry, exps):  # map preserves input order
-                    out.extend(chunk)
-            return out
-        end = date.fromordinal(date.today().toordinal() + self.max_days)
-        return list(
-            self._paginate(
-                path, {"expiration_date.lte": end.isoformat(), "limit": _SNAPSHOT_LIMIT}
-            )
-        )
+    # ``_snapshot_results`` (the request plan: nearest expiry first, strike
+    # windows, horizon shards) lives in volfit.data.massive_snapshot.
 
     @staticmethod
     def _underlying(ticker: str) -> str:
@@ -721,6 +778,7 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
             spot = self._spot_from_parity(results)  # options-only: chain's own forward
         if spot is None:
             spot = self._spot(ticker)  # last resort: STOCKS snapshot (separate plan)
+        self._note_spot(ticker, spot)  # the whole-horizon window's spot next time
         return ChainSnapshot(
             ticker=ticker.upper(),
             spot=spot,
@@ -936,23 +994,18 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
         self, ticker: str, expiries: list[date] | None
     ) -> list[dict]:
         """Listed contracts (option ticker + strike/expiry/type/style) for the
-        selected expiries, from the reference endpoint — the keys to query each
-        contract's historical quote by. Cached per (ticker, expiry set) so the
-        live book read / resubscribe diff don't re-paginate every call."""
-        key = (ticker.upper(), frozenset(expiries) if expiries else None)
+        selected expiries, DERIVED from the day's listing (``_listing``: one
+        pagination per underlying and exchange day, shared with the expiry
+        ladder) — the keys to query each contract's historical quote by.
+        Memoised per (ticker, expiry set, day) so the live book read /
+        resubscribe diff don't re-derive every call."""
+        key = (ticker.upper(), frozenset(expiries) if expiries else None, date.today())
         cached = self._contracts_cache.get(key)
         if cached is not None:
             return cached
         wanted = set(expiries) if expiries else None
         out: list[dict] = []
-        params = {
-            "underlying_ticker": self._contracts_underlying(ticker),
-            "expired": "false",
-            "order": "asc",
-            "sort": "expiration_date",
-            "limit": 1000,
-        }
-        for c in self._paginate("/v3/reference/options/contracts", params):
+        for c in self._listing(ticker):
             expiry = _iso_date(c.get("expiration_date"))
             opt_ticker = c.get("ticker")
             call_put = {"call": "C", "put": "P"}.get(c.get("contract_type"))
@@ -969,20 +1022,34 @@ class MassiveProvider(MassiveHistoryMixin, OptionChainProvider):
         return out
 
     def refresh_contracts(self) -> None:
-        """Drop the cached contract listings + expiry ladders (force a fresh pull)."""
+        """Drop the day's contract listings (memory AND the on-disk file) plus
+        the derived ladders / contract keys, so the next call re-pulls."""
         self._contracts_cache.clear()
         self._expiries_cache.clear()
+        self._listings.drop()
 
-    def _quote_le(self, option_ticker: str, ns: int) -> dict:
+    def refresh_listing(self, ticker: str) -> list[dict]:
+        """Explicitly re-pull one ticker's listing (a brand-new expiry listed
+        mid-session); the derived views follow on their next call."""
+        self._contracts_cache.clear()
+        self._expiries_cache.clear()
+        return self._listing(ticker, refresh=True)
+
+    def _quote_le(
+        self, option_ticker: str, ns: int, on_retry: Callable[[str], None] | None = None
+    ) -> dict:
         """The most recent NBBO quote at-or-before ``ns`` (nanoseconds) for one
-        contract; ``{}`` if none exists then."""
+        contract; ``{}`` if none exists then. Raises ``MassiveEntitlement`` on
+        NOT_AUTHORIZED, ``MassiveRateLimited`` when a rate limit outlasts the
+        retries (``_get``), ``MassiveError`` on any other ERROR body."""
         body = self._get(
             f"{self.base_url}/v3/quotes/{option_ticker}",
             {"timestamp.lte": ns, "order": "desc", "sort": "timestamp", "limit": 1},
+            on_retry=on_retry,
         )
         self._raise_if_unauthorized(body)
-        if body.get("status") == "ERROR":  # a rate limit ("exceeded the maximum requests…")
-            raise RuntimeError(
+        if body.get("status") == "ERROR":  # not a rate limit (those retried and raised)
+            raise MassiveError(
                 f"Massive: {body.get('error') or body.get('message') or 'quote request failed'}"
             )
         results = body.get("results") or []

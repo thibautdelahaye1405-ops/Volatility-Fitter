@@ -9,16 +9,10 @@ American/European exercise flag, and a dividend schedule for the discrete-
 dividend forward model.
 
 xbbg surface relied on (confirmed live against an open Terminal):
-- ``blp.bds(security, "OPT_CHAIN")`` -> one row per listed MONTHLY / LEAPS
-  contract, BOTH sides, full security in a "Security Description" column
-  ("SPY US 06/18/26 C245 Equity") — the Terminal's monthly-biased default,
-  deaf to every CHAIN_*_OVRD override;
-- ``blp.bds(security, "CHAIN_TICKERS", overrides={CHAIN_PERIODICITY_OVRD: "W",
-  CHAIN_EXP_DT_OVRD: "ALL", CHAIN_POINTS_OVRD: "50000"})`` -> every expiry of
-  ONE series (weeklies + dailies; "Q" the quarterlies), CALLS only, WITHOUT
-  the yellow key ("SPY US 09/04/26 C740") in a "Ticker" column — without
-  "ALL" the field answers a single expiry, the nearest (live-verified
-  2026-09-02: 13 SPY weekly rungs in one call; "D" answers nothing);
+- the chain LISTING — ``bds(security, "OPT_CHAIN")`` (monthlies / LEAPS, both
+  sides, keyed) + one ``bds(security, "CHAIN_TICKERS", overrides=...)`` per
+  series (weeklies + dailies, quarterlies; calls only, puts mirrored) — lives
+  in volfit.data.bloomberg_listing, cached per ET EXCHANGE DAY and on disk;
 - ``blp.bdp(securities, fields)`` -> long/tidy frame (ticker/field/value), all
   values as strings — coerced via volfit.data.fieldmap;
 - ``blp.bds(security, "DVD_HIST_ALL")`` -> declared dividend rows (Ex-Date,
@@ -29,34 +23,35 @@ Robustness / conventions:
   imports fine without it; tests inject a fake ``blp_module`` and stay offline.
 - Frames are read column-wise (volfit.data.bloomberg_parse.columns) because the
   xbbg narwhals frames lack ``index``/``itertuples``.
-- ``available_expiries`` parses the descriptor strings (cheap, one ``bds``,
-  no per-contract ``bdp``); ``fetch_chain`` only ``bdp``s the *selected*
-  expiries' contracts (the universe layer passes them), keeping liquid names
-  (thousands of contracts) fast.
+- ``available_expiries`` parses the descriptor strings (cheap, the listing, no
+  per-contract ``bdp``); ``fetch_chain`` only ``bdp``s the *selected* expiries'
+  contracts, windowed per expiry to the fittable strike band (volfit.data.
+  strike_window — a 2-day rung costs ~30 % of the ladder, a 1-year rung the
+  wide band), and requests BID/ASK only (volfit.data.bloomberg_fields: the
+  exercise style is one hit per ticker per day, OI / volume / last are the
+  explicit ``enrich_reference``). ``call_stats()`` reports the hits.
 - Missing/zero price fields map to ``None`` (volfit.data.types convention).
 
 Real-time streaming (quota-free): ``BloombergStreamingMixin`` (volfit.data.
 bloomberg_live) adds the ``start_streaming``/``option_tickers``/... contract
 AppState drives; while a ``//blp/mktdata`` subscription book is live (volfit.
 data.bloomberg_stream), ``spot`` and ``fetch_chain(live)`` are served from it
-and issue NO ``bdp`` — the metered reference path is the fallback only.
+and issue NO ``bdp`` — BOOK FIRST: a fetch waits up to ``book_first_wait`` for
+the paint and the selection's coverage before the metered fallback, and never
+falls back with ``book_only=True``.
 """
 
 from __future__ import annotations
 
-import re
 import threading
-import time
 import warnings
-from dataclasses import replace
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Callable, Sequence
 
 from volfit.data.bloomberg_parse import (
     ParsedOption,
     as_date,
-    columns,
-    parse_descriptor,
     pivot_bdp,
     project_dividends,
     quiet_xbbg_logs,
@@ -64,21 +59,45 @@ from volfit.data.bloomberg_parse import (
     session_connected,
     short_blp_reason,
 )
+from volfit.data.bloomberg_fields import BloombergReferenceMixin, MeteredBlp
 from volfit.data.bloomberg_history import available_history as _available_history
 from volfit.data.bloomberg_history import fetch_eod as _fetch_eod
+from volfit.data.bloomberg_listing import (  # noqa: F401 — CHAIN_* re-exported for callers
+    CHAIN_ALL_EXPIRIES,
+    CHAIN_POINTS,
+    CHAIN_SERIES,
+    Listing,
+    drop_listings,
+    list_chain,
+    load_listing,
+    parse_chain_frame,
+    save_listing,
+)
+from volfit.data.bloomberg_listing import exchange_day as _exchange_day_et
 from volfit.data.bloomberg_live import BloombergStreamingMixin
 from volfit.data.bloomberg_search import instrument_search
+from volfit.data.cache_dir import cache_dir
 from volfit.data.dividends import Dividend
 from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.bloomberg_roots import one_root_per_date, parent_root
 from volfit.data.expiry_time import ExpirySettlement, default_settlement, session_close_utc
 from volfit.data.roots import is_index_root, is_intl_index_root, normalize_root
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
-from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
+from volfit.data.strike_window import DEFAULT_SIGMA_REF, inside, strike_bounds
+from volfit.data.types import ChainSnapshot
 
 import logging
 
 logger = logging.getLogger(__name__)
+
+#: Seconds a live fetch waits, while streaming, for the book to paint the
+#: underlying AND cover the selection before the metered fallback (a fresh
+#: start paints within ~1 s; a selection edit is resubscribed on the next
+#: scheduler tick, <= 1 s). Constructor ``book_first_wait``.
+BOOK_FIRST_WAIT = 5.0
+
+#: Back-compat alias — tests and older callers import the parser from here.
+_parse_chain_frame = parse_chain_frame
 
 #: Bloomberg "yellow key" asset-class words that complete a security string
 #: ("SPX Index", "SAP GY Equity"). Stored canonically (title-case) and indexed
@@ -88,94 +107,6 @@ logger = logging.getLogger(__name__)
 #: yellow key). Covers the asset classes that list options + the common ones.
 _ASSET_CLASSES = ("Equity", "Index", "Curncy", "Comdty", "Corp", "Govt", "Mtge", "Pfd")
 _ASSET_CLASS_BY_UPPER = {c.upper(): c for c in _ASSET_CLASSES}
-
-#: Per-contract fields pulled in the bulk bdp (strike/expiry/CP come from the
-#: descriptor, so only quote fields + the exercise flag are requested here).
-_QUOTE_FIELDS = ("BID", "ASK", "LAST_PRICE", "VOLUME", "OPEN_INT", "OPT_EXER_TYP")
-
-#: The CHAIN_TICKERS series fetched ON TOP of OPT_CHAIN's monthlies / LEAPS:
-#: "W" = weeklies + dailies (Bloomberg files a Tue/Thu daily under W), "Q" =
-#: the end-of-quarter / end-of-month quarterlies. One bds each, with
-#: CHAIN_EXP_DT_OVRD="ALL" (every expiry of the series — the field otherwise
-#: answers a single expiry, the nearest). "M" would duplicate OPT_CHAIN and "D"
-#: answers nothing (live-verified 2026-09-02).
-CHAIN_SERIES = ("W", "Q")
-#: CHAIN_EXP_DT_OVRD value listing every expiry of a series.
-CHAIN_ALL_EXPIRIES = "ALL"
-#: CHAIN_POINTS_OVRD — the COUNT cap of a CHAIN_TICKERS request (a single
-#: strike comes back without it); large enough for an index root's full ladder.
-CHAIN_POINTS = 50000
-
-#: Seconds a parsed OPT_CHAIN is reused. Chains GROW intraday (new dailies
-#: list during the session) so the cache must expire — cf. the exchange
-#: provider's 60 s raw-chain TTL; longer here because each refresh is a
-#: metered ``bds`` and the ladder shifts far slower than quotes do.
-CHAIN_CACHE_TTL = 600.0
-
-
-def _parse_chain_frame(frame, asset_class: str = "") -> list:
-    """Parsed contracts out of a chain ``bds`` frame — CHAIN_TICKERS (one
-    security per row, e.g. "SPY US 09/05/26 C450 Equity") or OPT_CHAIN
-    ("Security Description" descriptors): every non-metadata column is tried
-    and the first one that yields contracts wins, so the column's name (which
-    differs between the two fields and xbbg versions) never matters.
-
-    CHAIN_TICKERS lists a contract WITHOUT its yellow key ("SX5E 09/18/26
-    C4650" for "SX5E Index") — a security the reference request refuses
-    ("All securities failed: SX5E 09/18/26 C4650, …"). ``asset_class`` (the
-    underlying's: "Index" / "Equity") is appended to every contract that lacks
-    one, so the chain's securities are always complete Bloomberg tickers."""
-    cols = columns(frame)
-    for name, values in cols.items():
-        if name in ("ticker", "field"):
-            continue
-        parsed = [p for p in (parse_descriptor(str(v)) for v in values) if p]
-        if parsed:
-            return [_with_asset_class(p, asset_class) for p in parsed]
-    return []
-
-
-#: The " C<strike>" token of a descriptor (never the "C US" of a root like Citi).
-_CALL_TOKEN_RE = re.compile(r"\sC(?=[0-9])")
-
-
-def _with_mirrored_puts(contracts: list[ParsedOption]) -> list[ParsedOption]:
-    """CHAIN_TICKERS answers CALLS only; every listed strike carries a put too,
-    so each call is paired with its put security (" C740" -> " P740") — a
-    call-only chain has no parity and implies no forward ("no usable option
-    expiries")."""
-    out: list[ParsedOption] = []
-    for c in contracts:
-        out.append(c)
-        if c.call_put == "C":
-            out.append(
-                replace(c, security=_CALL_TOKEN_RE.sub(" P", c.security, count=1), call_put="P")
-            )
-    return out
-
-
-def _dedupe_contracts(contracts: list[ParsedOption]) -> list[ParsedOption]:
-    """First occurrence per security (OPT_CHAIN's keyed rows win over a series'
-    mirrored ones); order otherwise preserved."""
-    seen: set[str] = set()
-    out: list[ParsedOption] = []
-    for c in contracts:
-        if c.security not in seen:
-            seen.add(c.security)
-            out.append(c)
-    return out
-
-
-def _with_asset_class(contract: ParsedOption, asset_class: str) -> ParsedOption:
-    """The contract with ``asset_class`` appended when its security carries no
-    yellow key (a CHAIN_TICKERS row); untouched when it already ends in one."""
-    if not asset_class:
-        return contract
-    last = contract.security.rsplit(" ", 1)[-1].upper()
-    if last in _ASSET_CLASS_BY_UPPER:
-        return contract
-    return replace(contract, security=f"{contract.security} {asset_class}")
-
 
 def _default_blp():
     """Resolve ``xbbg.blp`` on first use; clear error if xbbg is not installed."""
@@ -190,7 +121,7 @@ def _default_blp():
     return blp
 
 
-class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
+class BloombergProvider(BloombergStreamingMixin, BloombergReferenceMixin, OptionChainProvider):
     """Live option chains for a watchlist via Bloomberg (xbbg + blpapi streaming).
 
     Parameters
@@ -203,15 +134,28 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
     blp_module   : an object exposing ``bds(security, field)`` and
                    ``bdp(securities, fields)`` like ``xbbg.blp``; defaults to the
                    lazily-imported real module, injectable for offline tests.
+    strike_window: which strikes a live fetch / the stream carries — ``"auto"``
+                   (default) = the shared per-expiry rule (volfit.data.
+                   strike_window: |ln K/S| <= 4·sigma_ref·sqrt(T), floored and
+                   capped — contains everything the quote prep keeps, so the
+                   fit is byte-identical); a ``(lo, hi)`` tuple = the legacy
+                   uniform band in units of spot; None = the whole ladder.
+    window_sigma_ref : the reference vol the auto window is sized for (1.0).
     stream_interval / max_subscriptions / stream_session_factory / stream_host /
     stream_port  : the ``//blp/mktdata`` streaming knobs (volfit.data.
                    bloomberg_live): conflation seconds, concurrent-subscription
                    budget, injectable session (tests), DAPI endpoint override.
+    book_first_wait : seconds a live fetch waits for the streaming book (paint +
+                   coverage) before the metered fallback (BOOK_FIRST_WAIT).
+    book_only    : while streaming, NEVER fall back to a metered quote pull —
+                   an uncovered fetch raises instead (zero quote hits, ever).
     chain_series : the CHAIN_TICKERS series requested on top of OPT_CHAIN's
-                   monthlies (see ``_chain``; default CHAIN_SERIES = weeklies +
-                   quarterlies). () = OPT_CHAIN only, the legacy monthly ladder.
-    chain_ttl    : seconds a parsed OPT_CHAIN is reused (CHAIN_CACHE_TTL).
-    clock        : monotonic float clock for the chain TTL (tests inject a fake).
+                   monthlies (bloomberg_listing; default CHAIN_SERIES = weeklies
+                   + quarterlies). () = OPT_CHAIN only, the legacy monthly ladder.
+    listing_dir  : where the per-exchange-day listings persist — ``"auto"`` =
+                   ``cache_dir("bloomberg")`` when the REAL xbbg is used (a test
+                   fake never touches the shared cache); a path; None = memory.
+    exchange_day : the ET exchange-day clock (tests inject a fake day).
     """
 
     def __init__(
@@ -220,36 +164,44 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         yellow_key: str = "US Equity",
         max_days: int = 730,
         blp_module: object | None = None,
-        strike_window: tuple[float, float] | None = (0.5, 1.5),
+        strike_window: tuple[float, float] | str | None = "auto",
+        window_sigma_ref: float = DEFAULT_SIGMA_REF,
         stream_interval: float | None = 1.0,
         max_subscriptions: int = 3000,
         stream_session_factory=None,
         stream_host: str | None = None,
         stream_port: int | None = None,
+        book_first_wait: float = BOOK_FIRST_WAIT,
+        book_only: bool = False,
         chain_series: Sequence[str] = CHAIN_SERIES,
-        chain_ttl: float = CHAIN_CACHE_TTL,
-        clock: Callable[[], float] | None = None,
+        listing_dir: str | Path | None = "auto",
+        exchange_day: Callable[[], date] | None = None,
     ) -> None:
         self._tickers = [t.strip().upper() for t in tickers]
         self.yellow_key = yellow_key
         self.max_days = max_days
         self._blp = blp_module
+        self._exchange_day = exchange_day if exchange_day is not None else _exchange_day_et
+        self._init_reference()
         self._init_streaming(
             stream_interval, max_subscriptions, stream_session_factory, stream_host, stream_port
         )
-        #: Keep only strikes within ``[lo, hi] * spot`` when fetching a live chain
-        #: (None = the whole listed ladder). A liquid index/ETF lists hundreds of
-        #: strikes spanning a huge range — each is a separately-METERED Bloomberg
-        #: security, and the far tails carry no liquidity (and break the fit), so
-        #: windowing to the fittable band cuts the per-fetch security count (and
-        #: the daily-quota burn) by a large factor. Widen/disable per deployment.
+        #: The strike window of a live fetch and of the stream plan (see the
+        #: class docstring): every listed strike is a separately-METERED
+        #: Bloomberg security / a subscription slot, and the far tails never
+        #: reach a fit, so the window cuts both by a large factor on the short
+        #: rungs while containing every quote the prep keeps.
         self.strike_window = strike_window
+        self.window_sigma_ref = window_sigma_ref
+        self.book_first_wait = max(0.0, float(book_first_wait))
+        self.book_only = bool(book_only)
         self.chain_series = tuple(chain_series)
-        self.chain_ttl = chain_ttl
-        self._clock = clock if clock is not None else time.monotonic
-        #: ticker -> (clock stamp, parsed contracts); entries older than
-        #: ``chain_ttl`` are re-requested (see ``_chain``).
-        self._chain_cache: dict[str, tuple[float, list[ParsedOption]]] = {}
+        if listing_dir == "auto":
+            listing_dir = cache_dir("bloomberg") if blp_module is None else None
+        self._listing_dir: Path | None = Path(listing_dir) if listing_dir is not None else None
+        #: ticker -> the day's Listing (contracts + roots); re-listed on a new
+        #: ET exchange day (see ``_chain``).
+        self._chain_cache: dict[str, Listing] = {}
         #: ticker -> {expiry: the option root kept for that date} (bloomberg_roots:
         #: one root per date; the settlement convention reads it).
         self._roots_cache: dict[str, dict[date, str]] = {}
@@ -269,8 +221,12 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
     # -- plumbing ------------------------------------------------------------
 
     def _blp_module(self):
+        """The (lazily-imported) xbbg module wrapped in the hit meter, so every
+        reference request of every path counts toward ``call_stats``."""
         if self._blp is None:
             self._blp = _default_blp()
+        if not isinstance(self._blp, MeteredBlp):
+            self._blp = MeteredBlp(self._blp, self._meter)
         return self._blp
 
     def _security(self, ticker: str) -> str:
@@ -353,10 +309,11 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
             return ("red", "no Terminal")
         streaming = self._stream_status()  # the live //blp/mktdata book, if any
         if streaming is not None:
-            return streaming
+            level, detail = streaming
+            return (level, detail if level == "red" else detail + self._hits_suffix())
         if self._last_error is not None:
             return ("red", self._last_error)
-        return ("green", "real-time (Terminal)")
+        return ("green", "real-time (Terminal)" + self._hits_suffix())
 
     # -- symbol search -------------------------------------------------------
 
@@ -394,35 +351,32 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
     # -- chain enumeration (cheap, descriptor-only) --------------------------
 
     def _chain(self, ticker: str) -> list[ParsedOption]:
-        """Every listed contract of a ticker (cached ``chain_ttl`` seconds —
-        chains list new dailies intraday, so the cache expires instead of
-        living forever), assembled from the two fields a Terminal offers
-        (live-verified 2026-09-02, Docs/bloomberg_setup.md):
+        """Every listed contract of a ticker for TODAY's ET exchange day —
+        memory first, then the on-disk listing (``listing_dir``), then the
+        three ``bds`` of volfit.data.bloomberg_listing. A ladder changes once a
+        day (new dailies list overnight), so a listing is re-requested exactly
+        once per day, or on ``refresh_contracts`` / ``refresh_chain_cache``.
 
-        * ``OPT_CHAIN`` — the monthlies + LEAPS, BOTH sides, full securities
-          ("SPY US 09/18/26 C500 Equity"; 12 SPY rungs, 28 SX5E). It ignores
-          every CHAIN_*_OVRD override — the Terminal's monthly-biased default
-          the app used to stop at.
-        * ``CHAIN_TICKERS`` per series in ``chain_series`` ("W" weeklies +
-          dailies, "Q" quarterlies) with ``CHAIN_EXP_DT_OVRD="ALL"`` (every
-          expiry of the series; without it the field answers ONE expiry, the
-          nearest — the "SPY has one expiry" report), the periodicity and the
-          ``CHAIN_POINTS_OVRD`` count cap. Rows are CALLS only and lack the
-          yellow key ("SPY US 09/04/26 C740"): the put is mirrored and the
-          underlying's asset class appended.
-
-        A series the Terminal cannot answer contributes nothing (OPT_CHAIN is
-        always the backbone); the union is de-duplicated by security."""
+        The Terminal's answer then keeps one option root per expiry date
+        (bloomberg_roots: a Eurex weekly and daily, or SPX and SPXW, listing
+        the same Friday are different instruments — keeping both stacks two
+        smiles on one slice); the kept contracts + roots are what persists."""
         key = ticker.upper()
-        now = self._clock()
+        day = self._exchange_day()
         hit = self._chain_cache.get(key)
-        if hit is not None and now - hit[0] <= self.chain_ttl:
-            return hit[1]
-        blp = self._blp_module()
-        security = self._security(ticker)
-        asset_class = security.rsplit(" ", 1)[-1]  # "Index" / "Equity": completes a bare CHAIN_TICKERS row
+        if hit is None or hit.day != day:
+            hit = load_listing(self._listing_dir, key, day)
+            if hit is None:
+                hit = self._list_from_terminal(key, day)
+            self._chain_cache[key] = hit
+        self._roots_cache[key] = hit.roots
+        return hit.contracts
+
+    def _list_from_terminal(self, key: str, day: date) -> Listing:
+        """The three-bds listing + the root selection, persisted for ``day``."""
+        security = self._security(key)
         try:
-            parsed = _parse_chain_frame(blp.bds(security, "OPT_CHAIN"), asset_class)
+            parsed = list_chain(self._blp_module(), security, self.chain_series)
         except Exception as exc:
             # The chain listing is an on-demand request too: an account-side
             # refusal here (LIMIT / workflow review, 2026-09-10 — every ticker
@@ -430,30 +384,13 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
             # green) must reach the Data Source light like a quote refusal.
             self._record(exc)
             raise
-        for series in self.chain_series:
-            overrides = {
-                "CHAIN_POINTS_OVRD": str(CHAIN_POINTS),
-                "CHAIN_PERIODICITY_OVRD": series,
-                "CHAIN_EXP_DT_OVRD": CHAIN_ALL_EXPIRIES,
-            }
-            try:
-                frame = blp.bds(security, "CHAIN_TICKERS", overrides=overrides)
-                rows = _parse_chain_frame(frame, asset_class)
-            except Exception:  # noqa: BLE001 — a Terminal / rig without the field or the series
-                rows = []
-            parsed.extend(_with_mirrored_puts(rows))
-        parsed = _dedupe_contracts(parsed)
-        # One option root per expiry date (bloomberg_roots): a Eurex weekly and
-        # daily, or SPX and SPXW, listing the same Friday are different
-        # instruments — keeping both stacks two smiles on one slice.
         selection = one_root_per_date(parsed, parent_root(security), self._probe_open_interest)
         for note in selection.dropped:
             logger.info("%s chain — one root per date: %s", key, note)
-        parsed = selection.contracts
-        self._roots_cache[key] = selection.roots
-        self._chain_cache[key] = (now, parsed)
+        listing = Listing(day=day, contracts=selection.contracts, roots=selection.roots)
+        save_listing(self._listing_dir, key, listing)
         self._record(None)  # a listing that answered clears a remembered refusal
-        return parsed
+        return listing
 
     def _probe_open_interest(self, securities: list[str]) -> dict[str, int]:
         """OPEN_INT of a few representative contracts (one bdp) — the liquidity
@@ -474,13 +411,23 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         return {e: default_settlement(e, roots.get(e, ticker)) for e in sorted(set(expiries))}
 
     def refresh_chain_cache(self, ticker: str | None = None) -> None:
-        """Drop the cached OPT_CHAIN ladder(s) so the next call re-requests them
-        (explicit invalidation without waiting out the TTL — e.g. right after
-        the open when the day's new listings appear)."""
+        """Drop the cached listing(s) — memory AND the on-disk file(s) — so the
+        next call re-lists from the Terminal (explicit invalidation inside the
+        exchange day, e.g. a ladder the Terminal amended)."""
         if ticker is None:
             self._chain_cache.clear()
+            drop_listings(self._listing_dir)
         else:
             self._chain_cache.pop(ticker.upper(), None)
+            drop_listings(self._listing_dir, ticker.upper())
+
+    def refresh_contracts(self) -> None:
+        """Every provider's day-roll hook (same name as Massive's): forget every
+        listing (memory + disk), the history ladders and the day's exercise-
+        style probes, so the next request re-lists for the new exchange day."""
+        self.refresh_chain_cache()
+        self._history_cache.clear()
+        self._style_day.clear()
 
     def _keep_expiry(self, expiry: date, today: date) -> bool:
         """Inside ``max_days``; TODAY's expiry only while its session is open
@@ -519,7 +466,12 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         """Last price (PX_LAST) for the underlying; ValueError if unavailable."""
         blp = self._blp_module()
         security = self._security(ticker)
-        pivot = pivot_bdp(blp.bdp(security, "PX_LAST"))
+        try:
+            pivot = pivot_bdp(blp.bdp(security, "PX_LAST"))
+        except Exception as exc:
+            self._record(exc)  # a refused PX_LAST is a real refusal for the light
+            raise
+        self._record(None)  # ...and an answered one clears a stale refusal
         value = price_or_none(pivot.get(security, {}).get("PX_LAST"))
         if value is None:
             raise ValueError(f"could not determine spot price for {ticker!r}")
@@ -588,11 +540,16 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
                     roots=self._roots_cache.get(ticker.upper()),
                 )
             else:
-                # Streaming: serve the chain from the //blp/mktdata book (no bdp);
-                # the metered reference pull is the fallback (book not painted yet,
-                # selection not yet resubscribed).
-                snap = self._chain_from_book(ticker, expiries) if self.is_streaming() else None
+                # Streaming: BOOK FIRST — wait (book_first_wait) for the paint and
+                # the selection's coverage, then the metered reference pull is the
+                # fallback (never with book_only: an uncovered fetch raises).
+                snap = self._chain_from_book_first(ticker, expiries) if self.is_streaming() else None
                 if snap is None:
+                    if self.book_only and self.is_streaming():
+                        raise ValueError(
+                            f"{ticker}: the streaming book does not cover this selection yet "
+                            "and book_only forbids a metered pull — retry once it is subscribed"
+                        )
                     snap = self._fetch_live(ticker, contracts)
         except Exception as exc:
             self._record(exc)
@@ -606,62 +563,31 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         return history[-1] if history else None
 
     def _window_contracts(
-        self, contracts: list[ParsedOption], spot: float
+        self, contracts: list[ParsedOption], spot: float | None
     ) -> list[ParsedOption]:
-        """Drop strikes outside ``strike_window * spot`` (the quota-saving filter;
-        see ``strike_window``). No-op when disabled or non-positive spot; never
-        windows down to nothing (a degenerate band falls back to the full set)."""
-        if self.strike_window is None or spot <= 0.0:
+        """The contracts a live fetch / the stream plan carries (the quota
+        filter, see ``strike_window``): ``"auto"`` = the shared PER-EXPIRY rule
+        (volfit.data.strike_window.strike_bounds around ``spot``, seen from the
+        ET exchange day — a 2-day rung keeps ~±30 %, a 1-year rung the wide
+        band), a tuple = the legacy uniform ``[lo, hi] * spot`` band, None =
+        everything. No-op on an unusable spot; never windows down to nothing
+        (a degenerate band falls back to the full set)."""
+        if self.strike_window is None or spot is None or not spot > 0.0:
             return contracts
-        lo, hi = self.strike_window
-        kept = [c for c in contracts if lo * spot <= c.strike <= hi * spot]
+        if isinstance(self.strike_window, str):  # "auto": the per-expiry rule
+            today = self._exchange_day()
+            bounds: dict[date, tuple[float, float] | None] = {}
+            for c in contracts:
+                if c.expiry not in bounds:
+                    bounds[c.expiry] = strike_bounds(spot, c.expiry, today, self.window_sigma_ref)
+            kept = [c for c in contracts if inside(c.strike, bounds[c.expiry])]
+        else:
+            lo, hi = self.strike_window
+            kept = [c for c in contracts if lo * spot <= c.strike <= hi * spot]
         return kept or contracts
 
-    def _fetch_live(self, ticker: str, contracts: list[ParsedOption]) -> ChainSnapshot:
-        """The current NBBO chain for the given contracts (one bulk bdp)."""
-        spot = self.spot(ticker)  # off the stream book when streaming, else PX_LAST
-        contracts = self._window_contracts(contracts, spot)  # quota: fittable band only
-        blp = self._blp_module()
-        pivot = pivot_bdp(blp.bdp([p.security for p in contracts], list(_QUOTE_FIELDS)))
-        timestamp = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
-
-        quotes: list[OptionQuote] = []
-        styles: list[str] = []
-        for contract in contracts:
-            fields = pivot.get(contract.security, {})
-            style = str(fields.get("OPT_EXER_TYP", "")).strip().lower()
-            if style in ("american", "european"):
-                styles.append(style)
-            quotes.append(
-                OptionQuote(
-                    ticker=ticker,
-                    expiry=contract.expiry,
-                    strike=contract.strike,
-                    call_put=contract.call_put,  # parsed from the descriptor
-                    bid=price_or_none(fields.get("BID")),
-                    ask=price_or_none(fields.get("ASK")),
-                    last=price_or_none(fields.get("LAST_PRICE")),
-                    volume=int_or_none(fields.get("VOLUME")),
-                    open_interest=int_or_none(fields.get("OPEN_INT")),
-                    timestamp=timestamp,
-                )
-            )
-        style = _resolve_style(styles)
-        # Remember the reference-only facts the stream cannot carry (OI, exercise
-        # style) so a streamed chain still reports them (bloomberg_live).
-        self._style_cache[ticker.upper()] = style
-        self._oi_cache.update(
-            {q.security: oi for q, oi in zip(contracts, (q.open_interest for q in quotes)) if oi is not None}
-        )
-        return ChainSnapshot(
-            ticker=ticker,
-            spot=spot,
-            timestamp=timestamp,
-            quotes=quotes,
-            exercise_style=style,
-            tick_size=US_OPTION_TICK,
-            settlement=self._settlement(ticker, {q.expiry for q in quotes}),
-        )
+    # ``_fetch_live`` (BID/ASK only), ``_exercise_style`` (one hit per ticker per
+    # day), ``enrich_reference`` and ``call_stats`` live in bloomberg_fields.
 
     # -- dividends (provider-specific capability, not part of the contract) --
 
@@ -704,10 +630,3 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         if future:
             return tuple(Dividend(ex_date=d, amount=a) for d, a in future)
         return project_dividends(history, reference, self.max_days)
-
-
-def _resolve_style(styles: list[str]) -> str:
-    """Majority exercise style across a chain (default american for equities)."""
-    if not styles:
-        return "american"
-    return "european" if styles.count("european") > styles.count("american") else "american"

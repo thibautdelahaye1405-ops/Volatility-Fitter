@@ -26,13 +26,21 @@ const sourceSelect =
   "text-slate-400 outline-none hover:border-slate-600 focus:border-accent-500 " +
   "disabled:cursor-not-allowed disabled:opacity-60";
 
+/** One choice of the per-row source select. */
+export interface SourceOption {
+  id: string;
+  label: string;
+}
+
 /** Per-ticker data-source column (state/tickerSources.ts, the multi-source
  *  engine): the select's value is the ticker's PIN (an `options[].id`, "" =
- *  follow the universe source) and `onChange` pins / unpins it on the server. */
+ *  follow the universe source, "auto" = the fastest green source) and
+ *  `onChange` pins / unpins it on the server. `options` may be a function of
+ *  the ticker: the auto option reads "Auto → Cboe" per row once resolved. */
 export interface SourceColumn {
   /** Source id (an `options[].id`) shown for this ticker's row. */
   label: (ticker: string) => string;
-  options: { id: string; label: string }[];
+  options: SourceOption[] | ((ticker: string) => SourceOption[]);
   disabled?: boolean;
   /** Tooltip of the select. */
   title?: string;
@@ -128,7 +136,10 @@ export default function LitDarkMatrix({
                     aria-label={`${ticker} data source`}
                     onChange={(e) => sourceColumn.onChange?.(ticker, e.target.value)}
                   >
-                    {sourceColumn.options.map((o) => (
+                    {(typeof sourceColumn.options === "function"
+                      ? sourceColumn.options(ticker)
+                      : sourceColumn.options
+                    ).map((o) => (
                       <option key={o.id} value={o.id}>
                         {o.label}
                       </option>

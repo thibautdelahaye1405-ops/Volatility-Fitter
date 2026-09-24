@@ -49,3 +49,6 @@ deploy/client.env
 Docs/notes/build_coordinates/
 backend/.mcp_trace.jsonl
 backend/.cache/
+
+# Provider on-disk caches (contract listings, ladders) - volfit.data.cache_dir
+backend/data/cache/

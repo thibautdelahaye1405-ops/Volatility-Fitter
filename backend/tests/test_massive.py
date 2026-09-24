@@ -96,7 +96,10 @@ def _ref_calls(fake: "FakeHttp") -> int:
 
 def test_option_tickers_caches_contract_listing():
     """``option_tickers`` / ``_chain_from_book`` must not re-paginate the contracts
-    reference on every call (the WS read + per-tick resubscribe diff hammer it)."""
+    reference on every call (the WS read + per-tick resubscribe diff hammer it).
+    Since 2026-09-24 EVERY derived view — a different expiry set, the expiry
+    ladder — comes off ONE listing per (underlying, exchange day): a second key
+    is no second pagination; only ``refresh_contracts`` re-pulls."""
     pages = {
         "/v3/reference/options/contracts": {
             "results": [_contract(500, 30, "call"), _contract(500, 30, "put")],
@@ -113,11 +116,12 @@ def test_option_tickers_caches_contract_listing():
     assert _ref_calls(fake) == 1  # second call served from cache
 
     provider.option_tickers("SPY", None)  # a different (ticker, expiry set) key
-    assert _ref_calls(fake) == 2
+    provider.available_expiries("SPY")  # and the ladder
+    assert _ref_calls(fake) == 1  # derived from the same day's listing
 
     provider.refresh_contracts()  # explicit invalidation re-pulls
     provider.option_tickers("SPY", exps)
-    assert _ref_calls(fake) == 3
+    assert _ref_calls(fake) == 2
 
 
 # --------------------------------------------------------------- chain
@@ -709,3 +713,202 @@ def test_index_root_lists_contracts_by_bare_root_and_snapshots_by_i_prefix():
     ref_probe = [p for u, p in fake.calls if "reference/options/contracts" in u]
     assert ref_probe and ref_probe[0]["underlying_ticker"] == "SPX"
     assert any(u.endswith("/v3/snapshot/options/I:SPX") for u, _ in fake.calls)
+
+
+# ------------------------------------- the snapshot request plan (2026-09-24)
+
+class _WindowApi:
+    """A snapshot API honouring ``expiration_date`` / ``.gte`` / ``.lte`` and
+    ``strike_price.gte/.lte``, 250 rows a page via ``next_url`` cursors,
+    thread-safe (two streams run at once). Records every request's params."""
+
+    def __init__(self, rows, page: int = 250):
+        import threading
+
+        self.rows, self.page = rows, page
+        self.calls: list[tuple[str, dict]] = []
+        self._cursors: dict[str, tuple[list, int]] = {}
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _match(r: dict, p: dict) -> bool:
+        exp, k = r["details"]["expiration_date"], r["details"]["strike_price"]
+        if "expiration_date" in p and exp != p["expiration_date"]:
+            return False
+        if "expiration_date.gte" in p and exp < p["expiration_date.gte"]:
+            return False
+        if "expiration_date.lte" in p and exp > p["expiration_date.lte"]:
+            return False
+        if "strike_price.gte" in p and k < p["strike_price.gte"]:
+            return False
+        if "strike_price.lte" in p and k > p["strike_price.lte"]:
+            return False
+        return True
+
+    def __call__(self, url, params):
+        p = dict(params or {})
+        with self._lock:
+            self.calls.append((url, p))
+            if "cursor=" in url:
+                rows, offset = self._cursors[url.split("cursor=")[1]]
+            else:
+                assert "/v3/snapshot/options/SPY" in url, url
+                rows, offset = [r for r in self.rows if self._match(r, p)], 0
+            body = {"results": rows[offset:offset + self.page], "status": "OK"}
+            if offset + self.page < len(rows):
+                cid = f"C{len(self._cursors)}"
+                self._cursors[cid] = (rows, offset + self.page)
+                body["next_url"] = f"https://api.massive.com/v3/snapshot/options/SPY?cursor={cid}"
+            return body
+
+
+def _window_rows(spot: float = 500.0, vol: float = 0.25, days=(7, 30, 200)) -> list[dict]:
+    """A European chain priced flat at ``vol`` with F = spot, D = 1 (exact
+    parity), 441 strikes from S*e^-2.2 to S*e^2.2 (882 rows an expiry: 4
+    pages of 250) -- far past any window."""
+    import math
+
+    import numpy as np
+
+    from volfit.core.black import black_call
+
+    rows = []
+    for d in days:
+        t = d / 365.0
+        for k in np.arange(-2.2, 2.2001, 0.01):
+            strike = round(spot * math.exp(float(k)), 2)
+            call = spot * float(black_call(math.log(strike / spot), vol * vol * t))
+            for cp, px in (("call", call), ("put", call - (spot - strike))):
+                rows.append({
+                    "details": {"contract_type": cp, "exercise_style": "european",
+                                "expiration_date": _exp(d), "strike_price": strike},
+                    "last_quote": {"bid": px * 0.99, "ask": px * 1.01},
+                    "day": {"close": px, "volume": 1}, "open_interest": 1,
+                    "underlying_asset": {"ticker": "SPY", "price": spot},
+                })
+    return rows
+
+
+def test_strike_window_leaves_the_prepared_quotes_byte_identical_and_cuts_the_pages():
+    """The plan (volfit.data.massive_snapshot): the nearest selected expiry is
+    fetched FIRST and unwindowed (it yields the spot); the rest carry
+    ``strike_price.gte/lte`` from the shared window rule -- a window that
+    contains the prep's Z_MAX band, so the PREPARED quotes are byte-identical
+    with the window on or off while the pages (and the raw quotes) shrink.
+    ``window_vol=None`` sends no strike filter at all."""
+    import numpy as np
+
+    from volfit.api.quotes import prepare_quotes
+    from volfit.data.forwards import ImpliedForward, implied_forward
+    from volfit.data.strike_window import strike_bounds
+
+    rows = _window_rows()
+    exps = [date.fromisoformat(_exp(d)) for d in (7, 30, 200)]
+    api_u, api_w = _WindowApi(rows), _WindowApi(rows)
+    plain = MassiveProvider(["SPY"], api_key="k", http_get=api_u, window_vol=None)
+    windowed = MassiveProvider(["SPY"], api_key="k", http_get=api_w)
+    cu, cw = plain.fetch_chain("SPY", exps), windowed.fetch_chain("SPY", exps)
+    assert cu.spot == cw.spot == 500.0 and windowed.last_spot("SPY") == 500.0
+    assert len(cw.quotes) < len(cu.quotes)  # the wings past the window were never requested
+    assert len(api_w.calls) < len(api_u.calls)  # fewer pages
+    for e in exps:
+        t = (e - TODAY).days / 365.0
+        fwd = ImpliedForward(expiry=e, forward=500.0, discount=1.0, n_strikes=0, residual_rms=0.0)
+        pu, pw = prepare_quotes(cu, e, fwd, t), prepare_quotes(cw, e, fwd, t)
+        assert pu.k.size > 10
+        for name in ("k", "w_mid", "iv_bid", "iv_mid", "iv_ask"):
+            assert np.array_equal(getattr(pu, name), getattr(pw, name)), (e, name)
+        assert (pu.forward, pu.discount, pu.t, pu.tick_size) == (pw.forward, pw.discount, pw.t, pw.tick_size)
+        fu, fw = implied_forward(cu, e), implied_forward(cw, e)  # the parity regressions agree too
+        assert abs(fu.forward - fw.forward) < 1e-6 and abs(fu.discount - fw.discount) < 1e-9
+    firsts = {p["expiration_date"]: p for u, p in api_w.calls if "cursor=" not in u}
+    assert api_w.calls[0][1]["expiration_date"] == exps[0].isoformat()  # the nearest expiry FIRST
+    assert "strike_price.gte" not in firsts[exps[0].isoformat()]  # and unwindowed
+    for e in exps[1:]:
+        lo, hi = strike_bounds(500.0, e, TODAY)
+        p = firsts[e.isoformat()]
+        assert p["strike_price.gte"] == pytest.approx(lo, abs=1e-4) and p["strike_price.gte"] <= lo
+        assert p["strike_price.lte"] == pytest.approx(hi, abs=1e-4) and p["strike_price.lte"] >= hi
+    assert not any("strike_price.gte" in p or "strike_price.lte" in p for _, p in api_u.calls)
+
+
+def test_whole_horizon_is_two_date_shards_windowed_once_a_spot_is_known():
+    """No selection: two ``expiration_date.gte/lte`` shards (the horizon split
+    at its midpoint), unwindowed until a spot is known, then windowed at each
+    shard's last expiry; ``horizon_shards=1`` + ``window_vol=None`` = the one
+    pre-2026-09-24 request."""
+    from datetime import timedelta
+
+    rows = _window_rows(days=(7, 30, 200, 700))
+    end, mid = TODAY + timedelta(days=730), TODAY + timedelta(days=365)
+    api = _WindowApi(rows)
+    p = MassiveProvider(["SPY"], api_key="k", http_get=api, max_days=730)
+    chain = p.fetch_chain("SPY", None)
+    firsts = [q for u, q in api.calls if "cursor=" not in u]
+    assert firsts == [
+        {"expiration_date.lte": mid.isoformat(), "limit": 250},
+        {"expiration_date.gte": (mid + timedelta(days=1)).isoformat(),
+         "expiration_date.lte": end.isoformat(), "limit": 250},
+    ]
+    keys = {(q.expiry, q.strike, q.call_put) for q in chain.quotes}
+    assert len(keys) == len(rows) and chain.spot == 500.0
+    legacy_api = _WindowApi(rows)
+    legacy = MassiveProvider(["SPY"], api_key="k", http_get=legacy_api, max_days=730,
+                             window_vol=None, horizon_shards=1)
+    legacy_chain = legacy.fetch_chain("SPY", None)
+    assert [q for u, q in legacy_api.calls if "cursor=" not in u] == [{"expiration_date.lte": end.isoformat(), "limit": 250}]
+    assert {(q.expiry, q.strike, q.call_put) for q in legacy_chain.quotes} == keys
+    api.calls.clear()
+    again = p.fetch_chain("SPY", None)  # the spot is known now: the shards are windowed
+    firsts = [q for u, q in api.calls if "cursor=" not in u]
+    assert len(firsts) == 2 and all("strike_price.gte" in q and "strike_price.lte" in q for q in firsts)
+    # At the reference vol the window sits at / near the 3.0 cap on both shards
+    # (S/20 .. 20 S) — wider than this ±2.2 ladder, so nothing is dropped: the
+    # filters ride the request, the chain is byte-identical.
+    assert all(q["strike_price.gte"] < 30 and q["strike_price.lte"] > 9000 for q in firsts)
+    assert {(q.expiry, q.strike, q.call_put) for q in again.quotes} == keys
+    tight_api = _WindowApi(rows)  # a tight reference vol shows the window biting
+    tight = MassiveProvider(["SPY"], api_key="k", http_get=tight_api, max_days=730, window_vol=0.3)
+    tight.fetch_chain("SPY", None)
+    tight_api.calls.clear()
+    narrowed = tight.fetch_chain("SPY", None)
+    assert len(narrowed.quotes) < len(chain.quotes)
+
+
+def test_whole_horizon_shards_cut_at_the_contract_median_when_a_listing_is_at_hand():
+    """The listing is front-loaded (dailies), so the date midpoint pages one
+    shard four times the other (SPY live 2026-09-24: 38 + 10). With the day's
+    listing in memory / on disk the cut sits at the contract-count median —
+    never at the price of a pull."""
+    from datetime import timedelta
+
+    from volfit.data.massive_snapshot import horizon_shards
+
+    rows = _window_rows(days=(7, 30, 200, 700))  # 882 rows an expiry: the median lands after the 2nd
+    listing = [dict(_contract(500, d, "call"), ticker=f"O:SPY{d}") for d in (7, 30, 200, 700) for _ in range(10)]
+    snapshot = _WindowApi(rows)
+
+    def http_get(url, params):
+        if "/v3/reference/options/contracts" in url:
+            return {"results": listing, "status": "OK"}
+        return snapshot(url, params)
+
+    p = MassiveProvider(["SPY"], api_key="k", http_get=http_get, max_days=730)
+    chain0 = p.fetch_chain("SPY", None)  # no listing yet: the date midpoint
+    firsts = [q for u, q in snapshot.calls if "cursor=" not in u]
+    assert firsts[0] == {"expiration_date.lte": (TODAY + timedelta(days=365)).isoformat(), "limit": 250}
+    p.available_expiries("SPY")  # the listing is now in memory (one pull)
+    snapshot.calls.clear()
+    chain1 = p.fetch_chain("SPY", None)
+    firsts = [q for u, q in snapshot.calls if "cursor=" not in u]
+    assert firsts[0]["expiration_date.lte"] == _exp(30)  # 20 of 40 listed contracts by the 30-day expiry
+    assert firsts[1]["expiration_date.gte"] == (TODAY + timedelta(days=31)).isoformat()
+    assert {(q.expiry, q.strike) for q in chain1.quotes} <= {(q.expiry, q.strike) for q in chain0.quotes}
+    # the pure function: quantile cuts, a degenerate cut at the horizon's end, no weights -> midpoints
+    w = {TODAY + timedelta(days=d): n for d, n in ((7, 50), (30, 30), (200, 15), (700, 5))}
+    assert horizon_shards(TODAY, 730, 2, w) == [(None, TODAY + timedelta(days=7)),
+                                                 (TODAY + timedelta(days=8), TODAY + timedelta(days=730))]
+    three = horizon_shards(TODAY, 730, 3, w)
+    assert [s[1] for s in three] == [TODAY + timedelta(days=7), TODAY + timedelta(days=30), TODAY + timedelta(days=730)]
+    assert horizon_shards(TODAY, 730, 2, {TODAY + timedelta(days=730): 100}) == [(None, TODAY + timedelta(days=365)), (TODAY + timedelta(days=366), TODAY + timedelta(days=730))]
+    assert horizon_shards(TODAY, 730, 2, None) == horizon_shards(TODAY, 730, 2, {})

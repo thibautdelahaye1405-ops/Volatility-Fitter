@@ -52,6 +52,10 @@ export interface UniverseResponse {
    *  follows the default) — state/tickerSources.ts. Optional for the mock. */
   defaultSource?: string;
   tickerSources?: Record<string, string>;
+  /** ticker -> the source it fetches from NOW: an "auto" pin's resolution made
+   *  visible beside the pin (state/tickerSources.ts); the pin / the default
+   *  for the others. Optional for the mock. */
+  resolvedSources?: Record<string, string>;
 }
 
 /** Mid-ladder rung (3rd if ≥ 3 expiries): neither the noisy front month nor

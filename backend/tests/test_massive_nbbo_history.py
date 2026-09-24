@@ -88,6 +88,9 @@ class _Api:
 
 
 def _provider(api, **kw) -> MassiveProvider:
+    """A provider over the fake; the retry backoff sleeps are no-ops so a
+    throttled fake answers instantly (the retry POLICY is what is under test)."""
+    kw.setdefault("retry_sleep", lambda _s: None)
     return MassiveProvider(["SPY"], api_key="k", http_get=api, **kw)
 
 
@@ -171,15 +174,112 @@ def test_entitlement_gate_falls_back_to_marks_and_is_remembered(tmp_path):
     assert p.intraday_capable() is True  # the aggregate paths still serve an instant
 
 
-def test_rate_limit_mid_chain_aborts_to_aggregate_marks_without_a_store():
-    api = _Api(_contracts(range(450, 550, 2)), fail_after=10)  # the 11th answer is a 429 body
+def test_rate_limit_mid_chain_skips_the_throttled_contracts_and_keeps_the_frame():
+    """CONTRACT CHANGE 2026-09-24 (was ``…aborts_to_aggregate_marks…``): a rate
+    limit no longer gates the session. A throttled call is retried (backoff)
+    and, still failing, that contract is SKIPPED: the frame completes with the
+    contracts it got, as real quotes, the gauge says how many were skipped,
+    and the gate stays open for the next frame."""
+    api = _Api(_contracts(range(450, 550, 2)), fail_after=10)  # every answer past the 10th is a 429 body
     p = _provider(api)
     ts = datetime(2026, 6, 12, 19, 45)
-    chain = p.fetch_chain("SPY", [EXP], as_of=AsOf(mode="intraday", ts=ts))
-    assert chain.quote_kind == "marks" and all(q.bid == q.ask for q in chain.quotes)  # minute bars
-    assert len(chain.quotes) == 100 and chain.timestamp == ts
-    assert "maximum requests" in p.nbbo_history_gate()
-    assert len(api.quote_calls) < 100  # aborted, not crawled to the end
+    seen: list = []
+    with progress.bind(lambda d, t, label: seen.append((d, t, label))):
+        chain = p.fetch_chain("SPY", [EXP], as_of=AsOf(mode="intraday", ts=ts))
+    assert chain.quote_kind == "quotes" and chain.timestamp == ts
+    assert 0 < len(chain.quotes) <= 10  # what it got before the limit hit
+    assert all(q.ask - q.bid == pytest.approx(0.2) for q in chain.quotes)  # real spreads, not marks
+    assert p.nbbo_history_gate() is None and p.historical_quote_kind() == "quotes"  # NOT gated
+    assert "throttled:" in seen[-1][2] and "skipped" in seen[-1][2]
+    skipped = int(seen[-1][2].split("throttled: ")[1].split()[0])
+    assert skipped + len(chain.quotes) == 100
+    stats = p.call_stats()
+    assert stats["rateEvents"] > 0 and stats["retries"] > 0 and "maximum requests" in stats["lastError"]
+    # the throttled calls were RETRIED (3 retries each) before being skipped
+    assert len(api.quote_calls) > 100
+
+
+def test_a_frame_throttled_throughout_falls_back_to_marks_for_that_frame_only():
+    """Every quote answer a 429 body: zero quotes -> the aggregate marks, as
+    before — but only for THIS frame: the gate is untouched, the next frame
+    asks for the quotes again (an entitlement answer is what gates)."""
+    rate = {"status": "ERROR", "error": "You've exceeded the maximum requests per minute"}
+    api = _Api(_contracts([490, 500, 510]), stock="aggs", quote_status=rate)
+    p = _provider(api)
+    chain = p.fetch_chain("SPY", [EXP], as_of=AsOf(mode="eod", on=DAY))
+    assert chain.quote_kind == "marks" and all(q.bid == q.ask for q in chain.quotes)
+    assert len(chain.quotes) == 6 and chain.spot == pytest.approx(500.0)
+    assert p.nbbo_history_gate() is None and p.historical_quote_kind() == "quotes"
+    n = len(api.quote_calls)
+    p.fetch_chain("SPY", [EXP], as_of=AsOf(mode="eod", on=DAY))
+    assert len(api.quote_calls) > n  # the next frame tried the quotes again
+
+
+def test_the_aimd_window_arithmetic():
+    from volfit.data.massive_history import AdaptiveWindow
+
+    w = AdaptiveWindow(start=12, floor=4, cap=40, step=4, clean_runs=50)
+    assert w.limit == 12
+    for _ in range(49):
+        w.acquire(); w.release(ok=True)
+    assert w.limit == 12  # 49 clean calls: not yet
+    w.acquire(); w.release(ok=True)
+    assert w.limit == 16 and w.clean == 0  # the 50th widens by the step
+    w.throttle("rate")
+    assert w.limit == 8 and w.clean == 0 and w.throttles == 1  # halved
+    for _ in range(3):
+        w.throttle()
+    assert w.limit == 4  # floored, never below
+    for _ in range(50 * 20):
+        w.acquire(); w.release(ok=True)
+    assert w.limit == 40  # capped at the pool
+    w.acquire(); w.release(ok=False)
+    assert w.in_flight == 0 and w.peak == 1
+
+
+def test_concurrency_backs_off_when_the_feed_throttles_the_burst():
+    """A fake that answers a 429 body whenever more than 8 calls are in flight:
+    the window (opening at 12) halves on the first throttle and the frame
+    completes — every contract either quoted or skipped, never aborted; the
+    pool never exceeds the window's opening size."""
+    import time as _time
+
+    from volfit.data.massive_history import NBBO_CONCURRENCY
+
+    base = _Api(_contracts(range(400, 600)))  # 400 contracts
+    state = {"in_flight": 0, "peak": 0, "throttled": 0}
+    lock = threading.Lock()
+
+    def http_get(url, params):
+        if "/v3/quotes/O:" not in url:
+            return base(url, params)
+        with lock:
+            state["in_flight"] += 1
+            state["peak"] = max(state["peak"], state["in_flight"])
+            over = state["in_flight"] > 8
+        try:
+            _time.sleep(0.002)
+            if over:
+                with lock:
+                    state["throttled"] += 1
+                return {"status": "ERROR", "error": "You've exceeded the maximum requests per minute"}
+            return base(url, params)
+        finally:
+            with lock:
+                state["in_flight"] -= 1
+
+    p = MassiveProvider(["SPY"], api_key="k", http_get=http_get, retry_sleep=lambda _s: _time.sleep(0.001))
+    seen: list = []
+    with progress.bind(lambda d, t, label: seen.append(label)):
+        chain = p.fetch_chain("SPY", [EXP], as_of=AsOf(mode="eod", on=DAY))
+    window = p._nbbo_window
+    assert window is not None and window.peak <= NBBO_CONCURRENCY  # never past the opening window
+    assert state["throttled"] > 0 and window.throttles > 0  # the burst WAS throttled
+    assert window.limit <= 8  # and the window shrank under the feed's tolerance
+    assert chain.quote_kind == "quotes" and chain.spot == pytest.approx(500.0)
+    skipped = int(seen[-1].split("throttled: ")[1].split()[0]) if "throttled:" in seen[-1] else 0
+    assert len(chain.quotes) + skipped == 400 and len(chain.quotes) > 300  # the frame completed
+    assert p.nbbo_history_gate() is None
 
 
 def test_eod_without_a_store_and_a_closed_gate_is_the_aggregate_close():
@@ -240,3 +340,39 @@ def test_off_switch_never_touches_the_quote_history(tmp_path):
     p = _provider(api, flat_store=_flat_store(tmp_path), hist_nbbo=False)
     chain = p.fetch_chain("SPY", [date(2026, 6, 16)], as_of=AsOf(mode="eod", on=DAY))
     assert chain.quote_kind == "marks" and api.quote_calls == []
+
+
+def test_the_gated_stock_nbbo_is_asked_once_per_session():
+    """An options-only plan: the stock NBBO spot hint answers NOT_AUTHORIZED —
+    remembered, so later frames go straight to the aggregate bar (one call and
+    one meter error per frame fewer)."""
+    api = _Api(_contracts([490, 500, 510]), stock="none")
+    stock_calls = {"n": 0}
+
+    bar_calls = {"n": 0}
+
+    def http_get(url, params):
+        if url.endswith("/v3/quotes/SPY"):
+            stock_calls["n"] += 1
+        if "/v2/aggs/ticker/SPY/" in url:
+            bar_calls["n"] += 1  # the stock bar is another product: probed per frame (cheap, not memoised)
+        return api(url, params)
+
+    p = MassiveProvider(["SPY"], api_key="k", http_get=http_get, retry_sleep=lambda _s: None)
+    for _ in range(3):
+        chain = p.fetch_chain("SPY", [EXP], as_of=AsOf(mode="eod", on=DAY))
+        assert chain.quote_kind == "quotes" and chain.spot == pytest.approx(500.0)  # parity
+    assert stock_calls["n"] == 1 and p._stock_nbbo_gated and bar_calls["n"] == 3
+    assert p.call_stats()["entitlementEvents"] == 1 + bar_calls["n"]
+
+
+def test_the_pooled_client_keeps_enough_connections_for_the_crawl():
+    from volfit.data.massive_http import POOL_CONNECTIONS, MassiveHttp
+    from volfit.data.massive_history import NBBO_POOL
+
+    assert POOL_CONNECTIONS >= NBBO_POOL + 2
+    h = MassiveHttp("k")
+    pool = h.client()._transport._pool
+    assert getattr(pool, "_max_keepalive_connections", POOL_CONNECTIONS) == POOL_CONNECTIONS
+    assert getattr(pool, "_max_connections", POOL_CONNECTIONS) == POOL_CONNECTIONS
+    h.close()

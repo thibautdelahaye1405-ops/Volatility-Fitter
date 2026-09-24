@@ -124,7 +124,7 @@ def test_legacy_untagged_capture_replays_but_is_never_offered(tmp_path):
 # ---------------------------------------------------------------- schema
 
 def test_store_schema_v10_has_source_and_migrates_a_v9_file(tmp_path):
-    assert SCHEMA_VERSION == 11  # v11 = the series tables (test_store_series)
+    assert SCHEMA_VERSION == 12  # v12 = the as-of cache columns (test_asof_cache / test_store_series)
     fresh = tmp_path / "fresh.sqlite"
     with VolStore(fresh) as store:
         assert store.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION

@@ -19,8 +19,10 @@ import warnings
 from collections import deque
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from time import perf_counter
 from typing import TYPE_CHECKING
 
+from volfit.api.asof_cache import fetch_asof_chain
 from volfit.api.fit_models import DisplayFit
 from volfit.api.quotes import PreparedQuotes
 from volfit.api.schemas import (
@@ -64,6 +66,7 @@ from volfit.data.dividends import (
     forward_consistent_cash_schedule,
     theoretical_forward,
 )
+from volfit.api.source_policy import AUTO_SOURCE
 from volfit.api.state_sources import SourcesMixin
 from volfit.api.state_universe import UniverseMixin, UnknownNodeError  # noqa: F401 (re-export)
 from volfit.data import governance
@@ -564,9 +567,12 @@ class AppState(SourcesMixin, UniverseMixin):
             for t, mode in self._selection_mode.items():
                 if mode == "custom" and t in self._selected:
                     self._pending_selections[t] = list(self._selected[t])
+            # An explicit pin OR an auto pin (its remembered resolution is a
+            # source of its own, never the default) keeps its feed and caches.
             pinned = {
                 t for t in self._active_tickers
                 if self._ticker_sources.get(t) in self._providers
+                or self._ticker_sources.get(t) == AUTO_SOURCE
             }
             was_live = self._asof == AsOfSelection()
             self._active_source = source_id
@@ -767,7 +773,10 @@ class AppState(SourcesMixin, UniverseMixin):
             return self._asof
 
     def _fetch_asof(self, ticker: str, chosen: list[date]) -> ChainSnapshot:
-        """Fetch a chain for the current as-of: live (+capture) / provider EOD /
+        """Fetch a chain for the current as-of: live (+capture) / prev close /
+        an EOD day or an intraday instant STORE-FIRST (volfit.api.asof_cache:
+        a series frame or an earlier reconstruction at that instant is served
+        before the provider rebuilds it; a miss is fetched and saved) /
         captured replay from the store."""
         sel = self._asof
         prov = self.provider_for(ticker)  # the ticker's own source (a pin, else the default)
@@ -787,10 +796,10 @@ class AppState(SourcesMixin, UniverseMixin):
                     f"no captured snapshot for {ticker!r} at {sel.ts}"
                 )
             return snap
-        if sel.mode in ("prev_close", "eod"):
+        if sel.mode in ("eod", "intraday"):
+            return fetch_asof_chain(self, prov, ticker, chosen, sel)  # the store first
+        if sel.mode == "prev_close":
             return prov.fetch_chain(ticker, chosen, as_of=AsOf(mode=sel.mode, on=sel.on))
-        if sel.mode == "intraday":
-            return prov.fetch_chain(ticker, chosen, as_of=AsOf(mode="intraday", ts=sel.ts))
         snap = prov.fetch_chain(ticker, chosen)  # live
         self._persist_capture(snap)
         return snap
@@ -872,7 +881,15 @@ class AppState(SourcesMixin, UniverseMixin):
     def _fetch_and_cache(self, ticker: str) -> ChainSnapshot:
         """Pull the chain from the active provider for the SELECTED expiries and
         cache it (the explicit-fetch path). Degrades a feed failure / empty chain
-        to an empty UNCACHED snapshot (retried on the next access), never a 500."""
+        to an empty UNCACHED snapshot (retried on the next access), never a 500.
+
+        This is the one place an AUTO pin re-resolves (volfit.api.source_policy:
+        at Fetch time, never on a tick) and where a LIVE pull's wall feeds the
+        source's EWMA — the ranking the next resolution uses."""
+        if self.refresh_auto_source(ticker):
+            # The fastest source moved: the caches went like a re-pin; the
+            # ladder re-resolves on the new feed before this pull (network).
+            self._ensure_selection(ticker)
         with self._lock:
             chosen = list(self._selected.get(ticker, []))
         if not chosen:
@@ -880,8 +897,13 @@ class AppState(SourcesMixin, UniverseMixin):
             # uncached snapshot so the next access re-probes the provider rather
             # than freezing a zero-expiry node for the whole process.
             return self._empty_snapshot(ticker)
+        started = perf_counter()
         try:
             snap = self._fetch_asof(ticker, chosen)  # outside lock (network)
+            if snap.quotes and self._asof.mode == "live":
+                # Only a LIVE chain measures the feed: a historical rebuild
+                # (Massive: ~1,500 calls) would poison the live ranking.
+                self.source_policy.record_wall(self.source_of(ticker), perf_counter() - started)
         except UnknownNodeError:
             raise  # genuine 404 (e.g. captured replay with no stored snapshot)
         except Exception:

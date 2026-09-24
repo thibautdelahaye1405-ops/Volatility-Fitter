@@ -49,6 +49,22 @@ const POLL_SSE_MS = 5000;
  *  elapsed gauge is drawn against. A backend fetch has its own per-download
  *  cap (the exchange venues: 120 s); this is the last line. */
 export const ACTION_TIMEOUT_MS = 600_000;
+/** Freshness window (seconds) Fetch ▾ Snapshot sends as `maxAgeSeconds` — the
+ *  auto-update model's 15-s snapshot floor: a chain younger than this is not
+ *  pulled again (a double-click, a Calibrate right after a Fetch = zero calls);
+ *  the spot is still probed and the skipped tickers (`skippedFresh`) narrated
+ *  by the Last chip. The legacy `/fetch/options` verb sends nothing. */
+export const FETCH_MAX_AGE_S = 15;
+
+/** The Last chip's label once an action completed: `DONE_LABEL`, plus for the
+ *  Snapshot verb the tickers skipped as fresh ("· 2 fresh, skipped") — never silent. */
+export function doneLabel(key: WorkflowAction, result: unknown): string {
+  const base = DONE_LABEL[key];
+  if (key !== "fetchSnapshot") return base;
+  const skipped = (result as { skippedFresh?: unknown } | null)?.skippedFresh;
+  const n = Array.isArray(skipped) ? skipped.length : 0;
+  return n > 0 ? `${base} · ${n} fresh, skipped` : base;
+}
 
 export interface UseWorkflowResult {
   calib: CalibrationStatus | null;
@@ -278,7 +294,7 @@ export function useWorkflow(
   }, [fitMode]);
 
   const action = useCallback(
-    async (key: WorkflowAction, path: string, withBody: boolean, awaitJob = false) => {
+    async (key: WorkflowAction, path: string, withBody: boolean, awaitJob = false, body: object = {}) => {
       setPending(key);
       pendingRef.current = key;
       setPendingSince(Date.now());
@@ -289,15 +305,15 @@ export function useWorkflow(
         // bid-ask / haircut smile stays frozen because only "mid" was calibrated).
         // Chain fetches / calibration kicks can legitimately run for minutes
         // on a large universe; the status poll below is the responsive layer.
-        await api.post(path, {
+        const result = await api.post<unknown>(path, {
           params: { fit_mode: fitMode },
           timeoutMs: ACTION_TIMEOUT_MS,
-          ...(withBody ? { body: {} } : {}),
+          ...(withBody ? { body } : {}),
         });
         if (awaitJob) await awaitCalibration(); // block until the fit completes
         await poll(); // resync status + advance the epoch/spot baselines
         refreshViews(); // refetch every view against the now-current fit
-        noteAction(DONE_LABEL[key]);
+        noteAction(doneLabel(key, result));
       } catch (err: unknown) {
         // Recorded (status bar) rather than thrown: callers fire-and-forget.
         noteAction(`${FAIL_LABEL[key]}: ${messageOf(err)}`, false);
@@ -318,7 +334,7 @@ export function useWorkflow(
   // Unified fetch (V3.7 item 15): quotes + spot in one pull; awaitJob because it
   // may kick a background calibration (autoCalibrate), exactly like fetchOptions.
   const fetchSnapshot = useCallback(
-    () => action("fetchSnapshot", "/fetch/snapshot", true, true),
+    () => action("fetchSnapshot", "/fetch/snapshot", true, true, { maxAgeSeconds: FETCH_MAX_AGE_S }),
     [action],
   );
   const calibrate = useCallback(() => action("calibrate", "/calibrate", false, true), [action]);

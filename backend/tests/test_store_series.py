@@ -33,10 +33,10 @@ def _cols(conn: sqlite3.Connection, table: str) -> set[str]:
 
 # ------------------------------------------------------------------ schema
 
-def test_fresh_store_is_v11_with_the_series_tables(tmp_path):
-    assert SCHEMA_VERSION == 11
+def test_fresh_store_is_current_with_the_series_tables(tmp_path):
+    assert SCHEMA_VERSION == 12  # v12 = the as-of cache columns (test_asof_cache)
     with VolStore(tmp_path / "fresh.sqlite") as store:
-        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == 11
+        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == 12
         assert set(SERIES_TABLES) <= _tables(store.conn)
         assert has_series_tables(store.conn)
         assert "series_id" in _cols(store.conn, "snapshots")
@@ -44,7 +44,7 @@ def test_fresh_store_is_v11_with_the_series_tables(tmp_path):
         assert {"series_id", "idx", "snapshot_id", "quote_kind"} <= _cols(store.conn, "series_frames")
 
 
-def test_a_v10_file_migrates_to_v11_keeping_its_rows(tmp_path):
+def test_a_v10_file_migrates_forward_keeping_its_rows(tmp_path):
     old = tmp_path / "v10.sqlite"
     conn = sqlite3.connect(old)
     conn.executescript(
@@ -69,15 +69,15 @@ def test_a_v10_file_migrates_to_v11_keeping_its_rows(tmp_path):
     conn.close()
     assert not has_series_tables(sqlite3.connect(old))
     with VolStore(old) as store:
-        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == 11
+        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == 12
         assert "series_id" in _cols(store.conn, "snapshots")
         assert has_series_tables(store.conn)
         rows = store.list_snapshots(["ALPHA"], source="cboe")
         assert len(rows) == 1  # the capture survives, still a capture (series_id NULL)
         assert store.conn.execute("SELECT series_id FROM snapshots").fetchone()[0] is None
-    # Re-opening an up-to-date file takes the fast path (no DDL) and stays v11.
+    # Re-opening an up-to-date file takes the fast path (no DDL) and stays current.
     with VolStore(old) as store:
-        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == 11
+        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == 12
 
 
 # ------------------------------------------------------- frame exclusion

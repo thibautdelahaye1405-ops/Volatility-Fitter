@@ -97,13 +97,20 @@ def _build_providers() -> dict:
         # settlement surface (zero-width quotes) otherwise.
         "eurex": ExchangeChainProvider(tickers, EurexAdapter()),
         # //blp/mktdata streaming knobs (volfit.data.bloomberg_live): conflation
-        # seconds (0 = every tick), concurrent-subscription budget, DAPI endpoint.
+        # seconds (0 = every tick), concurrent-subscription budget, DAPI endpoint;
+        # book-first seconds a live fetch waits for the book before a metered
+        # pull, VOLFIT_BBG_BOOK_ONLY=1 forbids that pull while streaming; the
+        # reference vol the per-expiry strike window is sized for (1.0).
         "bloomberg": BloombergProvider(
             tickers,
             stream_interval=_env_float("VOLFIT_BBG_STREAM_INTERVAL", 1.0) or None,
             max_subscriptions=int(_env_float("VOLFIT_BBG_MAX_SUBS", 3000)),
             stream_host=os.environ.get("VOLFIT_BBG_HOST", "").strip() or None,
             stream_port=int(_env_float("VOLFIT_BBG_PORT", 0)) or None,
+            book_first_wait=_env_float("VOLFIT_BBG_BOOK_WAIT", 5.0),
+            book_only=os.environ.get("VOLFIT_BBG_BOOK_ONLY", "").strip().lower()
+            in ("1", "true", "yes", "on"),
+            window_sigma_ref=_env_float("VOLFIT_BBG_WINDOW_SIGMA", 1.0),
         ),
         "massive": MassiveProvider(
             tickers,

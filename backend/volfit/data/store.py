@@ -57,7 +57,25 @@ from volfit.data.types import ChainSnapshot, ExpirySettlement, Instrument, Optio
 #: — series / lanes / frames / fits) and ``snapshots.series_id`` (NULL on
 #: every capture; set on a series FRAME so the as-of picker's listing skips
 #: it — ``list_snapshots`` / ``snapshot_at`` default to captures only).
-SCHEMA_VERSION = 11
+#: v12 (store-first as-of, 2026-09-24): ``snapshots.quote_kind`` (what the
+#: quotes ARE — "quotes" / "marks", ``ChainSnapshot.quote_kind``; NULL on rows
+#: saved before v12, backfilled from ``series_frames.quote_kind`` for the
+#: frames a series owns) and ``snapshots.request_json`` (the expiry ladder the
+#: as-of layer ASKED the provider for when it reconstructed the row; NULL on
+#: captures and series frames). Both serve volfit.api.asof_cache: a stored
+#: instant is reused only when its kind does not shadow better quotes and its
+#: request covers the selection asked for now.
+SCHEMA_VERSION = 12
+
+#: The ``series_id`` tag of a chain the as-of layer RECONSTRUCTED from a
+#: provider's history (an EOD close / an intraday instant, volfit.api.asof_cache)
+#: and saved so the next read of the same instant is served from the store
+#: instead of rebuilt from the feed (Massive: up to 1,500 per-contract calls).
+#: A reserved id no series can own: the picker's ``series_id IS NULL`` filter
+#: keeps such rows out of the captured-moments listing exactly like a series
+#: frame — a reconstruction is not a capture the source made at that moment —
+#: and the series layer never lists it (no ``series`` row carries this id).
+ASOF_CACHE_TAG = "_asof"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS instruments (
@@ -75,7 +93,9 @@ CREATE TABLE IF NOT EXISTS snapshots (
     tick_size       REAL,
     settlement_json TEXT,
     source          TEXT,
-    series_id       TEXT
+    series_id       TEXT,
+    quote_kind      TEXT,
+    request_json    TEXT
 );
 CREATE TABLE IF NOT EXISTS quotes (
     snapshot_id   INTEGER NOT NULL REFERENCES snapshots(id),
@@ -166,6 +186,21 @@ class FitRecord:
     label: str | None = None
 
 
+@dataclass(frozen=True)
+class SnapshotMeta:
+    """A snapshot row's identity without its quotes (``snapshot_meta_at``).
+    ``quote_kind`` is the RAW column: None on a pre-v12 row whose kind is
+    unknown; ``request`` the expiry ladder an as-of reconstruction was fetched
+    for (None on captures / series frames)."""
+
+    id: int
+    ts: datetime
+    source: str | None
+    series_id: str | None
+    quote_kind: str | None
+    request: list[date] | None
+
+
 class VolStore:
     """Context-managed SQLite store for the vol-fitter app state.
 
@@ -207,6 +242,11 @@ class VolStore:
         (those are never offered by a source-filtered listing).
         v10 -> v11: the `snapshots` table gains `series_id` (NULL on every
         capture) and the series tables are created (`store_series`).
+        v11 -> v12: the `snapshots` table gains `quote_kind` + `request_json`
+        (volfit.api.asof_cache). `quote_kind` is backfilled from the series
+        frames table for the rows a series owns (their kind was only recorded
+        on the frame), so a harvested NBBO frame is reusable by the as-of
+        layer right away; every other old row stays NULL (= unknown kind).
 
         Fast path: a store is opened on *every* capture/persist/load, so once the
         file is already at `SCHEMA_VERSION` we return immediately — skipping the
@@ -241,6 +281,15 @@ class VolStore:
         if 1 <= version <= 10:  # pre-v11 file: add the series-frame tag
             self.conn.execute("ALTER TABLE snapshots ADD COLUMN series_id TEXT")
         ensure_series_schema(self.conn)  # needs snapshots.series_id (its index)
+        if 1 <= version <= 11:  # pre-v12 file: the quote kind + the as-of request
+            self.conn.execute("ALTER TABLE snapshots ADD COLUMN quote_kind TEXT")
+            self.conn.execute("ALTER TABLE snapshots ADD COLUMN request_json TEXT")
+            # A series frame's kind lived on the frame row only: copy it over
+            # so the as-of layer can tell a harvested NBBO frame from marks.
+            self.conn.execute(
+                "UPDATE snapshots SET quote_kind = (SELECT f.quote_kind FROM series_frames f "
+                "WHERE f.snapshot_id = snapshots.id) WHERE series_id IS NOT NULL"
+            )
         self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self.conn.commit()
 
@@ -278,12 +327,18 @@ class VolStore:
         snapshot: ChainSnapshot,
         source: str | None = None,
         series_id: str | None = None,
+        request: list[date] | None = None,
     ) -> int:
         """Persist one chain snapshot; returns the new snapshot id. ``source`` is
         the data-source id that produced it (the as-of picker lists a source's
         own captures only); None = unattributed (legacy). ``series_id`` marks a
         series FRAME (schema v11): such a row is skipped by the capture
-        listings unless asked for, and addressed by id from the series layer."""
+        listings unless asked for, and addressed by id from the series layer
+        (``ASOF_CACHE_TAG`` marks an as-of reconstruction the same way).
+        ``request`` (v12) is the expiry ladder the row was fetched FOR — an
+        as-of reconstruction records it so a later read can tell "this expiry
+        was asked for and the feed had nothing" from "never asked" (a weekly
+        listed after the instant is legitimately absent from the chain)."""
         settlement_json = None
         if snapshot.settlement is not None:
             settlement_json = json.dumps(
@@ -298,8 +353,8 @@ class VolStore:
             )
         cur = self.conn.execute(
             "INSERT INTO snapshots (ticker, spot, ts, exercise_style, zero_carry, "
-            "tick_size, settlement_json, source, series_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "tick_size, settlement_json, source, series_id, quote_kind, request_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 snapshot.ticker,
                 snapshot.spot,
@@ -310,6 +365,8 @@ class VolStore:
                 settlement_json,
                 source,
                 series_id,
+                snapshot.quote_kind,
+                None if request is None else json.dumps(sorted(e.isoformat() for e in request)),
             ),
         )
         snapshot_id = int(cur.lastrowid)
@@ -338,12 +395,12 @@ class VolStore:
         """Reload a snapshot; raises KeyError if the id is unknown."""
         row = self.conn.execute(
             "SELECT ticker, spot, ts, exercise_style, zero_carry, tick_size, "
-            "settlement_json FROM snapshots WHERE id = ?",
+            "settlement_json, quote_kind FROM snapshots WHERE id = ?",
             (snapshot_id,),
         ).fetchone()
         if row is None:
             raise KeyError(f"no snapshot with id {snapshot_id}")
-        ticker, spot, ts, exercise_style, zero_carry, tick_size, settlement_json = row
+        ticker, spot, ts, exercise_style, zero_carry, tick_size, settlement_json, kind = row
         timestamp = datetime.fromisoformat(ts)
         settlement = None
         if settlement_json:
@@ -382,6 +439,10 @@ class VolStore:
             quotes=quotes,
             exercise_style=exercise_style,
             zero_carry=bool(zero_carry),
+            # NULL = a pre-v12 row of unknown kind: served as "quotes" exactly as
+            # before the column existed (the as-of layer reads the raw column
+            # through ``snapshot_meta_at`` and treats NULL as unknown).
+            quote_kind=kind or "quotes",
             tick_size=tick_size,
             settlement=settlement,
         )
@@ -442,15 +503,39 @@ class VolStore:
         Series frames are skipped unless ``include_series`` (a captured
         replay must land on the capture the picker listed, never on a frame
         a series harvested a minute later)."""
-        sql = "SELECT id FROM snapshots WHERE ticker = ? AND ts <= ?"
+        meta = self.snapshot_meta_at(ticker, ts, source=source, include_series=include_series)
+        return self.load_snapshot(meta.id) if meta is not None else None
+
+    def snapshot_meta_at(
+        self,
+        ticker: str,
+        ts: datetime,
+        source: str | None = None,
+        include_series: bool = False,
+        exact: bool = False,
+    ) -> "SnapshotMeta | None":
+        """The row ``snapshot_at`` would load, WITHOUT loading its quotes — the
+        as-of layer decides on the metadata (kind, request) before paying for
+        a chain. ``exact`` requires ``ts`` itself (a reconstruction / a frame is
+        keyed by its instant; an earlier capture must never pass for it).
+        ``include_series`` admits series frames AND as-of reconstructions
+        (``ASOF_CACHE_TAG``). Among rows at the same instant a real two-sided
+        row ("quotes") outranks marks, then the newest wins."""
+        sql = "SELECT id, ts, source, series_id, quote_kind, request_json FROM snapshots " \
+              "WHERE ticker = ? AND ts " + ("= ?" if exact else "<= ?")
         args: list = [ticker, ts.isoformat()]
         if source is not None:
             sql += " AND (source = ? OR source IS NULL)"
             args.append(source)
         if not include_series:
             sql += " AND series_id IS NULL"
-        row = self.conn.execute(sql + " ORDER BY ts DESC, id DESC LIMIT 1", args).fetchone()
-        return self.load_snapshot(int(row[0])) if row else None
+        sql += " ORDER BY ts DESC, (quote_kind = 'quotes') DESC, id DESC LIMIT 1"
+        row = self.conn.execute(sql, args).fetchone()
+        if row is None:
+            return None
+        sid, stamp, src, series_id, kind, request_json = row
+        request = None if request_json is None else [date.fromisoformat(e) for e in json.loads(request_json)]
+        return SnapshotMeta(int(sid), datetime.fromisoformat(stamp), src, series_id, kind, request)
 
     def last_snapshot_ts(self, ticker: str) -> datetime | None:
         """Timestamp of the ticker's most recent snapshot, or None (for capture

@@ -59,6 +59,7 @@ def universe_payload(state: AppState) -> UniverseResponse:
     return UniverseResponse(
         asOf=state.reference_date.isoformat(), tickers=tickers, expiries=expiries, errors=errors,
         defaultSource=state.active_source, tickerSources=state.ticker_sources(),
+        resolvedSources=state.resolved_sources(),  # an auto pin's pick, beside the pin
     )
 
 

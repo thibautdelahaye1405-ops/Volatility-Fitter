@@ -319,6 +319,7 @@ def _make_provider(session, **kwargs):
         bdp_values[d] = {"BID": "9.0", "ASK": "9.5", "LAST_PRICE": "9.2", "VOLUME": "1", "OPEN_INT": "77", "OPT_EXER_TYP": "American"}
     blp = FakeBlp(_opt_chain_frame(DESCRIPTORS), bdp_values)
     kwargs.setdefault("strike_window", (0.9, 1.1))
+    kwargs.setdefault("book_first_wait", 0.3)  # the 5 s production wait, shortened for the suite
     prov = BloombergProvider(["SPY"], blp_module=blp, stream_session_factory=lambda: session, **kwargs)
     return prov, blp
 
@@ -394,12 +395,16 @@ def test_fetch_chain_falls_back_to_reference_when_selection_not_subscribed():
         n = len(blp.bdp_calls)
         far = TODAY + timedelta(days=120)
         snap = prov.fetch_chain("SPY", [_near_expiry(), far])  # far expiry not streamed yet
-        assert len(blp.bdp_calls) == n + 1  # metered fallback, but a COMPLETE chain
+        # metered fallback, but a COMPLETE chain: the once-a-day style probe
+        # (one representative contract) + ONE BID/ASK pull over the selection
+        assert len(blp.bdp_calls) == n + 2 and len(blp.bdp_calls[-2]) == 1
         assert {q.expiry for q in snap.quotes} == {_near_expiry(), far}
-        assert snap.quotes[0].open_interest == 77
+        assert snap.quotes[0].open_interest is None  # OI is the explicit enrich, never a fetch
+        prov.enrich_reference("SPY", [_near_expiry(), far])
+        assert len(blp.bdp_calls) == n + 3
         # the streamed chain afterwards carries the remembered OI + style
         snap2 = prov.fetch_chain("SPY", [_near_expiry()])
-        assert snap2.quotes[0].open_interest == 77 and len(blp.bdp_calls) == n + 1
+        assert snap2.quotes[0].open_interest == 77 and len(blp.bdp_calls) == n + 3
     finally:
         prov.stop_streaming()
 
