@@ -45,6 +45,20 @@ def _svg_body(path: Path, scale: float | None = None, ns: str | None = None) -> 
 
 
 def _img_uri(path: Path) -> str:
+    if not path.exists():
+        # A missing screenshot must not abort the build while a deck is being
+        # assembled: inline a labelled grey placeholder and say so on stdout.
+        print(f"WARNING missing asset {path.relative_to(HERE)} — placeholder inlined")
+        label = path.stem.replace("_", " ")
+        svg = (
+            "<svg xmlns='http://www.w3.org/2000/svg' width='1600' height='1000'>"
+            "<rect width='100%' height='100%' fill='#E5EAF1'/>"
+            f"<text x='50%' y='50%' font-family='Segoe UI, sans-serif' font-size='42' fill='#7A8AA0'"
+            f" text-anchor='middle'>missing screenshot: {label}</text></svg>"
+        )
+        from urllib.parse import quote
+
+        return "data:image/svg+xml;utf8," + quote(svg)
     return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
 
 
@@ -55,15 +69,21 @@ def main() -> None:
         kind, name = match.group(1), match.group(2)
         if kind == "IMG":
             return _img_uri(HERE / "assets" / "shots" / f"{name}.png")
+        if kind == "SHOT":  # the 2026-09-24 demo deck's screenshots (workbench shell)
+            return _img_uri(HERE / "assets" / "shots_demo" / f"{name}.png")
         if kind == "FIG":
             return _img_uri(HERE / "assets" / "fig" / f"{name}.png")
         if kind == "EQ":
             return _svg_body(
                 HERE / "assets" / "eq" / f"{name}.svg", scale=EQ_PT_TO_PX, ns=f"eq-{name}"
             )
+        if kind == "EQD":  # the demo deck's equations (assets/eq_demo, same pipeline)
+            return _svg_body(
+                HERE / "assets" / "eq_demo" / f"{name}.svg", scale=EQ_PT_TO_PX, ns=f"eqd-{name}"
+            )
         return _svg_body(HERE / "assets" / "charts" / f"{name}.svg")
 
-    html = re.sub(r"\{\{(IMG|FIG|EQ|CHART):([a-z0-9_]+)\}\}", sub, html)
+    html = re.sub(r"\{\{(IMG|SHOT|FIG|EQ|EQD|CHART):([a-z0-9_]+)\}\}", sub, html)
     OUT.write_text(html, encoding="utf-8")
     print(f"wrote {OUT} ({OUT.stat().st_size / 1e6:.1f} MB)")
 

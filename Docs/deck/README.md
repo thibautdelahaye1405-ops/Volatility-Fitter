@@ -1,5 +1,19 @@
 # Vol-Fitter capabilities deck
 
+> **Technical demo — rewritten 2026-09-28** — [demo_deck.html](demo_deck.html) and
+> matching [PDF](demo_deck.pdf), 48 slides for internal quants and traders. Covers
+> market preparation, model mathematics, objectives, tails and calendars, local
+> volatility, dynamics and priors, filtering, replay, and graph inference.
+> [Speaker notes](demo_speaker_notes_2026-09-24.md) follow the same slide order and
+> include mathematical details, worked examples and source references.
+> Press **N** for notes and **O** for contents. All images and equations are embedded.
+> Restyled 29 September onto this deck's design system (same tokens and anatomy,
+> LaTeX/dvisvgm equations, uniform auto-fit) — the content lives in the JSON chapter
+> files, never in the generated template.
+> Authoring and build instructions: [rewrite/README.md](demo_2026-09-24/rewrite/README.md).
+> Application screenshots are archived captures from 24 September, described in
+> [the original staging record](demo_2026-09-24/README.md).
+
 `volfitter_deck.html` is a self-contained light-theme HTML slide deck (16:9,
 1920x1080 canvas scaled to the window). Open it in any browser; navigate with
 arrow keys / PageUp / PageDown / Home / End; print-to-PDF for a handout.

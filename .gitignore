@@ -52,3 +52,6 @@ backend/.cache/
 
 # Provider on-disk caches (contract listings, ladders) - volfit.data.cache_dir
 backend/data/cache/
+
+# LaTeX scratch of the demo deck equation cache (build_demo.py)
+Docs/deck/assets/eq_demo/gen/_work/
