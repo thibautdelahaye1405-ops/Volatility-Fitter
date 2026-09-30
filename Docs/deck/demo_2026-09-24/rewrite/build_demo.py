@@ -277,7 +277,6 @@ def render_notes(s: dict, index: int) -> str:
     notes = "".join(note_html(p) for p in s["notes"])
     if s.get("demo"):
         notes += f"<p><b>In the app.</b> {esc(s['demo'])}</p>"
-    notes += '<p class="note-sources">Sources: ' + esc("; ".join(s["sources"])) + "</p>"
     return f'<aside class="notes" aria-label="Speaker notes"><h2>{index:02d} · {esc(s["title"])}</h2>{notes}</aside>'
 
 
@@ -368,7 +367,6 @@ def write_notes(slides: list[dict]) -> None:
             notes.extend([f"**Visual.** {s['caption']}", ""])
         if s.get("demo"):
             notes.extend([f"**In the app.** {s['demo']}", ""])
-        notes.append("**Sources.** " + "; ".join(f"[{Path(p.split('#')[0]).name}](../../{p})" for p in s["sources"]) + ".")
     (DECK / "demo_speaker_notes_2026-09-24.md").write_text("\n".join(notes) + "\n", encoding="utf-8")
 
 

@@ -82,7 +82,9 @@ automated checks. The browser executable paths are specific to this workstation.
 
 ## Sources and example conventions
 
-Each slide and notes section identifies its references. The handoff notes provide
+Each slide's `sources` list records its references in the JSON (the build checks
+that every path exists); since 30 September they are not printed in the notes
+overlay or the Markdown, which carry only the spoken text. The handoff notes provide
 the basic mathematics; September roadmaps and current implementation resolve
 later changes to calendar certification, local-volatility stepping, filtering and
 graph reconstruction. Stored HTML notes contain the same explanatory prose as the
