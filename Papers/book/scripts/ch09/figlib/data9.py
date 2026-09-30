@@ -10,7 +10,8 @@ uses one implementation, sign-for-sign.
 
 Chapter conventions carried by every function: the move H is
 log(F_new/F_old), positive up; a transported CURVE reads the old curve at
-k + H; a fixed-strike QUOTE's label slides to k - H.
+k + R H (the slide, in total variance -- the reference implementation's
+rule); a fixed-strike QUOTE's label slides to k - H.
 """
 
 from __future__ import annotations
@@ -101,13 +102,23 @@ def gallery(ticker: str = "SPY") -> list[Smile]:
 
 # ------------------------------------------------------------- transports
 def transport_vol(sm: Smile, big_h: float, regime: float):
-    """The linear transport: sigma_new(k) = sigma_old(k + H) + (R-1) s0 H."""
+    """The one-dial transport: w_new(k) = w_old(k + R H), read as a vol.
+
+    At a single maturity the total-variance slide and the volatility
+    slide coincide, sigma_new(k) = sigma_old(k + R H); the reference
+    implementation slides w.
+    """
 
     def iv_new(k):
-        return sm.iv(np.asarray(k, dtype=float) + big_h) \
-            + (regime - 1.0) * sm.s0 * big_h
+        return sm.iv(np.asarray(k, dtype=float) + regime * big_h)
 
     return iv_new
+
+
+def local_slope(sm: Smile, k) -> np.ndarray:
+    """d sigma/dk of the stored fit at k, by central differences."""
+    k = np.asarray(k, dtype=float)
+    return (sm.iv(k + _DK) - sm.iv(k - _DK)) / (2.0 * _DK)
 
 
 def ell(k: np.ndarray, big_h: float) -> np.ndarray:

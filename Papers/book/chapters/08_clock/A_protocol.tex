@@ -1,4 +1,4 @@
-\section{Protocol: data, constructions, and solver constants}
+\section{Protocol: data, constructions, and the rule's constants}
 \label{app:clkprotocol}
 
 Every number and figure in this chapter regenerates from one
@@ -41,23 +41,25 @@ exactly on $w=\sigma^2\tau$, so the linear-in-$\tau$ rule reproduces
 the generator to \MacClkInterpExactBp\ vol bp by construction; the
 figure's content is the calendar rule's deviation from it.
 
-\paragraph{The solver (\cref{eq:clkobj};
+\paragraph{The peak rule (\cref{eq:clkpeak};
 \cref{fig:clkident,fig:clkread}).}
-Reference weights $\lambda_{\rm mono}=1$,
-$\lambda_{\rm sparse}=10^{-3}$, $\lambda_{\rm ridge}=10^{-4}$; one
+Floors $0.5$ day and $3\%$ of the interval's variance; one
 candidate per interval, dated mid-interval
-(\cref{prop:clkident} makes the date a convention); box bounds
-$0\le N_i\le1825$ days (a wide safety box, never active in any run
-of this chapter); minimization by a standard bounded quasi-Newton
-routine from a zero start; solved events below $0.5$ day dropped.
-The study boards of \cref{fig:clkident}: the dense board's expiries
+(\cref{prop:clkident} makes the date a convention); the ladder's last
+interval never a candidate; the first interval's reference is its
+right neighbour, continued one interval forward at the log-linear
+rate of the back's decay (measured in interval midpoints) when
+$\mathcal{F}_2>\mathcal{F}_3>0$; candidates swept in ascending order
+against the current ladder, each clipped to its reference when both
+floors hold, the sweep repeated until nothing changes; the relative
+excess is always that of the calendar ladder.  This is the reference
+implementation's estimator verbatim, with one difference of input:
+it reads each $w_i$ from the calibrated slice at $k=0$, the chapter
+from the prepared quotes as above.  The study boards of
+\cref{fig:clkident}: the dense board's expiries
 are $\{7,14,28,56,91,182,365\}$ days with the planted event at day
 40, the quarterly board's $\{91,182,273,365\}$ days with the event
-at day 120.  The scaling law of \cref{sec:clkinverse} deliberately
-drops its constants (term counts, day conversions), so these weights
-reproduce the measured shrinkage scale --- \MacClkIdentShrinkWeakD\
-day at $20\%$ on the dense board --- through the study, not through
-the formula; the study is the reference.  The NVDA hero run of \cref{fig:clkread}(a) allows
+at day 120.  The NVDA hero run of \cref{fig:clkread}(a) allows
 candidates at expiries through 2026-12-18 (the horizon); the
 panel~(b) and SPY runs allow candidates at every expiry.  Spreads
 are max-minus-min of the forward-variance ladder, quoted in variance

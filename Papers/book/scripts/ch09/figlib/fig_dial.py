@@ -1,11 +1,11 @@
 """F3 -- one free dial (section 9.3).
 
-Panel (a): the transport built in two moves at R = 2 under the fan move --
-the re-indexed curve sigma_old(k + H) (dashed), then one uniform level
-(R-1) s0 H on top (solid).  Panel (b): the exact ATM response of the
-transport against the move for the three regimes, with the linear law
-R s0 H dotted -- the common bend is the smile's own curvature, the
-second-order term the one-dial transport does not model.
+Panel (a): the transport as a slide, at R = 2 under the fan move -- the
+sticky-strike slide sigma_old(k + H) (dashed), then a second slide of
+the same length (solid): sigma_new(k) = sigma_old(k + 2H).  Panel (b):
+the exact ATM response of the transport against the move for the three
+regimes, with the linear law R s0 H dotted -- the bends are the smile's
+own curvature read R H away, so they grow as R^2.
 """
 
 from __future__ import annotations
@@ -33,21 +33,23 @@ def fig_ssr_dial() -> str:
 
     fig, axes = plt.subplots(1, 2, figsize=figstyle.ROW2)
 
-    # (a) re-index, then one level ------------------------------------------
+    # (a) one slide, then a second of the same length -----------------------
     ax = axes[0]
     k = np.linspace(*_SPAN, 401)
-    level = (2.0 - 1.0) * sm.s0 * _H
     ax.plot(k, 100.0 * sm.iv(k), color=PALETTE["data"], lw=1.7,
             label="today", zorder=3)
     ax.plot(k, 100.0 * sm.iv(k + _H), color=PALETTE["muted"], lw=1.2,
-            ls="--", label=r"re-index $\sigma_{\rm old}(k+H)$", zorder=3)
-    ax.plot(k, 100.0 * (sm.iv(k + _H) + level), color=REGIME_COLORS[2.0],
-            lw=1.5, label=r"+ level $(\mathcal{R}-1)s_0H$", zorder=4)
+            ls="--", label=r"slide $\sigma_{\rm old}(k+H)$", zorder=3)
+    ax.plot(k, 100.0 * sm.iv(k + 2.0 * _H), color=REGIME_COLORS[2.0],
+            lw=1.5, label=r"slide again: $\sigma_{\rm old}(k+2H)$",
+            zorder=4)
+    # The dashed curve's point at k moves horizontally to k - H on the
+    # solid curve: same height, one more slide.
     for k_arrow in (-0.12, -0.02, 0.07):
-        base = float(sm.iv(np.array([k_arrow + _H]))[0])
+        height = float(sm.iv(np.array([k_arrow + _H]))[0])
         ax.annotate(
-            "", xy=(k_arrow, 100.0 * (base + level)),
-            xytext=(k_arrow, 100.0 * base),
+            "", xy=(k_arrow - _H, 100.0 * height),
+            xytext=(k_arrow, 100.0 * height),
             arrowprops={"arrowstyle": "->", "color": PALETTE["ink"],
                         "lw": 0.9},
         )
@@ -56,26 +58,32 @@ def fig_ssr_dial() -> str:
     ax.legend(loc="upper right", fontsize=7.0)
     figstyle.panel(
         ax, "a",
-        rf"the two moves ($\mathcal{{R}}=2$, $H={100*_H:+.0f}\%$)")
+        rf"the two slides ($\mathcal{{R}}=2$, $H={100*_H:+.0f}\%$)")
 
     # (b) ATM response vs the move ------------------------------------------
     ax = axes[1]
     h_grid = np.linspace(-_H_MAX, _H_MAX, 121)
     atm0 = sm.atm_vol
     for regime in data9.REGIMES:
-        exact = sm.iv(h_grid) + (regime - 1.0) * sm.s0 * h_grid - atm0
+        exact = sm.iv(regime * h_grid) - atm0
         ax.plot(100.0 * h_grid, 100.0 * exact,
                 color=REGIME_COLORS[regime], lw=1.4,
-                label=REGIME_NAMES[regime])
+                label=REGIME_NAMES[regime], zorder=4)
         ax.plot(100.0 * h_grid, 100.0 * regime * sm.s0 * h_grid,
-                color=REGIME_COLORS[regime], lw=0.8, ls=":", alpha=0.8)
-    bend = float(sm.iv(np.array([-_H_MAX]))[0] - atm0 + sm.s0 * _H_MAX)
+                color=REGIME_COLORS[regime], lw=0.8, ls=":", alpha=0.8,
+                zorder=3)
+
+    def bend(regime: float) -> float:
+        """Exact minus linear ATM response at H = -H_MAX."""
+        return float(sm.iv(np.array([-regime * _H_MAX]))[0] - atm0
+                     + regime * sm.s0 * _H_MAX)
+
+    bend_one, bend_two = bend(1.0), bend(2.0)
     figstyle.callout(
-        ax, "the common bend:\nthe smile's own curvature",
+        ax, "the bend: the smile's curvature\nread $\\mathcal{R}H$ away",
         xy=(-100.0 * _H_MAX * 0.97,
-            100.0 * (float(sm.iv(np.array([-_H_MAX]))[0]) - atm0
-                     - sm.s0 * _H_MAX)),
-        xytext=(-5.6, 100.0 * 2.0 * abs(sm.s0) * _H_MAX * 0.45),
+            100.0 * (float(sm.iv(np.array([-2.0 * _H_MAX]))[0]) - atm0)),
+        xytext=(0.5, 100.0 * 2.0 * abs(sm.s0) * _H_MAX * 0.9),
     )
     ax.axhline(0.0, color=PALETTE["muted"], lw=0.7)
     ax.axvline(0.0, color=PALETTE["muted"], lw=0.7)
@@ -86,12 +94,15 @@ def fig_ssr_dial() -> str:
 
     figstyle.save(fig, "fig_ssr_dial")
 
-    STORE.add("dial", "SsrDialLevelBp", f"{abs(level)*1e4:.0f}",
-              "the uniform level (R-1)s0H at the fan move for R=2, vol bp")
     STORE.add("dial", "SsrDialAtmMoveBp",
               f"{abs(2.0*sm.s0*_H)*1e4:.0f}",
               "linear ATM response R s0 H at the fan move for R=2, vol bp")
-    STORE.add("dial", "SsrDialBendBp", num(abs(bend) * 1e4, 0),
-              "second-order ATM bend at H=-6% (same for every regime), "
+    STORE.add("dial", "SsrDialBendBp", num(abs(bend_one) * 1e4, 0),
+              "second-order ATM bend at H=-6% under R=1 (sticky-strike), "
               "vol bp")
-    return f"level {abs(level)*1e4:.0f} bp, bend {abs(bend)*1e4:.0f} bp"
+    STORE.add("dial", "SsrDialBendTwoBp", num(abs(bend_two) * 1e4, 0),
+              "second-order ATM bend at H=-6% under R=2, vol bp")
+    STORE.add("dial", "SsrDialBendRatio", num(bend_two / bend_one, 1),
+              "ratio of the R=2 bend to the R=1 bend at H=-6% (about 4)")
+    return (f"bends {abs(bend_one)*1e4:.0f}/{abs(bend_two)*1e4:.0f} bp "
+            f"(ratio {bend_two/bend_one:.2f})")

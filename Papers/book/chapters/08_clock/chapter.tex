@@ -14,14 +14,15 @@
 %      vol crush as a scheduled reading correction, not a price move.
 %   3. Interpolate a term structure linearly in tau and say exactly what
 %      the calendar-clock interpolation invents between quotes.
-%   4. Set up the inverse problem of reading a clock off prices --
-%      flatten event-time forward variance under a sparsity charge --
-%      and state its limits: dates inside an interval are
-%      unidentified, sizes are shrunk, and small events are invisible on
-%      quiet or coarse boards.
+%   4. Set up the inverse problem of reading a clock off prices -- the
+%      peak rule: an interval that accrues materially faster than the
+%      higher of its neighbours carries an event of exactly the size
+%      that brings it down to that neighbour -- and state its limits:
+%      dates inside an interval are unidentified, and an event below
+%      max(half a day, 3% of its interval's variance) is invisible.
 %   5. Diagnose a real board: locate the earnings interval in the frozen
-%      NVDA ladder, explain why the index board solves to almost nothing,
-%      and know when to stop believing the solver.
+%      NVDA ladder, explain why the index board yields nothing,
+%      and know when to stop believing the rule.
 % Every section serves one of these five goals.
 \renewcommand{\figdir}{figures/ch08}
 \chapter[The market's clock]{The Market's Clock}
@@ -51,14 +52,16 @@ correction of a reading, with no price moving at all.  The clock then
 serves twice: dense term-structure curves must be interpolated
 on it, or a known event smears into phantom volatility at unquoted
 maturities; and the clock itself can be read off the board's own
-prices, by asking which small, sparse set of events makes forward
-variance per clock unit as flat as possible.  That inverse problem has
-measured limits --- shrinkage, a materiality wall, dates that no data
-can pin inside an interval --- and the chapter closes by running it on
-the frozen boards: the solver hands NVDA's earnings interval about
-seven extra days, hands the index board almost nothing, and, if
-allowed candidates everywhere, flattens genuine term structure too.
-The calendar it installs is an estimate to review, not an oracle.}
+prices, by one rule: an interval that accrues materially faster than
+the higher of its neighbours carries an event, of exactly the size
+that brings it down to that neighbour.  That inverse problem has
+measured limits --- a floor set by the listing's spacing, dates that
+no data can pin inside an interval --- and the chapter closes by
+running it on the frozen boards: the rule hands NVDA's earnings
+interval four extra days, hands the index board nothing, and, if
+allowed candidates everywhere, reads an ordinary quarter as a peak
+too.  The calendar it installs is an estimate to review, not an
+oracle.}
 
 \input{chapters/08_clock/01_board}
 \input{chapters/08_clock/02_walk}

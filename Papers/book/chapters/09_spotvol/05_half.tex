@@ -62,8 +62,9 @@ strike, the forward moved $-4\%$: the implied ATM rises
 \MacSsrHalfAtmMoveBp\ vol bp against the half-rule's prediction
 $2s_0H=\MacSsrHalfAtmPredBp$ vol bp.  (c)~The two closed-form
 transports on the real node at $H=-\MacSsrHalfMoveWingPct\%$: midpoint
-relabeling minus linear $\mathcal{R}=2$ transport, zero at the money,
-$+\MacSsrHalfGapPutBp$/$-\MacSsrHalfGapCallBp$ vol bp in the wings.}
+relabeling minus the uniform slide $\sigma_{\mathrm{old}}(k+2H)$, zero
+at the money,
+$+\MacSsrHalfGapPutBp$/$-\MacSsrHalfGapCallBp$ vol bp at the edges.}
 \label{fig:ssrhalf}
 \end{figure}
 
@@ -150,16 +151,21 @@ $(1+e^{-k})H$ is strike-dependent: at $k=-0.3$ it is $2.35\,H$, at
 $k=+0.3$ only $1.74\,H$.  The put wing reads farther along the old
 curve than the call wing does.
 
-That strike dependence is exactly what the linear transport
-\eqref{eq:ssrshift} at $\mathcal{R}=2$ flattens into one uniform
-level.  So the frozen-field idea now has \emph{two} closed-form
-candidates: the linear transport, and the relabeling
-\eqref{eq:ssrell}.  Panel~(c) of \cref{fig:ssrhalf} measures their
+That strike dependence is exactly what the uniform slide
+\eqref{eq:ssrshift} at $\mathcal{R}=2$ flattens into one displacement
+$2H$.  So the frozen-field idea now has \emph{two} closed-form
+candidates: the uniform slide, and the relabeling
+\eqref{eq:ssrell}.  The reference implementation keeps both: its
+named sticky-local-vol regime is the relabeling, and its dial set to
+$2$ is the slide.  Panel~(c) of \cref{fig:ssrhalf} measures their
 disagreement on the real frozen node, for a
 $-\MacSsrHalfMoveWingPct\%$ move: the difference is zero at the money
---- both say $2s_0H$ there --- and grows into the wings, to
-$+\MacSsrHalfGapPutBp$ vol bp at the span's put edge ($k=-0.24$) and
-$-\MacSsrHalfGapCallBp$ at its call edge ($k=+0.15$).  (The
+--- both read the old curve at $2H$ there --- and grows into the put
+wing, where the relabeling reads farther along the old curve, to
+$+\MacSsrHalfGapPutBp$ vol bp at the span's put edge ($k=-0.24$),
+while on the call side, where it reads less far and the curve is
+flatter, the gap is only $-\MacSsrHalfGapCallBp$ at the edge
+($k=+0.15$).  (The
 asymmetric span is not a whim: it is the widest window on which the
 relabeling's read-back point $\ell(k,H)$ stays inside the node's own
 quoted strikes; appendix~\ref{app:ssrprotocol}.)

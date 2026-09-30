@@ -184,49 +184,19 @@
   "meaning": "calendar day of the max understatement",
   "section": "interp"
  },
- "ClkIdentShrinkStrongD": {
-  "value": "0.03",
-  "meaning": "max shrinkage, dense board at 40% vol (planted >= 2d)",
-  "section": "ident"
- },
- "ClkIdentShrinkWeakD": {
-  "value": "0.40",
-  "meaning": "max shrinkage, dense board at 20% vol (planted >= 2d)",
-  "section": "ident"
- },
- "ClkIdentBlindD": {
-  "value": "2.5",
-  "meaning": "largest planted event the quarterly 20% board misses (days)",
-  "section": "ident"
- },
  "ClkIdentFlatDays": {
   "value": "0.000",
   "meaning": "days installed on a flat 20% ladder (exactly zero)",
   "section": "ident"
  },
- "ClkIdentWallWeeklyPct": {
-  "value": "12",
-  "meaning": "lowest vol at which the dense board sees a 2-day event (%)",
-  "section": "ident"
- },
- "ClkIdentWallQuarterlyPct": {
-  "value": "22",
-  "meaning": "lowest vol at which the quarterly board sees it (%)",
-  "section": "ident"
- },
  "ClkReadHeroEarnD": {
-  "value": "7.3",
-  "meaning": "extra days the year-end solve puts on the earnings interval",
+  "value": "4.3",
+  "meaning": "extra days the year-end read puts on the earnings interval",
   "section": "read"
  },
  "ClkReadHeroTotalD": {
-  "value": "8.6",
-  "meaning": "total extra days installed by the year-end solve",
-  "section": "read"
- },
- "ClkReadHeroShortD": {
-  "value": "1.3",
-  "meaning": "extra days on the two short-dated intervals combined",
+  "value": "4.3",
+  "meaning": "total extra days installed by the year-end read",
   "section": "read"
  },
  "ClkReadHeroSpreadBeforeBp": {
@@ -235,22 +205,17 @@
   "section": "read"
  },
  "ClkReadHeroSpreadAfterBp": {
-  "value": "299",
+  "value": "482",
   "meaning": "in-horizon forward-variance spread after (var bp)",
   "section": "read"
  },
- "ClkReadHeroFlatLevel": {
-  "value": "0.1409",
-  "meaning": "level the three pre-earnings intervals meet at (var/yr)",
-  "section": "read"
- },
  "ClkReadHeroEarnAfter": {
-  "value": "0.1559",
-  "meaning": "earnings interval forward variance after the solve (var/yr)",
+  "value": "0.1707",
+  "meaning": "earnings interval forward variance after the clip (var/yr) = its higher neighbour, the Sep-Dec interval",
   "section": "read"
  },
  "ClkReadFullTotalD": {
-  "value": "250",
+  "value": "50.2",
   "meaning": "total extra days installed with candidates everywhere",
   "section": "read"
  },
@@ -260,17 +225,17 @@
   "section": "read"
  },
  "ClkReadFullSpreadAfterBp": {
-  "value": "44",
+  "value": "904",
   "meaning": "full-board spread after (var bp)",
   "section": "read"
  },
  "ClkReadFullMarchD": {
-  "value": "112",
-  "meaning": "extra days the unrestricted solve puts on Dec->Mar alone",
+  "value": "45.9",
+  "meaning": "extra days the unrestricted read puts on Dec->Mar alone",
   "section": "read"
  },
  "ClkReadSpyTotalD": {
-  "value": "0.9",
+  "value": "0.0",
   "meaning": "total extra days installed on the SPY board",
   "section": "read"
  },
@@ -292,6 +257,71 @@
  "ClkReadSpyDecBp": {
   "value": "2",
   "meaning": "largest decrease anywhere in SPY's calendar ladder (var bp)",
+  "section": "read"
+ },
+ "ClkIdentDenseWidthD": {
+  "value": "28",
+  "meaning": "width of the dense board's event-bearing interval (days)",
+  "section": "ident"
+ },
+ "ClkIdentQuartWidthD": {
+  "value": "91",
+  "meaning": "width of the quarterly board's event-bearing interval (days)",
+  "section": "ident"
+ },
+ "ClkIdentFloorDenseD": {
+  "value": "0.84",
+  "meaning": "smallest event the rule reports on the dense board (days)",
+  "section": "ident"
+ },
+ "ClkIdentFloorQuartD": {
+  "value": "2.73",
+  "meaning": "smallest event the rule reports on the quarterly board (days)",
+  "section": "ident"
+ },
+ "ClkIdentMaxErrD": {
+  "value": "5.9e-14",
+  "meaning": "largest |recovered - planted| above the floors, all boards",
+  "section": "ident"
+ },
+ "ClkIdentVolDiffD": {
+  "value": "0.0e+00",
+  "meaning": "largest difference between the 40% and 20% recoveries (days)",
+  "section": "ident"
+ },
+ "ClkIdentWallWidthD": {
+  "value": "67",
+  "meaning": "interval width beyond which a 2-day event is below the floor",
+  "section": "ident"
+ },
+ "ClkReadHeroLullLevel": {
+  "value": "0.1408",
+  "meaning": "the pre-earnings lull's forward variance (var/yr), left as is",
+  "section": "read"
+ },
+ "ClkReadHeroFrontLevel": {
+  "value": "0.1890",
+  "meaning": "the 2-day interval's forward variance (var/yr)",
+  "section": "read"
+ },
+ "ClkReadHeroFrontRef": {
+  "value": "0.1954",
+  "meaning": "the 2-day interval's reference: the back's decay continued",
+  "section": "read"
+ },
+ "ClkReadFullMarchBefore": {
+  "value": "0.2568",
+  "meaning": "Dec->Mar forward variance before (var/yr)",
+  "section": "read"
+ },
+ "ClkReadFullMarchAfter": {
+  "value": "0.1707",
+  "meaning": "Dec->Mar forward variance after the clip (var/yr)",
+  "section": "read"
+ },
+ "ClkReadSpyPeakExcessPct": {
+  "value": "1.3",
+  "meaning": "relative excess of SPY's only local peak over its higher neighbour (%)",
   "section": "read"
  }
 }

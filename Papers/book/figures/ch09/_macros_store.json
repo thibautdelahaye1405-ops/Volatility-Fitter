@@ -25,8 +25,8 @@
   "section": "question"
  },
  "SsrMarkSpreadBp": {
-  "value": "344",
-  "meaning": "spread of the marked strike's vol across regimes at the fan move, vol bp",
+  "value": "445",
+  "meaning": "spread of the marked strike's vol across regimes at the fan move (R=0 minus R=2 readings), vol bp",
   "section": "question"
  },
  "SsrSignMovePct": {
@@ -39,11 +39,6 @@
   "meaning": "vol of the tracked fixed strike, %",
   "section": "signs"
  },
- "SsrDialLevelBp": {
-  "value": "172",
-  "meaning": "the uniform level (R-1)s0H at the fan move for R=2, vol bp",
-  "section": "dial"
- },
  "SsrDialAtmMoveBp": {
   "value": "344",
   "meaning": "linear ATM response R s0 H at the fan move for R=2, vol bp",
@@ -51,16 +46,16 @@
  },
  "SsrDialBendBp": {
   "value": "54",
-  "meaning": "second-order ATM bend at H=-6% (same for every regime), vol bp",
+  "meaning": "second-order ATM bend at H=-6% under R=1 (sticky-strike), vol bp",
   "section": "dial"
  },
  "SsrDeltaGapPts": {
-  "value": "14.4",
+  "value": "18.7",
   "meaning": "R=0 vs R=2 total-delta gap at the marked strike, delta pts",
   "section": "delta"
  },
  "SsrDeltaMaxPts": {
-  "value": "21.0",
+  "value": "24.4",
   "meaning": "largest regime delta gap across the span, delta pts",
   "section": "delta"
  },
@@ -95,12 +90,12 @@
   "section": "half"
  },
  "SsrHalfGapPutBp": {
-  "value": "122",
+  "value": "86",
   "meaning": "relabeling-vs-linear gap at k=-0.24 under a -5% move, bp",
   "section": "half"
  },
  "SsrHalfGapCallBp": {
-  "value": "162",
+  "value": "10",
   "meaning": "relabeling-vs-linear gap at k=+0.15 under a -5% move, bp",
   "section": "half"
  },
@@ -200,27 +195,27 @@
   "section": "scenario"
  },
  "SsrScenShortAtmMovePts": {
-  "value": "21.0",
-  "meaning": "shortest expiry: spread of the ATM readings between R=0 and R=2 under the scenario (= 2|s0 H|), vol pts",
+  "value": "27.3",
+  "meaning": "shortest expiry: spread of the ATM readings between R=0 and R=2 under the scenario, vol pts",
   "section": "scenario"
  },
  "SsrScenLongAtmMovePts": {
-  "value": "2.9",
-  "meaning": "longest expiry's linear R=2 ATM response to the scenario (2|s0 H|), vol pts",
+  "value": "3.0",
+  "meaning": "longest expiry: spread of the ATM readings between R=0 and R=2 under the scenario, vol pts",
   "section": "scenario"
  },
  "SsrScenGapShortPts": {
-  "value": "9.9",
+  "value": "15.9",
   "meaning": "25-delta-put delta gap at the shortest expiry, delta pts",
   "section": "scenario"
  },
  "SsrScenGapLongPts": {
-  "value": "21.6",
+  "value": "20.9",
   "meaning": "25-delta-put delta gap at the longest expiry, delta pts",
   "section": "scenario"
  },
  "SsrScenGapHeroPts": {
-  "value": "16.7",
+  "value": "22.2",
   "meaning": "25-delta-put delta gap at the hero expiry, delta pts",
   "section": "scenario"
  },
@@ -231,17 +226,17 @@
  },
  "SsrScenShortReindexPct": {
   "value": "25.7",
-  "meaning": "shortest expiry: the re-index read sigma_old(H) (= sticky-strike ATM after the move), %",
+  "meaning": "shortest expiry: sticky-strike ATM after the move, the fit read at k = H, %",
   "section": "scenario"
  },
  "SsrScenShortRzeroPct": {
-  "value": "15.2",
-  "meaning": "shortest expiry: sticky-moneyness ATM after the move, %",
+  "value": "9.6",
+  "meaning": "shortest expiry: sticky-moneyness ATM after the move (= today's, exactly), %",
   "section": "scenario"
  },
  "SsrScenShortRtwoPct": {
-  "value": "36.2",
-  "meaning": "shortest expiry: sticky-local-vol ATM after the move, %",
+  "value": "37.0",
+  "meaning": "shortest expiry: R=2 ATM after the move, the fit read at k = 2H, %",
   "section": "scenario"
  },
  "SsrScenLongSkew": {
@@ -252,6 +247,51 @@
  "SsrScenRootScaledSkew": {
   "value": "0.25",
   "meaning": "the two-day skew scaled by sqrt(tau) to the hero maturity (the 1/sqrt(tau)-decay prediction), absolute value",
+  "section": "scenario"
+ },
+ "SsrMarkSlope": {
+  "value": "-0.558",
+  "meaning": "today's smile slope at the marked k=-0.10 strike",
+  "section": "question"
+ },
+ "SsrDialBendTwoBp": {
+  "value": "133",
+  "meaning": "second-order ATM bend at H=-6% under R=2, vol bp",
+  "section": "dial"
+ },
+ "SsrDialBendRatio": {
+  "value": "2.5",
+  "meaning": "ratio of the R=2 bend to the R=1 bend at H=-6% (about 4)",
+  "section": "dial"
+ },
+ "SsrDeltaMaxK": {
+  "value": "-0.03",
+  "meaning": "log-moneyness where the regime delta gap peaks",
+  "section": "delta"
+ },
+ "SsrDeltaAtmPts": {
+  "value": "21.0",
+  "meaning": "regime delta gap at the money, delta pts",
+  "section": "delta"
+ },
+ "SsrScenShortLinearPts": {
+  "value": "21.0",
+  "meaning": "shortest expiry: the linear law's R=2 ATM response 2|s0 H|, vol pts",
+  "section": "scenario"
+ },
+ "SsrScenSlopeShort": {
+  "value": "-3.39",
+  "meaning": "smile slope at the shortest expiry's 25-delta put",
+  "section": "scenario"
+ },
+ "SsrScenSlopeHero": {
+  "value": "-0.570",
+  "meaning": "smile slope at the hero expiry's 25-delta put",
+  "section": "scenario"
+ },
+ "SsrScenSlopeLong": {
+  "value": "-0.281",
+  "meaning": "smile slope at the longest expiry's 25-delta put",
   "section": "scenario"
  }
 }

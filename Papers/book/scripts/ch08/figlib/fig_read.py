@@ -1,13 +1,12 @@
 """F7 -- reading the frozen board's clock: NVDA twice, SPY once.
 
 Panel (a): the NVDA ladder through year-end (candidates at the first five
-expiries) -- the solver puts its budget against the earnings-bearing
-interval and equalizes the short end.
-Panel (b): the same board with candidates everywhere -- the solver
-flattens every kink, buying hundreds of days; a perfectly flat ladder
-purchased by telling the clock story about everything.
-Panel (c): SPY, the index contrast -- a genuinely rising term structure
-is left almost untouched.
+expiries) -- the peak rule clips the earnings-bearing interval to its
+higher neighbour and touches nothing else.
+Panel (b): the same board with candidates everywhere -- a second peak,
+an ordinary quarter, is clipped too; the ladder is not flattened.
+Panel (c): SPY, the index contrast -- a rising term structure has no
+material peak and is left standing.
 """
 
 from __future__ import annotations
@@ -38,6 +37,14 @@ def _xaxis(ax, ticks):
     ax.minorticks_off()
 
 
+def _front_reference(t, f0):
+    """The first interval's reference level, as the rule computes it."""
+    tt = np.concatenate([[0.0], t])
+    mid = 0.5 * (tt[:-1] + tt[1:]) * 365.0
+    rate = (mid[1] - mid[0]) / (mid[2] - mid[1])
+    return float(f0[1] * (f0[1] / f0[2]) ** rate) if f0[1] > f0[2] else float(f0[1])
+
+
 def fig_clk_read() -> str:
     t_n, w_n, exp_n = data8.ladder("NVDA")
     t_s, w_s, _ = data8.ladder("SPY")
@@ -48,34 +55,45 @@ def fig_clk_read() -> str:
     f0_n, _ = clock8.fwd_var(t_n, w_n, np.zeros(len(t_n)))
     f0_s, _ = clock8.fwd_var(t_s, w_s, np.zeros(len(t_s)))
 
-    N_hero = clock8.solve(t_n, w_n, horizon=horizon)
+    N_hero = clock8.detect(t_n, w_n, horizon=horizon)
     f_hero, _ = clock8.fwd_var(t_n, w_n, N_hero)
-    N_full = clock8.solve(t_n, w_n)
+    N_full = clock8.detect(t_n, w_n)
     f_full, _ = clock8.fwd_var(t_n, w_n, N_full)
-    N_spy = clock8.solve(t_s, w_s)
+    N_spy = clock8.detect(t_s, w_s)
     f_spy, _ = clock8.fwd_var(t_s, w_s, N_spy)
 
     n_h = int(np.sum(t_n <= horizon + 1e-12))  # in-horizon interval count
     i_earn = 3                                 # the (18d, 46d] interval
+    i_quarter = 5                              # the (137d, 228d] interval
+
+    # The SPY ladder's only local peak, and its relative excess.
+    spy_peaks = [i for i in range(1, len(f0_s) - 1)
+                 if f0_s[i] > max(f0_s[i - 1], f0_s[i + 1])]
+    spy_excess = max(
+        (f0_s[i] / max(f0_s[i - 1], f0_s[i + 1]) - 1.0 for i in spy_peaks),
+        default=0.0,
+    )
 
     STORE.add("read", "ClkReadHeroEarnD", num(N_hero[i_earn], 1),
-              "extra days the year-end solve puts on the earnings interval")
+              "extra days the year-end read puts on the earnings interval")
     STORE.add("read", "ClkReadHeroTotalD", num(N_hero.sum(), 1),
-              "total extra days installed by the year-end solve")
-    STORE.add("read", "ClkReadHeroShortD",
-              num(N_hero[0] + N_hero[1], 1),
-              "extra days on the two short-dated intervals combined")
+              "total extra days installed by the year-end read")
     STORE.add("read", "ClkReadHeroSpreadBeforeBp",
               num(clock8.spread_bp(f0_n[:n_h]), 0),
               "in-horizon forward-variance spread before (var bp)")
     STORE.add("read", "ClkReadHeroSpreadAfterBp",
               num(clock8.spread_bp(f_hero[:n_h]), 0),
               "in-horizon forward-variance spread after (var bp)")
-    STORE.add("read", "ClkReadHeroFlatLevel", num(f_hero[0], 4),
-              "level the three pre-earnings intervals meet at (var/yr)")
     STORE.add("read", "ClkReadHeroEarnAfter", num(f_hero[i_earn], 4),
-              "earnings interval forward variance after the solve (var/yr)")
-    STORE.add("read", "ClkReadFullTotalD", num(N_full.sum(), 0),
+              "earnings interval forward variance after the clip (var/yr) "
+              "= its higher neighbour, the Sep-Dec interval")
+    STORE.add("read", "ClkReadHeroLullLevel", num(f0_n[2], 4),
+              "the pre-earnings lull's forward variance (var/yr), left as is")
+    STORE.add("read", "ClkReadHeroFrontLevel", num(f0_n[0], 4),
+              "the 2-day interval's forward variance (var/yr)")
+    STORE.add("read", "ClkReadHeroFrontRef", num(_front_reference(t_n, f0_n), 4),
+              "the 2-day interval's reference: the back's decay continued")
+    STORE.add("read", "ClkReadFullTotalD", num(N_full.sum(), 1),
               "total extra days installed with candidates everywhere")
     STORE.add("read", "ClkReadFullSpreadBeforeBp",
               num(clock8.spread_bp(f0_n), 0),
@@ -83,8 +101,12 @@ def fig_clk_read() -> str:
     STORE.add("read", "ClkReadFullSpreadAfterBp",
               num(clock8.spread_bp(f_full), 0),
               "full-board spread after (var bp)")
-    STORE.add("read", "ClkReadFullMarchD", num(N_full[5], 0),
-              "extra days the unrestricted solve puts on Dec->Mar alone")
+    STORE.add("read", "ClkReadFullMarchD", num(N_full[i_quarter], 1),
+              "extra days the unrestricted read puts on Dec->Mar alone")
+    STORE.add("read", "ClkReadFullMarchBefore", num(f0_n[i_quarter], 4),
+              "Dec->Mar forward variance before (var/yr)")
+    STORE.add("read", "ClkReadFullMarchAfter", num(f_full[i_quarter], 4),
+              "Dec->Mar forward variance after the clip (var/yr)")
     STORE.add("read", "ClkReadSpyTotalD", num(N_spy.sum(), 1),
               "total extra days installed on the SPY board")
     STORE.add("read", "ClkReadSpySpreadBp", num(clock8.spread_bp(f0_s), 0),
@@ -95,6 +117,9 @@ def fig_clk_read() -> str:
     STORE.add("read", "ClkReadSpyDecBp",
               num(float(np.max(np.maximum(-np.diff(f0_s), 0.0))) * 1e4, 0),
               "largest decrease anywhere in SPY's calendar ladder (var bp)")
+    STORE.add("read", "ClkReadSpyPeakExcessPct", num(spy_excess * 100, 1),
+              "relative excess of SPY's only local peak over its higher "
+              "neighbour (%)")
 
     fig, (ax_a, ax_b, ax_c) = plt.subplots(1, 3, figsize=figstyle.ROW3)
 
@@ -111,7 +136,7 @@ def fig_clk_read() -> str:
                  zorder=0)
     ax_a.set_ylim(0.130, 0.205)
     figstyle.callout(
-        ax_a, f"+{N_hero[i_earn]:.1f} days",
+        ax_a, f"+{N_hero[i_earn]:.1f} days:\nclipped to its neighbour",
         (28.0, f_hero[i_earn]), (2.5, 0.150),
     )
     ax_a.set_ylabel("forward variance (per year)")
@@ -124,8 +149,8 @@ def fig_clk_read() -> str:
     _steps(ax_b, edges, f_full, PALETTE["model"], lw=1.2)
     _xaxis(ax_b, [2, 18, 46, 137, 501])
     figstyle.callout(
-        ax_b, f"{N_full.sum():.0f} days installed:\nevery kink read as clock",
-        (137.0, f_full[5]), (40.0, 0.135),
+        ax_b, f"+{N_full[i_quarter]:.1f} days on an\nordinary quarter",
+        (180.0, f_full[i_quarter]), (12.0, 0.235),
     )
     ax_b.set_xlabel("calendar days")
     figstyle.panel(ax_b, "b", "NVDA, no horizon")
@@ -136,12 +161,12 @@ def fig_clk_read() -> str:
     _steps(ax_c, edges_s, f_spy, PALETTE["model"], lw=1.2)
     _xaxis(ax_c, [2, 18, 46, 137, 501])
     figstyle.callout(
-        ax_c, f"{N_spy.sum():.1f} day installed\nin total",
-        (days_s[3] * 0.8, f_spy[3]), (2.5, 0.028),
+        ax_c, f"no event: the one peak\nis {100*spy_excess:.1f}% high",
+        (days_s[1] * 0.85, f0_s[1]), (6.0, 0.028),
     )
     ax_c.set_xlabel("calendar days")
     figstyle.panel(ax_c, "c", "SPY: the index keeps the calendar")
 
     figstyle.save(fig, "fig_clk_read")
-    return (f"hero +{N_hero[i_earn]:.1f}d / full {N_full.sum():.0f}d / "
+    return (f"hero +{N_hero[i_earn]:.1f}d / full {N_full.sum():.1f}d / "
             f"SPY {N_spy.sum():.1f}d")

@@ -51,42 +51,61 @@ estimator can lower a spike toward its neighbours; it cannot raise a
 valley.  Its entire vocabulary is ``this interval's days were worth
 more than ordinary days.''
 
-Now the estimator itself.  On the market's own clock, accrual should
-be steady (\cref{sec:clkwalk}); so ask for the candidate vector that
-makes the $\mathcal{F}_i$ ladder \emph{as flat as possible} --- while
-insisting, because many candidate vectors flatten almost equally
-well, that events be few and small.  Formally, minimize over
-$N\ge0$:
+Now the estimator itself.  A genuine pre-event board leaves a
+specific signature: the event interval accrues faster than
+\emph{both} its neighbours, so the ladder rises into it and falls out
+of it --- a \emph{peak}.  An ordinary upward-sloping term structure
+has no peak; a smoothly falling one has none either; markets show
+both shapes constantly, and no event caused them.  So read the peaks,
+and only the peaks.  Write $\mathcal{F}_i^{\rm ref}$ for interval
+$i$'s \emph{reference}: the higher of its two neighbours,
 \begin{equation}
-J(N)=\sum_{i<n}\big(\mathcal{F}_{i+1}-\mathcal{F}_i\big)^2
-+\lambda_{\rm mono}\sum_{i<n}
-\big(\!\min(\mathcal{F}_{i+1}-\mathcal{F}_i,\,0)\big)^2
-+\lambda_{\rm sparse}\sum_i\frac{N_i}{365}
-+\lambda_{\rm ridge}\sum_i\Big(\frac{N_i}{365}\Big)^{2}.
-\label{eq:clkobj}
+\mathcal{F}_i^{\rm ref}=\max\big(\mathcal{F}_{i-1},\mathcal{F}_{i+1}\big),
+\label{eq:clkref}
 \end{equation}
-Read the four terms one at a time.  The first is the flatness ideal:
-squared steps of the forward-variance ladder.  The second charges
-\emph{decreases} again, on top.  Why single out decreases?  Because a
-genuine pre-event board leaves a specific signature: the event
-interval spikes above both neighbours, so the ladder rises into it
-and falls out of it.  Lowering that one interval repairs both edges
-at once.  An ordinary \emph{upward-sloping} term structure, by
-contrast, has no falling edges at all --- markets show that shape
-constantly, no event caused it, and the extra charge makes sure the
-solver is not tempted to ``repair'' it.  The third term is the cost
-of speech: a charge on each installed day, linear in $N_i$.  Linear,
-not squared, and the difference matters.  Chapter~2's calibration
-carried a \emph{ridge} penalty --- a squared-size charge --- and a
-squared charge shrinks everything a little while zeroing nothing;
-a linear charge (with $N_i\ge0$ it is exactly the absolute-value
-penalty statisticians call $\ell_1$, or \emph{sparsity}) prefers
-exact zeros, paying for an event only where the flatness gain clears
-a threshold.  The last term is a tiny squared charge that keeps the
-optimization well conditioned; it never decides anything.  The minimization is a small bounded solve ---
-$n$ variables, reference weights and the routine in
-appendix~\ref{app:clkprotocol} --- and solved events below half a day
-are dropped as noise.
+evaluated on the calendar ladder ($N=0$).  The higher neighbour,
+deliberately: an event is only ever charged with the excess over the
+higher side, so a slope is never mistaken for a peak.  The rule is
+then one inequality and one division.
+\begin{equation}
+N_i=365\,\Delta t_i\Big(\frac{\mathcal{F}_i}{\mathcal{F}_i^{\rm ref}}-1\Big)
+\quad\text{if }
+\frac{\mathcal{F}_i}{\mathcal{F}_i^{\rm ref}}-1\ge0.03
+\text{ and } N_i\ge\tfrac12\text{ day},
+\qquad N_i=0\text{ otherwise.}
+\label{eq:clkpeak}
+\end{equation}
+The size is exact, not a compromise: substituting \eqref{eq:clkpeak}
+into $\Delta\tau_i=\Delta t_i+N_i/365$ gives
+$\Delta w_i/\Delta\tau_i=\mathcal{F}_i^{\rm ref}$ --- the event
+interval is brought onto its higher neighbour and not one day
+further.  The two floors are the rule's only constants.  The first
+says a peak must stand at least three percent above its reference,
+the second that the event it implies must be worth at least half a
+day; on a short interval the second binds, on a long one the first.
+Below either floor the excess is read as the fit noise of two ATM
+variances, and nothing is installed.  When one interval is clipped
+its neighbour's reference can only fall, so the rule is run as a
+sweep --- candidates in ascending order, repeated until a sweep
+changes nothing --- and lands on the largest ladder with no material
+peak left: the smallest events that remove every peak.  Two edges
+need a convention.  The last interval of the ladder is never a
+candidate; it is the reference the interval before it is judged
+against.  The first interval has no left neighbour: its reference is
+its right neighbour, except when the ladder keeps falling beyond it
+($\mathcal{F}_2>\mathcal{F}_3$), in which case that decay is
+continued one interval forward at its log-linear rate --- a front
+that decays smoothly from the first interval on is read as no event.
+A dip is never raised (\emph{second} fact above), a plateau of two
+equally hot intervals has no peak and is invisible, and two adjacent
+hot intervals of unequal height are read as one event, on the
+taller.  There is no objective and nothing to tune beyond the two
+floors.  A flatness objective with a charge on installed days ---
+the natural alternative --- shrinks every size it reports, by the
+charge over the objective's curvature, and given enough candidates
+flattens genuine term structure along with the peaks; the rule of
+\eqref{eq:clkpeak} can do neither, because it only ever lowers a peak
+to its neighbour.
 
 Before trusting any output, be precise about what the data can
 identify at all.
@@ -94,7 +113,7 @@ identify at all.
 \begin{proposition}[Dates inside an interval are not identified]
 \label{prop:clkident}
 Every quantity the pipeline consumes --- fits, readings,
-interpolation, the objective \eqref{eq:clkobj} --- depends on the
+interpolation, the rule \eqref{eq:clkpeak} --- depends on the
 event calendar only through the clock values $\tau(t_1),\dots,
 \tau(t_n)$ at the quoted expiries, hence only through the per-interval
 totals $N_i=\sum_{t_e\in(t_{i-1},t_i]}N_e$.  Consequently two events
@@ -113,109 +132,70 @@ $\tau(t_i)$, the same $\Delta\tau_i$, and the same value of every
 quantity listed.  The date within an interval never enters.
 \end{proof}
 
-So the solver's placement of its candidate --- mid-interval, by
+So the rule's placement of its event --- mid-interval, by
 convention --- is exactly that: a convention, recorded in the
 contract table, not an estimate.  When the report date is public,
-type it in; the \emph{size} is what the board can be asked for.
+move the event there; the \emph{size} is what the board can be asked
+for, and by the proposition it does not change.
 
 What can the size estimator deliver?  \Cref{fig:clkident} is the
-planted-event study: a flat clock
-volatility, one event of known size, solve
-\eqref{eq:clkobj}, compare.  Panel~(a) plots recovered against
-planted size on three boards.  On a dense board --- expiries from a
-week to a year, listed like a liquid single name's --- at $40\%$
-volatility, the curve is the diagonal to the eye: recovery within
-\MacClkIdentShrinkStrongD\ days at every planted size of two days
-and up.  On the same board at index-like $20\%$ volatility, the
-curve runs parallel to the diagonal but below it, short by up to
-\MacClkIdentShrinkWeakD\ days.  And on a coarse quarterly board at
-$20\%$, the curve is \emph{zero} until the planted event exceeds
-\MacClkIdentBlindD\ days, then rises roughly parallel, several days
-short.  (On every board the toe of the curve --- planted events
-under a day or so --- reports as exactly zero; the last paragraph of
-the derivation below says why.)  Three behaviours, one mechanism,
-and it is worth deriving because it is the cost of the
-sparsity charge.
+planted-event study: a flat clock volatility, one event of known
+size inside one interval, apply \eqref{eq:clkpeak}, compare.  The
+arithmetic is short enough to do first.  On a flat-clock board every
+interval accrues the same variance per calendar day, $\sigma^2$, and
+an event of $N^\ast$ extra days inside an interval of
+$d=365\,\Delta t_i$ calendar days raises that interval's calendar
+reading to $\sigma^2(1+N^\ast/d)$ while its neighbours stay at
+$\sigma^2$.  The excess over the reference is therefore
+$N^\ast/d$ exactly, whatever $\sigma$, and \eqref{eq:clkpeak} returns
+\[
+\widehat N=N^\ast
+\quad\text{if}\quad N^\ast\ge\max\!\big(\tfrac12,\;0.03\,d\big),
+\qquad\widehat N=0\ \text{otherwise}.
+\]
+Panel~(a) plots recovered against planted size and confirms it.  On a
+dense board --- expiries from a week to a year, listed like a liquid
+single name's, the event inside a \MacClkIdentDenseWidthD-day
+interval --- the curve is the diagonal from
+\MacClkIdentFloorDenseD\ days upward, exactly zero below; at $40\%$
+volatility and at index-like $20\%$ the two curves coincide to
+\MacClkIdentVolDiffD\ days.  On a coarse quarterly board, the event
+inside a \MacClkIdentQuartWidthD-day interval, the curve is zero until
+the planted event reaches \MacClkIdentFloorQuartD\ days and the
+diagonal after.  Above the floors the largest recovery error on any
+board is \MacClkIdentMaxErrD\ days --- rounding.  Handed a perfectly
+flat ladder, the rule installs exactly \MacClkIdentFlatDays\ days:
+silence is its default.
 
-Work on the study's configuration: one live candidate $N$ (the
-others parked at zero, where the solve indeed leaves them)
-against a planted truth $N^\ast$.  Two facts start the derivation.
-On this board the flatness part of \eqref{eq:clkobj} is
-\emph{minimized exactly at the truth}: the generator's ladder is flat
-by construction, so installing $N=N^\ast$ restores a perfectly flat
-$\mathcal{F}$ and no other value does better.  And near its minimum a
-smooth function is a parabola: value flat at $N^\ast$, some curvature
-$J''$, giving $\tfrac12 J''\,(N-N^\ast)^2$.  Adding the per-day
-charge $(\lambda_{\rm sparse}/365)\,N$ tilts the parabola, and
-setting the derivative to zero moves its minimum:
-\[
-J''(\widehat N-N^\ast)+\frac{\lambda_{\rm sparse}}{365}=0
-\qquad\Longrightarrow\qquad
-\widehat N=N^\ast-\frac{\lambda_{\rm sparse}}{365\,J''}.
-\]
-Every sparsity-charged estimator shrinks; the shortfall is the
-charge over the curvature.  And the curvature is where the market
-enters.  The candidate moves the objective only through its own
-interval's forward variance, at rate
-\[
-\frac{\partial\mathcal{F}_i}{\partial N_i}
-=-\frac{\Delta w_i}{\Delta\tau_i^{2}}\cdot\frac{1}{365}
-=-\frac{\mathcal{F}_i}{365\,\Delta\tau_i},
-\]
-so the flatness curvature is of the order of the square of that
-rate, $J''\sim\big(\mathcal{F}_i/(365\,\Delta\tau_i)\big)^2$, up to
-the count of squared terms touched.  Since $\mathcal{F}_i$ is of
-order $\sigma^2$, the shrinkage scales like
-\[
-N^\ast-\widehat N
-\;\sim\;\lambda_{\rm sparse}\,
-\frac{\Delta\tau_i^{2}}{\sigma^{4}}
-\]
---- inversely with the \emph{fourth} power of the board's volatility,
-and directly with the \emph{square} of the interval's width, with the
-day-count conversions and term counts absorbed into the
-proportionality (the study's measured pair,
-\MacClkIdentShrinkStrongD\ against \MacClkIdentShrinkWeakD\ days,
-carries rounding at the small end).  Halve the volatility and the
-shrinkage grows roughly sixteenfold; stretch the bracketing interval
-from a month to a quarter and it grows another order of magnitude.
-
-One mechanical fact completes the picture.  The estimate is
-constrained to $N\ge0$ and solved events below half a day are
-dropped, so whenever the shifted optimum $\widehat N$ lands at or
-below that floor, the solver reports \emph{exactly zero} --- the flat
-toes at the left of panel~(a), and the walls of panel~(b), are this
-clipping in action, not a failure to compute.  Panel~(b) shows the
-consequence directly: fix the planted event at 2 days and sweep the
-board's volatility.  The dense board starts seeing the event at
-about \MacClkIdentWallWeeklyPct\% volatility; the quarterly board not
-until about \MacClkIdentWallQuarterlyPct\%.  Below the wall the
-flatness gain a small event offers cannot clear the per-day charge,
-and the solver --- correctly, by its own lights --- says nothing.
-One more line of the study completes the picture: handed a perfectly
-flat ladder, the solver installs exactly \MacClkIdentFlatDays\ days.  A
-sparsity prior's virtue is precisely that silence is its default.
+Panel~(b) draws the floor itself, $\max(\tfrac12,0.03\,d)$, against
+the width of the bracketing interval.  Half a day until the intervals
+reach seventeen days, three percent of the width beyond.  A two-day
+event --- a modest single-name report --- sits above the floor on any
+interval up to \MacClkIdentWallWidthD\ days and below it on a
+quarterly listing: the wall is in the listing, not in the volatility.
+This is the price of an estimator with no objective.  It has no
+shrinkage and no volatility dependence; what it cannot do is see an
+event that a coarse ladder dilutes below three percent of an
+interval's variance, and on such a board the date must be typed in.
 
 \begin{figure}[htbp]
 \centering
 \paperfig{\textwidth}{fig_clk_ident.pdf}
-\caption{The planted-event study.  (a)~Recovered vs planted size:
-near-exact on the dense $40\%$ board (shrinkage
-$\le\MacClkIdentShrinkStrongD$\,d for planted sizes of 2\,d and up),
-shrunk by up to \MacClkIdentShrinkWeakD\,d at $20\%$, and blind below
-\MacClkIdentBlindD\,d on a quarterly $20\%$ board --- the
-$\lambda_{\rm sparse}\,\Delta\tau^2/\sigma^4$ law at work, with the
-$N\ge0$ clipping flattening every curve's toe.  (b)~A fixed 2-day
-event against board volatility: the dense board's materiality wall
-sits near \MacClkIdentWallWeeklyPct\%, the quarterly board's near
-\MacClkIdentWallQuarterlyPct\%.}
+\caption{The planted-event study.  (a)~Recovered vs planted size on
+a dense board (event inside a \MacClkIdentDenseWidthD-day interval)
+at $40\%$ and $20\%$ volatility, and on a quarterly board
+(\MacClkIdentQuartWidthD-day interval): exact from the floor upward
+(\MacClkIdentFloorDenseD\ and \MacClkIdentFloorQuartD\ days), exactly
+zero below, identical at both volatilities.  (b)~The floor
+$\max(\tfrac12,0.03\,d)$ against the interval width $d$; a two-day
+event clears it up to \MacClkIdentWallWidthD-day intervals.}
 \label{fig:clkident}
 \end{figure}
 
 We now know the estimator's character.  It reads exactly the kinks
 the clock was built to explain; it can only pull hot intervals down;
-it shrinks what it reports and stays silent below a wall it computes
-from the board's own volatility and spacing; and it cannot date an
+it reports sizes exactly and stays silent below a floor set by the
+listing's spacing; and it cannot date an
 event more finely than the listing brackets it.  What it has never
 been told is \emph{why} an interval runs hot.  The last section runs
 it on the real frozen boards and confronts that limit directly.

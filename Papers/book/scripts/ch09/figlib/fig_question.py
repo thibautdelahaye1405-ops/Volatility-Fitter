@@ -4,7 +4,8 @@ Panel (a): today's frozen SPY December 2026 fitted smile with its prepared
 mid quotes, and the three canonical tomorrows after a -4% forward move --
 all consistent with every price quoted today.  Panel (b): the vol of ONE
 fixed strike (today's k = -0.10 put) as a function of the move, under the
-three regimes: three straight lines of slope (R-1) s0, crossing at H = 0.
+three regimes: today's curve read (R-1) H away from the strike's label,
+the three readings crossing at H = 0.
 """
 
 from __future__ import annotations
@@ -55,18 +56,24 @@ def fig_ssr_question() -> str:
     ax = axes[1]
     h_grid = np.linspace(-0.05, 0.05, 101)
     vol0 = float(sm.iv(np.array([data9.K_MARK]))[0])
+    # A fixed strike with today's label k0 reads sigma_old(k0 + (R-1) H).
+    vol_at = {
+        regime: sm.iv(data9.K_MARK + (regime - 1.0) * h_grid)
+        for regime in data9.REGIMES
+    }
     for regime in data9.REGIMES:
-        vol_line = vol0 + (regime - 1.0) * sm.s0 * h_grid
-        ax.plot(100.0 * h_grid, 100.0 * vol_line,
+        ax.plot(100.0 * h_grid, 100.0 * vol_at[regime],
                 color=REGIME_COLORS[regime], lw=1.3,
                 label=REGIME_NAMES[regime])
     ax.axvline(0.0, color=PALETTE["muted"], lw=0.7)
     ax.plot([0.0], [100.0 * vol0], "o", ms=4.5, color=PALETTE["data"],
             zorder=5)
-    spread_bp = 2.0 * abs(sm.s0 * _H) * 1e4
+    lo = float(sm.iv(np.array([data9.K_MARK + _H]))[0])     # R = 2
+    hi = float(sm.iv(np.array([data9.K_MARK - _H]))[0])     # R = 0
+    spread_bp = abs(hi - lo) * 1e4
     figstyle.callout(
         ax, f"{spread_bp:.0f} vol bp apart\nat a {100*_H:+.0f}% move",
-        xy=(100.0 * _H, 100.0 * (vol0 + sm.s0 * _H)),
+        xy=(100.0 * _H, 100.0 * 0.5 * (hi + lo)),
         xytext=(-4.6, 100.0 * vol0 + 0.62),
     )
     ax.set_xlabel(r"forward move $H$ (%)")
@@ -87,5 +94,8 @@ def fig_ssr_question() -> str:
               "today's vol at the marked k=-0.10 strike, %")
     STORE.add("question", "SsrMarkSpreadBp", f"{spread_bp:.0f}",
               "spread of the marked strike's vol across regimes at the fan "
-              "move, vol bp")
+              "move (R=0 minus R=2 readings), vol bp")
+    STORE.add("question", "SsrMarkSlope", num(
+        float(data9.local_slope(sm, np.array([data9.K_MARK]))[0]), 3),
+        "today's smile slope at the marked k=-0.10 strike")
     return f"s0={sm.s0:+.3f}, mark spread {spread_bp:.0f} bp"

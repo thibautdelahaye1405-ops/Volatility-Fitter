@@ -1,6 +1,6 @@
 # Chapter 8 macro inventory (auto-generated -- do not edit)
 
-Emitted by `scripts/ch08/gen_figures.py` into `ch08_macros.tex`. Last write 2026-08-07.
+Emitted by `scripts/ch08/gen_figures.py` into `ch08_macros.tex`. Last write 2026-09-30.
 
 | Macro | Value | Meaning |
 |---|---|---|
@@ -42,24 +42,30 @@ Emitted by `scripts/ch08/gen_figures.py` into `ch08_macros.tex`. Last write 2026
 | `\MacClkInterpOverDay` | `45` | calendar day of the max overshoot |
 | `\MacClkInterpUnderBp` | `97` | max understatement PAST the event (vol bp) |
 | `\MacClkInterpUnderDay` | `45` | calendar day of the max understatement |
-| `\MacClkIdentBlindD` | `2.5` | largest planted event the quarterly 20% board misses (days) |
+| `\MacClkIdentDenseWidthD` | `28` | width of the dense board's event-bearing interval (days) |
 | `\MacClkIdentFlatDays` | `0.000` | days installed on a flat 20% ladder (exactly zero) |
-| `\MacClkIdentShrinkStrongD` | `0.03` | max shrinkage, dense board at 40% vol (planted >= 2d) |
-| `\MacClkIdentShrinkWeakD` | `0.40` | max shrinkage, dense board at 20% vol (planted >= 2d) |
-| `\MacClkIdentWallQuarterlyPct` | `22` | lowest vol at which the quarterly board sees it (%) |
-| `\MacClkIdentWallWeeklyPct` | `12` | lowest vol at which the dense board sees a 2-day event (%) |
-| `\MacClkReadFullMarchD` | `112` | extra days the unrestricted solve puts on Dec->Mar alone |
-| `\MacClkReadFullSpreadAfterBp` | `44` | full-board spread after (var bp) |
+| `\MacClkIdentFloorDenseD` | `0.84` | smallest event the rule reports on the dense board (days) |
+| `\MacClkIdentFloorQuartD` | `2.73` | smallest event the rule reports on the quarterly board (days) |
+| `\MacClkIdentMaxErrD` | `5.9e-14` | largest \|recovered - planted\| above the floors, all boards |
+| `\MacClkIdentQuartWidthD` | `91` | width of the quarterly board's event-bearing interval (days) |
+| `\MacClkIdentVolDiffD` | `0.0e+00` | largest difference between the 40% and 20% recoveries (days) |
+| `\MacClkIdentWallWidthD` | `67` | interval width beyond which a 2-day event is below the floor |
+| `\MacClkReadFullMarchAfter` | `0.1707` | Dec->Mar forward variance after the clip (var/yr) |
+| `\MacClkReadFullMarchBefore` | `0.2568` | Dec->Mar forward variance before (var/yr) |
+| `\MacClkReadFullMarchD` | `45.9` | extra days the unrestricted read puts on Dec->Mar alone |
+| `\MacClkReadFullSpreadAfterBp` | `904` | full-board spread after (var bp) |
 | `\MacClkReadFullSpreadBeforeBp` | `1444` | full-board spread before (var bp) |
-| `\MacClkReadFullTotalD` | `250` | total extra days installed with candidates everywhere |
-| `\MacClkReadHeroEarnAfter` | `0.1559` | earnings interval forward variance after the solve (var/yr) |
-| `\MacClkReadHeroEarnD` | `7.3` | extra days the year-end solve puts on the earnings interval |
-| `\MacClkReadHeroFlatLevel` | `0.1409` | level the three pre-earnings intervals meet at (var/yr) |
-| `\MacClkReadHeroShortD` | `1.3` | extra days on the two short-dated intervals combined |
-| `\MacClkReadHeroSpreadAfterBp` | `299` | in-horizon forward-variance spread after (var bp) |
+| `\MacClkReadFullTotalD` | `50.2` | total extra days installed with candidates everywhere |
+| `\MacClkReadHeroEarnAfter` | `0.1707` | earnings interval forward variance after the clip (var/yr) = its higher neighbour, the Sep-Dec interval |
+| `\MacClkReadHeroEarnD` | `4.3` | extra days the year-end read puts on the earnings interval |
+| `\MacClkReadHeroFrontLevel` | `0.1890` | the 2-day interval's forward variance (var/yr) |
+| `\MacClkReadHeroFrontRef` | `0.1954` | the 2-day interval's reference: the back's decay continued |
+| `\MacClkReadHeroLullLevel` | `0.1408` | the pre-earnings lull's forward variance (var/yr), left as is |
+| `\MacClkReadHeroSpreadAfterBp` | `482` | in-horizon forward-variance spread after (var bp) |
 | `\MacClkReadHeroSpreadBeforeBp` | `560` | in-horizon forward-variance spread before (var bp) |
-| `\MacClkReadHeroTotalD` | `8.6` | total extra days installed by the year-end solve |
+| `\MacClkReadHeroTotalD` | `4.3` | total extra days installed by the year-end read |
 | `\MacClkReadSpyDecBp` | `2` | largest decrease anywhere in SPY's calendar ladder (var bp) |
 | `\MacClkReadSpyMidVolPct` | `15` | SPY median forward variance quoted as a volatility (%) |
+| `\MacClkReadSpyPeakExcessPct` | `1.3` | relative excess of SPY's only local peak over its higher neighbour (%) |
 | `\MacClkReadSpySpreadBp` | `253` | SPY forward-variance spread left in place (var bp) |
-| `\MacClkReadSpyTotalD` | `0.9` | total extra days installed on the SPY board |
+| `\MacClkReadSpyTotalD` | `0.0` | total extra days installed on the SPY board |

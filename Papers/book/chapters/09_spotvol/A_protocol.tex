@@ -28,7 +28,9 @@ delta point is $10^{-2}$ of delta.  $d_+$ is evaluated on the node's
 own fitted smile, $d_+=-k/\sqrt{w}+\sqrt{w}/2$.  The 25-delta put
 strike of \cref{fig:ssrscenario}(b) solves $\PhiN(d_+)=0.75$ on the
 fitted smile (put forward delta $-0.25$); the gap plotted there is
-eq.~\eqref{eq:ssrgap} with each node's own $(\tau, s_0)$.
+eq.~\eqref{eq:ssrgap} with each node's own $\tau$ and the fitted
+smile's slope at that strike, a central difference at $\pm10^{-3}$
+as for $s_0$.
 
 \paragraph{The synthetic fields
 (\cref{fig:ssrhalf}(a,b); \cref{fig:ssrreprice}).}
@@ -67,13 +69,16 @@ reported digits are converged.
 
 \paragraph{The board scenario (\cref{fig:ssrscenario}).}
 Move $H=-0.05$ applied uniformly to all eight SPY expiries.  The
-transported ATM value of a node is the exact transport: the node's
-stored fitted curve read at $k=H$, plus
-$(\mathcal{R}-1)s_0(T)H$.  On the 2-day and 4-day nodes the $k=H$
-read lies beyond the prepared-quote span (their quotes end at
+transported ATM value of a node is the exact transport
+\eqref{eq:ssrshift}: the node's stored fitted curve read at
+$k=\mathcal{R}H$.  On the 2-day and 4-day nodes the $k=H$ and
+$k=2H$ reads lie beyond the prepared-quote span (their quotes end at
 $-2.8\%$ and $-4.5\%$ log-moneyness respectively), so those reads
 consume the fitted model's published wing, as discussed in
-\cref{sec:ssrboard}.
+\cref{sec:ssrboard}.  The transport is the reference implementation's
+rule; its named sticky-local-vol regime uses the relabeling
+\eqref{eq:ssrell} in place of the uniform slide, and its dial set to
+$2$ the slide drawn here.
 
 \paragraph{Units.}
 As throughout the book: one vol bp is $10^{-4}$ of absolute

@@ -2,45 +2,45 @@
 \label{sec:clkfrozen}
 
 The estimator is measured; point it at the real data.  This section
-runs \eqref{eq:clkobj} on the two frozen ladders --- NVDA, where the
+runs \eqref{eq:clkpeak} on the two frozen ladders --- NVDA, where the
 chapter began, and SPY --- and reads the results within the limits
 \cref{sec:clkinverse} measured.
 
 \Cref{fig:clkread}(a) is the run with a horizon.  Candidates are allowed
 at the first five expiries --- through December 2026, a
 \emph{horizon} choice recorded in the contract --- while the later
-intervals carry no candidates and hold the ladder's far end in place
+intervals carry no candidates and serve only as references
 (they sit beyond the panel's right edge; panel~(b) shows them).  The orange steps are the calendar ladder of
 \cref{fig:clkboard}(b); the blue steps are the same increments
-divided by the solved clock.  The solver spends its budget exactly
-where the chapter has been pointing: \MacClkReadHeroEarnD\ extra days
-on the earnings-bearing interval (shaded), a combined
-\MacClkReadHeroShortD\ days on the two short-dated intervals at the
-left edge --- the board's hot Monday-to-Friday opening, a real if
-modest acceleration --- and nothing anywhere else:
-\MacClkReadHeroTotalD\ days in total.  Look at what the blue ladder
-does.  (Units, once: both ladders are variance per year of their own
-clock --- calendar year for orange, solved variance year for blue.)
-The three intervals before the report meet at
-\MacClkReadHeroFlatLevel\ --- the solver has equalized the
-pre-earnings stretch --- and the earnings interval comes down from
-\MacClkBoardHotFwd\ to \MacClkReadHeroEarnAfter, most of the
-way to its neighbours but not all of it: the per-day charge keeps the
-last few days unbought, the live shrinkage of
-\cref{fig:clkident}(a) on a real board.  The December interval is
-untouched --- orange peeking out behind blue --- and the in-horizon
-spread of the ladder tightens from \MacClkReadHeroSpreadBeforeBp\ to
-\MacClkReadHeroSpreadAfterBp\ variance bp.
+divided by the installed clock.  The rule finds one peak, exactly
+where the chapter has been pointing: the earnings-bearing interval
+(shaded) accrues \MacClkBoardHotFwd\ per year against a higher
+neighbour of \MacClkReadHeroEarnAfter\ --- the September-to-December
+interval, not the lull before it --- and is clipped onto it by
+\MacClkReadHeroEarnD\ extra days, the whole budget:
+\MacClkReadHeroTotalD\ days in total.  (Units, once: both ladders are
+variance per year of their own clock --- calendar year for orange,
+installed variance year for blue.)  Everything else is left standing,
+orange peeking out behind blue.  The lull at
+\MacClkReadHeroLullLevel\ is a dip, and a dip cannot be raised.  The
+two short-dated intervals at the left edge --- the board's hot
+Monday-to-Friday opening --- are not peaks: the second sits below
+the first, and the first is judged against the back's decay
+continued forward, \MacClkReadHeroFrontRef, which its own
+\MacClkReadHeroFrontLevel\ does not exceed.  The in-horizon spread
+of the ladder tightens from \MacClkReadHeroSpreadBeforeBp\ to
+\MacClkReadHeroSpreadAfterBp\ variance bp; what remains is the
+term structure's own shape.
 
-Now read panel~(a) in two directions.  What the solver has
+Now read panel~(a) in two directions.  What the rule has
 genuinely done is recover, \emph{from prices alone}, that the window
-between August~21 and September~18 carries about seven ordinary days
-more variance than its calendar length --- with no access to a news
+between August~21 and September~18 carries four ordinary days
+more variance than its neighbour --- with no access to a news
 feed.  The public schedule says why: NVDA's quarterly report sits in
-that window.  But the solver does not know that, and cannot.  It
-reads kinks; earnings, a product launch, a macro date, or a
+that window.  But the rule does not know that, and cannot.  It
+reads peaks; earnings, a product launch, a macro date, or a
 genuinely lumpy term structure all look identical through
-\eqref{eq:clkobj}.  The installed calendar is an \emph{estimate of
+\eqref{eq:clkpeak}.  The installed calendar is an \emph{estimate of
 sizes at conventional dates}, to be reviewed against the public
 schedule --- not an oracle that discovered earnings.
 
@@ -48,53 +48,50 @@ schedule --- not an oracle that discovered earnings.
 \centering
 \paperfig{\textwidth}{fig_clk_read.pdf}
 \caption{Reading the frozen boards' clocks (forward variance per
-calendar year, orange, vs per solved variance year, blue).
-(a)~NVDA with candidates through year-end: \MacClkReadHeroEarnD\
-extra days land on the earnings interval (shaded),
-\MacClkReadHeroShortD\ on the short end, none elsewhere; the
-pre-report intervals equalize at \MacClkReadHeroFlatLevel\ and the
+calendar year, orange, vs per installed variance year, blue).
+(a)~NVDA with candidates through year-end: one peak, the earnings
+interval (shaded), clipped onto its higher neighbour by
+\MacClkReadHeroEarnD\ extra days; nothing else moves; the
 in-horizon spread tightens from \MacClkReadHeroSpreadBeforeBp\ to
 \MacClkReadHeroSpreadAfterBp\ variance bp.  (b)~NVDA with candidates
-everywhere: \MacClkReadFullTotalD\ days installed, the ladder forced
-flat (\MacClkReadFullSpreadBeforeBp\ to
-\MacClkReadFullSpreadAfterBp\ variance bp) --- including
-\MacClkReadFullMarchD\ days against a single ordinary interval.
-(c)~SPY: \MacClkReadSpyTotalD\ day installed in total; the rising
+everywhere: a second peak, the December-to-March quarter, is clipped
+by \MacClkReadFullMarchD\ days; \MacClkReadFullTotalD\ days in all,
+the ladder's spread \MacClkReadFullSpreadBeforeBp\ to
+\MacClkReadFullSpreadAfterBp\ variance bp --- not flat.
+(c)~SPY: no peak clears the floor; nothing installed; the rising
 ladder is left standing.}
 \label{fig:clkread}
 \end{figure}
 
 Panel~(b) shows what happens when that review is skipped.  Same
-board, same objective, but candidates at every expiry and no horizon.
-The solver installs \MacClkReadFullTotalD\ extra days and flattens
-the entire ladder, from a spread of \MacClkReadFullSpreadBeforeBp\
-variance bp to \MacClkReadFullSpreadAfterBp\ --- including
-\MacClkReadFullMarchD\ days against the December-to-March interval
-alone, an ordinary three-month stretch whose elevated accrual is some
-mixture of two more earnings reports and genuine term-structure
-shape.  Nothing malfunctioned.  Handed enough candidates, the
-flatness ideal is achievable, and the objective achieves it --- by
-attributing \emph{everything} to the clock.  A perfectly flat
-blue ladder is the optimizer satisfied, not the truth found; the
-solver has no way to say ``this interval is hot for a reason the
-clock should not absorb.''  The horizon of panel~(a), and the human
-review of what it installs, are not decorations on the method ---
-they are the method.
+board, same rule, but candidates at every expiry and no horizon.
+The rule finds a second peak: the December-to-March interval accrues
+\MacClkReadFullMarchBefore\ per year against a higher neighbour of
+\MacClkReadFullMarchAfter, and is clipped by \MacClkReadFullMarchD\
+days --- an ordinary three-month stretch whose elevated accrual is
+some mixture of two more earnings reports and genuine term-structure
+shape.  \MacClkReadFullTotalD\ days in all; the ladder's spread
+falls from \MacClkReadFullSpreadBeforeBp\ variance bp to
+\MacClkReadFullSpreadAfterBp, and no further, because the two dips
+and the rising tail are not peaks and the rule cannot flatten what
+it cannot raise.  Nothing malfunctioned.  A quarter that stands
+above both its neighbours \emph{is} a peak, and the rule has no way
+to say ``this interval is hot for a reason the clock should not
+absorb.''  The horizon of panel~(a), and the human review of what it
+installs, are not decorations on the method --- they are the method.
 
 Panel~(c) is the control experiment the chapter owes the reader:
 the index board.  SPY's calendar ladder rises steadily --- the
 familiar upward term structure; its largest decrease anywhere is
-\MacClkReadSpyDecBp\ variance bp --- and the solver, run with no
-horizon at all, installs \MacClkReadSpyTotalD\ day in total, leaving
+\MacClkReadSpyDecBp\ variance bp --- and the rule, run with no
+horizon at all, installs nothing, leaving
 the ladder's \MacClkReadSpySpreadBp-variance-bp spread standing.
-Both halves of the design show up in that restraint.  The
-monotonicity charge in \eqref{eq:clkobj} fires only on
-\emph{decreases} of forward variance, and this ladder has
-essentially none; and at the index's forward volatilities --- the
-board's median is \MacClkReadSpyMidVolPct\% --- the $\sigma^4$
-materiality wall of \cref{sec:clkinverse} prices small events out
-entirely.  A diversified index dilutes any
-single name's report to a fraction of a day; the solver's silence on
+The mechanism is the floor.  A rising ladder has no peak at all,
+and this one has exactly one, the two-to-four-day interval, which
+stands \MacClkReadSpyPeakExcessPct\% above its higher neighbour ---
+under the three-percent floor, and worth a fortieth of a day on a
+two-day interval.  A diversified index dilutes any
+single name's report to a fraction of a day; the rule's silence on
 SPY is the study's flat-ladder result repeated on real data.  The
 single name keeps an event clock; the index keeps the calendar.
 
@@ -111,7 +108,14 @@ profile (so much of its weight during the session, so much
 overnight), and a scheduled morning print --- a CPI release at 8:30
 --- is simply an event whose date $t_e$ is a fraction of a day,
 entering \eqref{eq:clkclock} unchanged.  The reference implementation
-carries such a sub-day clock; this book stops at day granularity,
+carries such a sub-day clock as an option: each trading day's unit
+weight is split between the session and the hours around it (the
+default profile is flat, $6.5/24$ to the session), and a non-trading
+day keeps a stated weight, one by default --- so the weekend
+discount of \citet{FrenchRoll1986} is a dial there, not a default,
+and on the default whole-day clock a Friday board with steady
+variance per trading day shows the interval after a weekend as a
+peak per calendar day.  This book stops at day granularity,
 stated here once.
 
 Second, what the clock does not model.  The clock is a deterministic
@@ -181,23 +185,25 @@ constant-accrual convention on the market's clock.\\
 \addlinespace
 Dates inside an interval are not identified
 (\cref{prop:clkident}); an event can only lower its own interval's
-$\mathcal{F}_i$. &
-The study (\cref{fig:clkident}): shrinkage
-\MacClkIdentShrinkStrongD/\MacClkIdentShrinkWeakD\,d at
-$40\%/20\%$, quarterly wall at \MacClkIdentBlindD\,d, flat ladder
+$\mathcal{F}_i$; the peak rule \eqref{eq:clkpeak} recovers a planted
+size exactly above its floor $\max(\tfrac12,0.03\,d)$. &
+The study (\cref{fig:clkident}): exact to \MacClkIdentMaxErrD\,d
+above floors of \MacClkIdentFloorDenseD/\MacClkIdentFloorQuartD\,d
+(dense/quarterly), at every volatility; flat ladder
 $\to$ \MacClkIdentFlatDays\ days. &
-Candidate placement mid-interval; solver weights, half-day drop
-threshold and horizon (appendix~\ref{app:clkprotocol}); solved sizes
-are shrunk estimates.\\
+Candidate placement mid-interval; the reference as the higher
+neighbour, the two floors and the horizon
+(appendix~\ref{app:clkprotocol}); a plateau of equal peaks is
+invisible.\\
 \addlinespace
 --- (this row is empirical by design) &
 The frozen boards (\cref{fig:clkread}): \MacClkReadHeroEarnD\ days
 onto NVDA's earnings interval (spread
 \MacClkReadHeroSpreadBeforeBp$\to$\MacClkReadHeroSpreadAfterBp\ var
-bp); the no-horizon run's \MacClkReadFullTotalD-day overreach; SPY
-left at \MacClkReadSpyTotalD\ day. &
+bp); the no-horizon run's second peak, \MacClkReadFullMarchD\ days
+on an ordinary quarter; SPY left untouched. &
 The installed calendar is reviewed against the public schedule
-before use; the solver measures how much, never why.\\
+before use; the rule measures how much, never why.\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -209,10 +215,10 @@ entire construction is arbitrage-proof by arithmetic.
 \emph{Information} was what the board genuinely pins down: total
 variances at quoted expiries, hence per-interval accrual rates ---
 and, through the inverse problem, event \emph{sizes} above a
-computable wall, but never dates inside an interval and never causes.
+floor set by the listing, but never dates inside an interval and never causes.
 \emph{Convention} was everything else, each piece now on the table:
 the day currency, the normalization choice, the interpolation rule,
-the candidate placement, the solver's weights and horizon.  With this
+the candidate placement, the rule's two floors and its horizon.  With this
 chapter, Part~II's work is complete: the raw board has been turned
 into forwards and discounts (Chapter~6), European prices
 (Chapter~7), and now readings on the market's clock --- the observation

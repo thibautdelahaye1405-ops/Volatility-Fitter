@@ -74,7 +74,8 @@ forward move, drawn with the transport built in
 panel~(a)'s dots.  (b)~The volatility of one fixed strike (today's
 $k=-0.10$ put, fitted today at \MacSsrMarkVolPct\%) against the move
 size,
-under the three rules: at a $-\MacSsrFanMovePct\%$ move the answers
+under the three rules --- each reads today's curve a different
+distance from the strike: at a $-\MacSsrFanMovePct\%$ move the answers
 sit \MacSsrMarkSpreadBp\ vol bp apart.}
 \label{fig:ssrquestion}
 \end{figure}
@@ -93,11 +94,13 @@ sticky-strike between, at every strike drawn --- for reasons
 of the three: they are different completions of the same photograph
 (\cref{rem:ssrident}).  Panel~(b) reads the same disagreement at a
 single fixed strike --- the put ten percent below the money, whose
-fitted volatility today is \MacSsrMarkVolPct\%.  Each rule makes that strike's tomorrow
-volatility a straight line in the move size; the lines share only the
-point at zero move.  At $-\MacSsrFanMovePct\%$ they span
+fitted volatility today is \MacSsrMarkVolPct\%.  Each rule reads that
+strike's tomorrow volatility off today's curve at a different
+distance from the strike --- one rule leaves it where it is, the
+other two walk up or down the skew --- and the three readings share
+only the point at zero move.  At $-\MacSsrFanMovePct\%$ they span
 \MacSsrMarkSpreadBp\ vol bp (a vol bp, as throughout the book, is
-$10^{-4}$ of absolute volatility) --- three and a half volatility
+$10^{-4}$ of absolute volatility) --- four and a half volatility
 points for the same strike, same surface, same tick.
 
 We now know what is missing and why it must be chosen.  The rest of
