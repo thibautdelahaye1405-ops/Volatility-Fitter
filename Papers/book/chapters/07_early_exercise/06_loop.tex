@@ -33,11 +33,29 @@ One input is deliberately \emph{not} taken from the board: the rate.
 Chapter~6 proved the line's slope is the poorly identified
 coefficient, and this board makes the point personally --- its fitted
 slope implies $r=\MacFwdLineRateNaivePct\%$, a negative rate in
-mid-2026, which is noise.  Following
-\cref{sec:fwdclamp}'s rule, the rate is pinned by a stated
+mid-2026, which is noise.  In the spirit of
+\cref{sec:fwdclamp}, this chapter pins the rate by a stated
 convention (a money-market $4.3\%$; appendix~\ref{app:deamprotocol})
-and the \emph{level} --- the well-measured number --- carries the
+and lets the \emph{level} --- the well-measured number --- carry the
 information, through $q_d=r-\log(F/S)/t$.
+
+The reference implementation runs the same fixed point on a
+narrower footing, and the choices are worth recording.  It keeps
+the regression's slope (clamped to Chapter~6's band) and iterates
+only the level: on the pairs within $15\%$ log-moneyness of the
+forward --- at most the eleven nearest --- both legs are
+de-Americanized at the current carry, and the forward is re-read as
+the plain average of $K_i+(\mathsf C^{E}_i-\mathsf P^{E}_i)/D$ over
+the pairs whose two legs both rooted, \cref{prop:fwdlever}'s
+estimator with a lever arm of a few dollars.  Convergence is
+geometric; the passes stop at a relative move of $5\times10^{-5}$,
+six at most.  The rate then gets one test the chapter's convention
+does not need: at the true carry the de-Americanized call and put
+volatilities of one strike coincide, so if their kernel-weighted gap
+at the money exceeds five volatility basis points, the rate is
+re-solved by bisection within the band until the two sides join, the
+level fixed point re-run at each trial.  Clean and short-dated chains
+never trip the test.
 
 Not every pair survives the loop, and the dropouts are old friends:
 on \MacDeamBowNDropped\ of the \MacDeamBowNPairs\ pairs, the deep
@@ -94,10 +112,13 @@ moves from $\MacDeamBowFNaive$ to $\MacDeamBowFDeam$.  That lands
 \MacDeamBowGapToResolvedBp\ bp from $\MacDeamBowFResolved$, the
 forward stored with the book's frozen snapshot --- the resolution the
 reference implementation (Chapter~6's working software, whose
-conventions the book's figures follow) computed with its own discrete
-dividend schedule.  Read that residual gap for what it is: the
-distance between two stated dividend conventions
-(\cref{sec:deamdivs}), not an unexplained error --- and compare it
+conventions the book's figures follow) computed by the level-only
+passes above, its slope from the clamped regression.  Read that
+residual gap for what it is: the
+distance between two stated carry conventions --- the chapter's
+pinned rate against the regression's slope
+(\cref{sec:deamdivs} for the dividend side) --- not an unexplained
+error --- and compare it
 with the \MacDeamBowNaiveGapBp\ bp the naive forward was carrying.
 Chapter~6 measured, on this very node, what such basis points cost if
 ignored: \MacFwdSkewGapBp\ vol bp of put--call gap at the money for
@@ -111,9 +132,15 @@ it: on a genuinely hard-to-borrow name, the borrow $b$ enters the
 carry, the carry moves the premium, and the premium moves the fitted
 forward that identifies the borrow --- \cref{sec:fwdborrow}'s closing
 limit.  The resolution is this section's loop with one more unknown
-riding inside it, and it inherits \cref{sec:fwdborrow}'s
-identifiability floors --- the smallest borrow a board's noise lets
-it distinguish from zero --- unchanged: below the floor, the jointly
-closed answer is still \emph{unidentified}, reported as such.  On ordinary
+riding inside it.  The reference implementation carries it as a
+switch, off by default: starting at $b=0$, de-Americanize every leg
+at the carry $(r,q_d+b)$, refit the parity line on the tree's own
+European legs, read the theoretical forward at that carry, and move
+$b$ by the log ratio of theoretical to fitted forward, until the move
+is below a tenth of a basis point or eight rounds have run.  The
+result replaces the parity pair only when the borrow it finds
+exceeds a materiality gate of $25$\,bp; the identifiability floor of
+\cref{sec:fwdborrow} is reported beside it, so that a read below the
+floor is still \emph{unidentified}.  On ordinary
 names --- the frozen board included --- the borrow leg is immaterial
 and the two passes above suffice.

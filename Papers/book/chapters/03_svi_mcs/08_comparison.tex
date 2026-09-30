@@ -45,7 +45,12 @@ point for LQD: no finite strip of quotes identifies an asymptotic
 slope by itself; a fitted wing is the model's convention continuing
 the last quoted evidence.  Here, three different conventions continue
 similar evidence in similar ways.  The agreement measures the
-evidence, not the truth of any family's tails.
+evidence, not the truth of any family's tails.  (The reference
+implementation can also impose it: an optional block of rows pulls
+SVI's and MCS's wings onto LQD's --- the variance-swap level, the two
+Lee slopes, or the value and slope at the last quoted strikes --- so
+that a residual comparison isolates the belly.  Every figure here
+runs without it.)
 
 \begin{figure}[htbp]
 \centering
@@ -192,8 +197,9 @@ Validity & structural: every admissible vector is a law
 (\cref{prop:noarb}) & policed: floor and cap structural in the chart;
 butterfly checked on a grid & policed: wings neutral by
 \cref{lem:zerowing}; butterfly checked on a grid\\
-Tails & exponential class, slopes from endpoint speeds
-(\cref{prop:leeclosed}) & exactly linear wings; slopes capped at
+Tails & exponential class at the default $\alpha_\pm=0$, slopes from
+endpoint speeds (\cref{prop:leeclosed}); sub-linear at $\alpha_\pm>0$
+& exactly linear wings; slopes capped at
 $\beta_{\max}<2$ & base-owned wings \eqref{eq:mcsbetak};
 admissibility a separate check\\
 Interior capacity & polynomial order, guarded by

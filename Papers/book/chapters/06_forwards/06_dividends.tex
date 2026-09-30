@@ -16,7 +16,11 @@ and the borrowing costs $r$.  Dividends change the arithmetic: whoever
 holds the stock until expiry \emph{collects} them, and the forward
 buyer does not, so their value is subtracted from what delivery is
 worth.  How exactly it is subtracted depends on how the dividends are
-modeled, and there are three standard conventions.
+modeled, and there are three standard conventions (a fourth, used by
+the reference implementation for long-dated expiries, is their
+splice: cash for the dates inside the first year, proportional
+beyond, where a forecast dollar amount is only a fraction of an
+unknown future price).
 
 \emph{Discrete cash.}  The stock will pay fixed dollar amounts $d_i$
 at \emph{ex-dates} $t_i\le t$ --- the dates from which a buyer of the

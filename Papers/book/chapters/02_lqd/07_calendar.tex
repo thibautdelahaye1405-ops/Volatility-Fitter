@@ -124,12 +124,30 @@ for every adjacent pair of expiries.
 
 The expiries are fitted jointly because changing either member of an adjacent
 pair changes the calendar gap.  The data term is the sum of the slice
-objectives.  The inequalities \eqref{eq:globalledgerconstraint} are hard
-constraints, not residuals whose violation can be traded against a slightly
-better quote fit.  Standard constrained solvers use the analytic ledger
-sensitivities from \eqref{eq:pass3}; a least-squares implementation may use the
-active-set exchange described below.  In either case, acceptance requires the
-full-line certificate.
+objectives.  The inequalities \eqref{eq:globalledgerconstraint} are
+enforced by an active-set exchange, described in
+\cref{sec:calendarcertificate}: the least-squares solver carries a stiff
+hinge row for each rank the certificate has found violated, the ledger
+sensitivities coming from \eqref{eq:pass3}, and acceptance requires the
+full-line certificate itself, to a stated tolerance ($10^{-6}$ in
+normalized price in the reference implementation).  The rows are stiff
+rather than hard --- a least-squares solver has no other kind --- and
+the certificate, not the solver, is what decides.  The reference
+implementation fits the stack in three stages.  First each expiry is
+fitted alone.  Then adjacent pairs are screened for price-space order
+on their common quoted support: on a grid of strikes covering that
+support, tapered to zero a short distance beyond it, a pair is active
+when $c_j-c_{j+1}$ exceeds half a volatility basis point in vega
+units; maximal runs of active pairs are re-solved jointly with hinge
+rows $\propto(c_j(k)-c_{j+1}(k))^+$ on that grid, the multiplier
+raised tenfold, at most three times, while a violation remains.  Last,
+every adjacent pair is certified on the whole line, and a failing
+component enters the exchange.  Confining the solver's own rows to the
+quoted support is deliberate: a full-line ledger row inside the fit
+lets an acute short-dated wing pull a far expiry off its own quotes,
+because the ledger integrates the extrapolated tail even at quoted
+ranks; the exchange adds full-line rows only at the ranks the
+certificate names.
 
 Global control necessarily couples unquoted wings across maturity because
 those wings belong to the published surface.  Choose the tail policy for the
@@ -142,14 +160,23 @@ requires
 \label{eq:tailscalecalendar}
 \end{equation}
 apart from exact ties, where the next asymptotic constant decides the order.
-These inequalities are imposed in the endpoint chart.  If exponents vary by
+These inequalities are linear in the endpoint chart
+($\log\lambda_\pm$ is affine in the coefficients), and the exchange
+carries them as hinge rows $(\log\lambda_{\pm,j}-\log\lambda_{\pm,j+1})^+$
+beside the ledger rows; the certificate reports the limiting order
+separately, and whether an accepted stack must also satisfy it is a
+stated switch (off by default --- the ledger tolerance is then the
+only requirement in the far tails).  If exponents vary by
 expiry, the farther law cannot have a lighter asymptotic tail: on either side
 $\alpha_{\pm,j+1}>\alpha_{\pm,j}$ forces a calendar reversal sufficiently far
 out.  Common $\alpha_\pm$ across a maturity stack is the simpler policy.
 
-If the hard constraints are inconsistent with the quote bands, no law stack
+If the constraints are inconsistent with the quote bands, no law stack
 can satisfy both those bands and the selected tail policy.  The meaningful
-diagnostic is the smallest quote-band relaxation needed for feasibility.
+diagnostic is the smallest quote-band relaxation needed for feasibility:
+widen every band of the failing pair symmetrically by $\delta$ in
+volatility, mids kept, re-run the exchange on the pair alone, and
+bisect $\delta$ on $(0,0.05]$ for the smallest value that certifies.
 Shrinking the calendar domain would merely hide the inconsistency outside the
 chosen interval.
 
@@ -170,23 +197,36 @@ Thus the ledger gap can turn only where the two quantile curves cross.  Between
 two consecutive crossings it is monotone.  Every possible negative minimum
 therefore occurs at a crossing or in an analytic tail.
 
-This gives a finite certificate for the stored surface:
+This gives a finite certificate for the stored surface.  The stored
+object is the cubic Hermite interpolant of each ledger with the exact
+nodal derivatives \eqref{eq:nodalderivatives}, so the stored gap
+$\Delta G$ is itself a cubic on every grid segment, with nodal
+derivatives $\rho(z_i)\{e^{x_1(z_i)}-e^{x_2(z_i)}\}$:
 \begin{enumerate}
-\item isolate every root of $x_{j+1}-x_j$ on the central grid; for cubic
-Hermite transports this is a cubic root problem on each segment;
-\item evaluate $G_{j+1}-G_j$ at those roots and at the two grid boundaries;
+\item on every segment, locate the interior turning points of the
+cubic $\Delta G$ --- the roots of a quadratic --- and evaluate
+$\Delta G$ there and at every node;
 \item continue both transports with \eqref{eq:rightcontinuation} and its left
-analogue, isolate any tail roots, and evaluate the ledger gap there;
+analogue; where the two continuations cross (at $\alpha_\pm=0$ the
+crossing is explicit, $t^*=(x_1(Z_{\max})-x_2(Z_{\max}))/
+(\lambda_{+,2}-\lambda_{+,1})$ beyond the right edge), evaluate the gap
+of the two tail masses there;
 \item check the limiting tail order from the exponents, endpoint coefficients,
 and, in a tie, the asymptotic constants.
 \end{enumerate}
 Nonnegative values at all these candidate minima prove
-\eqref{eq:globalledgerconstraint} on the whole real line.  This is a finite
+\eqref{eq:globalledgerconstraint} on the whole real line for the
+stored surface.  This is a finite
 certificate of a continuum property; no arbitrary strike cutoff is involved.
+The reference implementation runs it on the publication grid and
+accepts a pair when the minimum exceeds $-10^{-6}$.
 
 During calibration, the current violating minimum is added to the active
-constraint set.  This exchange step is repeated until the certificate finds
-no negative minimum.  In practice the active ranks are few because adjacent
+constraint set as a hinge row
+$\sqrt{10^{6}}\,(G_j(z^*)-G_{j+1}(z^*))^+$.  This exchange step is
+repeated until the certificate finds no negative minimum, for at most
+eight rounds; a minimum that returns at the same rank is reported as
+irreducible.  In practice the active ranks are few because adjacent
 smooth quantile curves cross only a few times.
 
 \begin{figure}[htbp]
@@ -201,8 +241,12 @@ test certifies it on the full line.}
 \end{figure}
 
 At extreme strikes, both Black price and vega can underflow while the implied
-variance remains finite.  A publication chart therefore evaluates remote
-wings from \eqref{eq:leeclosed} or \eqref{eq:rightsublinearwing}, matched to
-the central inversion, rather than inverting numerically zero prices.  The
+variance remains finite.  The out-of-the-money inversion of
+\cref{sec:numerics} reads a price of $10^{-300}$ as accurately as one
+at the money, so at $\alpha_\pm=0$ the reference implementation
+inverts every drawn strike directly; on a side with $\alpha>0$, beyond
+the last strike whose option is worth more than $10^{-14}$, the chart
+continues the curve by \eqref{eq:rightsublinearwing}, matched to the
+central inversion.  The
 chart then displays the globally certified surface instead of numerical noise
 from an ill-conditioned inverse.

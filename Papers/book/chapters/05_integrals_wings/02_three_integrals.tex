@@ -171,7 +171,10 @@ solver Chapter~4 marched forward, adding
 $v\,\Delta s$ at each step, and the number is read off at the spot.
 This is the natural route for the local-volatility model, which owns
 neither a smile formula nor a terminal quantile --- but owns the
-field.
+field.  (The reference implementation's default for that model is
+nevertheless the strike-side replication, evaluated on the lattice
+prices it has already marched, with the put leg by parity; the
+backward sweep is its check, and an option.)
 
 \subsection{One number}
 
@@ -238,14 +241,18 @@ the contours.  The marker at the origin of the fan is where
 The field route's check deserves its own sentence, because it teaches
 the same lesson as Chapter~4's two operators.  On the sheet, the
 strike-side route \eqref{eq:vsrepl} and the field-side route
-\eqref{eq:vssource} are both computed by finite differences, and both
+\eqref{eq:vssource} are both computed by finite differences, and on
+this chapter's implicit-Euler march both
 carry a first-order bias in the time step.  At the march's own step
 the two reads differ by \MacVsAgreeFieldCoarseBp\ vol bp; refine the
 step eightfold and the gap collapses to \MacVsAgreeFieldBp\ vol bp,
 halving with each halving of the step.  The mathematics says the
 integrals are equal; the computation agrees --- in the limit, at the
 schemes' first-order rate, and measuring that convergence is the
-check.
+check.  (Under the reference implementation's BDF2 default the
+forward march is second order while the backward sweep stays first
+order, so the gap between the two reads is then the backward sweep's
+bias alone.)
 
 One structural observation organizes all of this, and it is worth
 stating because it predicts which route each model finds cheap.  The

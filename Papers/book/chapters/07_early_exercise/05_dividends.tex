@@ -71,7 +71,9 @@ every cash amount by the common factor
 \end{equation}
 which is exactly the ratio that makes the escrowed forward land on
 $F$.  (A nonsensical factor --- negative, or far from one --- is a
-sign the schedule itself is wrong, and rejects it.)
+sign the schedule itself is wrong, and rejects it; the reference
+implementation accepts factors in $(0,5]$, and falls back to the
+smooth carry otherwise.)
 
 Now the measurement: what does the date-aware tree know that the
 smeared one cannot?  \Cref{fig:deamescrow} prices a deliberately
@@ -130,8 +132,10 @@ real-data figures run the smooth-carry tree with the
 forward-consistent $q_d$: an ETF's quarterly dividends are small, and
 the fitted forward already carries their information.  The residual
 cost of that convention is measured, not assumed, in the next section
---- a few basis points of forward.  For a single name with heavy
-dates, the escrowed tree is the correct default, and either choice
+--- a few basis points of forward.  The smooth carry is also the
+reference implementation's default; a stated cash schedule switches
+a name to the escrowed tree, which for a single name with heavy dates
+is the right setting, and either choice
 rides into $\sigma^*$ as part of the model.
 
 We now have the machine, the subtraction, and the carry.  One debt to

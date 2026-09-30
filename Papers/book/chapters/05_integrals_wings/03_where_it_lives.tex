@@ -92,10 +92,14 @@ of unquoted prices the listed strikes leave loose.  Chapter~2's
 calibration objective (\cref{sec:calibration}) accommodates it
 directly: the model's own fair strike --- computed by whichever route
 of \cref{sec:vsthree} is native --- becomes one more residual against
-the quoted level, in volatility units, with a weight the modeler
-declares; the derivative of $w_{\rm vs}$ in the model's parameters
-comes in closed form by the linearity of \cref{sec:vsthree}
-(Chapter~2 already recorded it as \cref{eq:varswaprow}).  Weighted
+the quoted level, $\sqrt{u}\,(\sigma_{\rm vs}^{\rm model}-\sigma_{\rm
+vs}^{\rm quote})$ in volatility units, with a weight $u$ the modeler
+declares (the reference implementation's default is one tenth of the
+node's summed quote weights; a hard pin multiplies that by $10^{5}$);
+for the law chart the derivative of $w_{\rm vs}$ in the model's
+parameters comes in closed form by the linearity of \cref{sec:vsthree}
+(Chapter~2 already recorded it as \cref{eq:varswaprow}), while the
+smile-chart families difference it numerically.  Weighted
 softly, the quote bargains with the options rather than overruling
 them, and it spends its influence exactly where \cref{fig:vsshare}
 says its information lives: in the wings.  A desk that has such a

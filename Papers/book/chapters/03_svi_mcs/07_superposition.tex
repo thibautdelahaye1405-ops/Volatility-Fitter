@@ -278,10 +278,20 @@ on every node and fails the validity check on most of them; at $M=0$
 the margins are uniformly clean and the fit quality is SVI's.  The
 capacity is real, and so is its price.
 
-The reference implementation therefore treats $M$ as a governed dial
---- capped by \eqref{eq:idcap}, ridged in amplitude, and reserved for
-smiles that are genuinely non-convex --- rather than as a default.
-The calibration is layered to match the model's structure: fit the
-base first; seed kernels one at a time on the largest remaining
-residual features; then refine all $6+4M$ parameters jointly
-(\cref{app:protocol} records the settings).
+The reference implementation therefore treats $M$ as a governed dial:
+at most two cores, capped by \eqref{eq:idcap}, ridged in amplitude,
+and pruned after the fit by a resolution rule.  The calibration is
+layered to match the model's structure: fit the base first; seed
+kernels one at a time on the largest remaining residual features; then
+refine all $6+4M$ parameters jointly; then prune.  The pruning rule is
+one inequality.  A kernel of unit height and amplitude $\gamma_r$
+moves the variance at its center by $\gamma_r$, hence the volatility
+by about $\gamma_r/(2\sigma_{\rm ref})$; if that displacement is
+smaller than the joint fit's own rms volatility error $r$ --- if
+$|\gamma_r|<2\sigma_{\rm ref}\,r$ --- the kernel has resolved nothing
+the fit can distinguish from its residual, and it is removed.  The
+slice is then re-solved once from the surviving parameters, and the
+reported number of cores is the surviving count.  On a smile with no
+local feature the rule returns the base; on the W-shaped target of
+\cref{fig:mcsmech} it keeps both kernels (\cref{app:protocol}
+records the settings).

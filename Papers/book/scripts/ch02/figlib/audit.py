@@ -134,7 +134,7 @@ def _timing_args(n_order: int):
         None, None, 1e6, None, None, None,
         None, None,
         _BARRIER_CENTER, _BARRIER_SCALE, MID_ANCHOR_WEIGHT,
-        None, None, None, None, OPT_N_POINTS,
+        None, None, None, None, (0.0, 0.0), OPT_N_POINTS,
     )
     return args, float(np.interp(0.0, k, w))
 

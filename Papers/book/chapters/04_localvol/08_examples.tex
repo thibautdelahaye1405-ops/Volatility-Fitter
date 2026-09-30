@@ -137,10 +137,12 @@ Butterfly, calendar and bound cleanliness of the marched prices, measured
 per fit; refined-operator reprice beside the in-operator residual &
 Convexity preservation of the discrete scheme as a theorem; the
 extrapolation region beyond the hull, where basis weights are signed\\[4pt]
-Monotone, unconditionally $\ell^\infty$-stable march
-(\cref{prop:lvmmatrix,cor:lvdmp}); exact tangent Jacobian from the same
-factorization (\cref{prop:lvtangent}) & Tangent columns checked against
-finite differences; an independent discretization cross-checks the march &
+Monotone, unconditionally $\ell^\infty$-stable march for the
+implicit scheme (\cref{prop:lvmmatrix,cor:lvdmp}); exact tangent
+Jacobian from the same factorization (\cref{prop:lvtangent}) &
+Tangent columns checked against finite differences; an independent
+discretization cross-checks the march; under the BDF2 default,
+positivity and order of the output measured per fit &
 Uniqueness of the calibrated sheet: the data determines an equivalence
 class, the conventions of \cref{sec:lvcalib} a representative\\[4pt]
 Bounded field $\Rightarrow$ implied variance bounded in strike, strictly
@@ -161,7 +163,7 @@ structural and cheap: a box on nodal values.  \emph{Information} is
 scarcer than the formula \eqref{eq:lvextract} pretends: the quotes
 read the field only through smoothing integrals, and only where the
 quotes exist.  \emph{Convention} fills the remainder --- roughness,
-reference, front tie, wing, seed.  The calibration does not eliminate
+reference, front tie, density smoothness, wing, seed.  The calibration does not eliminate
 those choices.  It declares them, measures what the discretization
 leaks, and reports its error twice: once on the operator the optimizer
 saw, and once repriced on the refined one.

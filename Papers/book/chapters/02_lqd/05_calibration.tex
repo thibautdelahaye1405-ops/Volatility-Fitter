@@ -31,6 +31,14 @@ The ridge starts at $n=4$.  The modes $a_2$ and $a_3$ carry the main
 curvature and asymmetry; higher modes describe progressively finer rank
 structure.  The factor $n^{2\nu}$ makes fine oscillation increasingly
 expensive while leaving the leading smile shape largely data-driven.
+The reference implementation appends one more row,
+$\log\!\big(1+e^{50(\lambda_+-0.9)}\big)$, a soft barrier on the right
+endpoint scale: below $e^{-20}$ at $\lambda_+=\tfrac12$, it keeps the
+optimizer away from the wall $\lambda_+=1$ where the logistic chart of
+\cref{sec:charts} rounds to one.  Each quote row may also carry a
+weight from a stated strike measure (Chapter~3,
+\cref{sec:sviweights}); the default is one vote per quote,
+\eqref{eq:objective} as written.
 
 An option quote is usually a bid--ask interval.  If
 $[p_i^{\rm lo},p_i^{\rm hi}]$ is the normalized price band and $\phi_i$ the
@@ -117,19 +125,14 @@ Lee slope is zero.  Listed vanilla options usually identify tail scale much
 more strongly than tail class.  Unconstrained per-slice estimation is
 therefore ill-conditioned.
 
-The implementation uses one of three policies:
-\begin{enumerate}
-\item $\alpha_-=\alpha_+=0$ for exponential log-return tails and power gross-
-return tails;
-\item fixed exponents chosen for an asset class or product, with separate
-left and right values allowed;
-\item a small grid of exponent scenarios, each recalibrated, with downstream
-prices reported across the scenarios.
-\end{enumerate}
-The preferred practice is to calibrate a small number of stated tail
-scenarios and compare the downstream quantities that depend on them.  Within
-one underlier, exponents are held common across expiry unless a monotone
-term-structure rule is imposed.  This also stabilizes full-line calendar
+The reference implementation holds the exponents fixed outside the
+optimizer.  The default is $\alpha_-=\alpha_+=0$ --- exponential
+log-return tails and power gross-return tails; a pair of exponents may
+be stated per underlier, with separate left and right values, and it
+then applies to every expiry of that name.  A tail scenario is a
+recalibration under another stated pair, with the downstream
+quantities that depend on it compared across scenarios.  Holding the
+exponents common across expiry also stabilizes full-line calendar
 order; \cref{sec:calendar} gives the exact restriction.
 
 \subsection{Starting values and solve sequence}
@@ -140,10 +143,11 @@ s=\frac{\sqrt{3w_0}}{\pi}
 \label{eq:coldstart}
 \end{equation}
 matches log-return variance.  It is about eight percent low in ATM implied
-variance at small $w_0$, so it is only a starting value.  For other tail
-exponents, set all body modes to zero and solve one scalar equation for the
-common endpoint level that matches the ATM call.  This costs one-dimensional
-root finding and avoids an arbitrary variance proxy.
+variance at small $w_0$, so it is only a starting value.  The reference
+implementation uses the same seed for every tail exponent --- both
+endpoint levels at $\log s$, all body modes at zero, with $w_0$ the
+quoted total variance interpolated at $k=0$ --- and lets the first
+iterations correct it.
 
 A complete slice fit follows six steps:
 \begin{enumerate}
@@ -151,9 +155,10 @@ A complete slice fit follows six steps:
 ask volatilities to normalized prices once;
 \item fix $(\alpha_-,\alpha_+)$, select $N_{\rm eff}$, and construct the
 residual rows and weights;
-\item initialize the endpoint chart from the scalar reference slice or from
-the preceding expiry;
-\item at each step, build $(x,x',G,G')$ on one grid, price every quote with
+\item initialize the endpoint chart from the seed \eqref{eq:coldstart};
+\item at each step of an unconstrained trust-region least-squares
+iteration (the chart has already eliminated the constraints), build
+$(x,x',G,G')$ on one grid, price every quote with
 \eqref{eq:call}, and obtain the Jacobian from
 \eqref{eq:pass1}--\eqref{eq:pass3};
 \item rebuild the accepted parameters on the publication grid and compute ATM

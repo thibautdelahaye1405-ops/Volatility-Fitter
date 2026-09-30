@@ -23,7 +23,10 @@ x'(z)>0,
 \qquad G'(z)=-e^{x(z)}\rho(z)<0.
 \label{eq:nodalderivatives}
 \end{equation}
-A bracketed Hermite root followed by one Newton step gives $z_k$.
+The strike root $z_k$ is found by seeding from the piecewise-linear
+inverse of the nodal table and taking four Newton steps on the Hermite
+interpolant of $x$, each iterate clipped to the grid; beyond the grid
+the analytic root \eqref{eq:rightroot} takes over.
 
 Three expressions need special numerical treatment.  First,
 \[
@@ -91,7 +94,8 @@ quadrature around it, or enforce the operational guard
 x'(Z_{\max})\le1-\varepsilon_{\rm tail}.
 \label{eq:operationaltailguard}
 \end{equation}
-The reference implementation uses the guard.  It excludes laws whose forward
+The reference implementation uses the guard, with
+$\varepsilon_{\rm tail}=10^{-3}$.  It excludes laws whose forward
 is finite in theory but numerically determined by ranks far beyond the grid.
 
 For a strike beyond the right grid, evaluate the ledger under the same tail
@@ -102,33 +106,47 @@ c(k)\simeq e^{k-z_R(k)}
 \label{eq:beyondgrid}
 \end{equation}
 At $\alpha_+=0$, this becomes
-$e^{k-z_R(k)}\lambda_+/(1-\lambda_+)$.  Deep left calls are evaluated as a
-small put plus parity, avoiding subtraction of two numbers close to one.
+$e^{k-z_R(k)}\lambda_+/(1-\lambda_+)$.  On the left the reference
+implementation keeps a second, lower-share ledger,
+$1-G(z)=\int_{-\infty}^{z}e^{x}\rho$, accumulated forward from the
+left tail mass, and prices every put from it directly,
+$P(k)=e^{k}u_k-(1-G(z_k))$; a deep left call is then a small put plus
+parity, so no difference of two numbers close to one is ever formed.
+Implied variances are read from the out-of-the-money instrument on
+each side --- the put for $k<0$, the call for $k\ge0$ --- by a
+safeguarded Newton iteration on the logarithm of the price, so that a
+wing quote worth $10^{-30}$ inverts as accurately as one at the money.
 
 \subsection{Numerical certificates}
 \label{sec:certificates}
 
 The continuous formulas are arbitrage-free; a poorly resolved interpolation
 can still violate their monotonicity on a computer.  Four independent checks
-are applied to every accepted slice.
+guard against this.  Two are applied to every accepted slice, two to
+the numerical scheme once, on a fixed battery of slices spanning the
+orders and tail regimes in use.
 
 \begin{enumerate}
-\item On every cubic Hermite segment for $x$, verify the Fritsch--Carlson box
+\item (Every slice.)  Across the retained strike range, on $801$
+equally spaced strikes, compute $w,w',w''$ --- the derivatives by
+central differences of the slice's own $w(k)$ --- and insert them in
+\eqref{eq:durrleman}.  Require $g_{\rm D}\ge-10^{-4}$.  A slice
+that fails is not published.
+\item (Every adjacent pair.)  The calendar certificate of
+\cref{sec:calendar}, to tolerance $10^{-6}$ in normalized price, and
+a screen of the price-space order on the common quote support.
+\item (The battery.)  On every cubic Hermite segment for $x$, verify the
+Fritsch--Carlson box
 \[
 0\le d_0\le3s,\qquad 0\le d_1\le3s,
 \]
 where $s$ is the secant slope and $d_0,d_1$ are endpoint derivatives.  Apply
 the same check to $-G$ \citep{FritschCarlson1980}.
-\item Across the retained strike range, compute analytic $w,w',w''$ and
-insert them in \eqref{eq:durrleman}.  Require
-$g_{\rm D}\ge-\varepsilon_{\rm dens}$, where the tolerance is stated in units
-of the local Black density factor.
-\item Rebuild on a grid with four times as many nodes.  Compare prices,
-densities, ATM handles, and the martingale integral at off-grid strikes and
-ranks.
-\item Test tail formulas separately in the exponential logistic reference
-law and in a Gaussian-rate reference obtained from
-$X\sim N(-s^2/2,s^2)$ with $\alpha_\pm=1/2$.
+\item (The battery.)  Rebuild on a grid with four times as many nodes.
+Compare prices, densities, ATM handles, and the martingale integral at
+off-grid strikes and ranks; test the tail formulas separately in the
+exponential logistic reference law and in a Gaussian-rate reference
+obtained from $X\sim N(-s^2/2,s^2)$ with $\alpha_\pm=1/2$.
 \end{enumerate}
 
 The Hermite box is sufficient rather than necessary.  Its smallest remaining

@@ -11,7 +11,8 @@ to the same mid quotes of each node with equal unit-mean weights:
 
 \begin{itemize}
 \item \textbf{LQD}: order 16 reduced by the guard \eqref{eq:orderguard},
-logistic tail chart, ridge $\alpha=10^{-6}$ with $\nu=1$ --- the recipe
+logistic tail chart, ridge $\omega_{\rm reg}=10^{-6}$ with $\nu=1$,
+tail exponents $\alpha_\pm=0$ --- the recipe
 of \cref{sec:calibration} with the mid objective.
 \item \textbf{SVI}: the structural chart \eqref{eq:structlift} with
 $\beta_{\max}=\MacSviBetaMax$ and hinge multiplier $W=10^{3}$ (the rows
@@ -23,14 +24,26 @@ grid extending two $\zeta$-units past the quoted range, weighted double
 on the put side --- a soft fence with the same status as
 \eqref{eq:svipenalties}: zero on any admissible fit.  Kernel centers
 may roam half a unit past the quoted range; half-widths are confined to
-$[0.15,1.5]$ and steepnesses to $[1,12]$ in $\zeta$-units.  The base is
-fitted first, kernels are seeded greedily on the largest residuals with
-a masked neighborhood so two kernels cannot seed one feature, and a
-joint refinement follows.
+$[0.15,1.5]$, steepnesses to $[1,12]$ in $\zeta$-units, and amplitudes
+to $[-1,1]$ in variance units.  The base is
+fitted first (to the mids, in its raw coordinates: level, slope and
+convexity at the vertex, and the two steepnesses); kernels are seeded
+greedily on the largest residuals, each with half-width $0.4$ and
+steepness $5$, with a masked neighborhood so two kernels cannot seed
+one feature; a joint refinement follows, by a bound-constrained
+trust-region least-squares method; and the resolution rule of
+\cref{sec:mcscapacity} prunes kernels of amplitude below
+$2\sigma_{\rm ref}$ times the joint fit's rms volatility error.
 \end{itemize}
 
 The validity margin is $\min g_{\rm D}$ over $801$ equally spaced
-points spanning exactly the node's quoted log-moneyness range.
+points spanning exactly the node's quoted log-moneyness range,
+computed from closed-form derivatives without tolerance --- stricter
+than the reference implementation's certificate of
+\cref{sec:svibelly}, which differences the fitted curve on the same
+grid and allows $-10^{-4}$.  The one-shot belly repair of that section
+is not applied in the comparison: the figures score the fit each
+calibrator returns.
 
 \subsection*{Evaluating $g_{\rm D}$ per family}
 
@@ -57,7 +70,10 @@ estimated.
 \subsection*{The residual Jacobian, in layers}
 \label{sec:svijacobian}
 
-The least-squares solvers of both charts consume an analytic Jacobian,
+The least-squares solver consumes an analytic Jacobian in both charts
+whenever the residual holds only the data and hinge rows (with extra
+blocks --- a variance-swap quote, a persistence row, the belly
+repair --- the reference implementation differentiates numerically),
 and it assembles by the chain rule in three layers.  The raw-parameter
 partials of the hyperbola follow from \eqref{eq:svi} with
 \eqref{eq:svishort}:

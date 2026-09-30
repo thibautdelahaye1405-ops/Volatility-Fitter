@@ -21,7 +21,10 @@ and weights $\mu_i$, the data term is
 optionally replaced by the band or haircut targets of \eqref{eq:band}
 and \eqref{eq:haircut} --- Chapter~\ref{ch:lqd}'s variants that fit to
 the quoted bid--ask spread, or to that spread shrunk by a declared
-margin, instead of to the mid --- evaluated in volatility space.
+margin, instead of to the mid --- evaluated in volatility space.  The
+error a fit reports scores the target it was given: the distance to
+the mid under \eqref{eq:sviobjective}, the distance to the nearer band
+edge (zero inside the band) under a band target.
 
 \subsection{The measure a fit integrates against}
 \label{sec:sviweights}
@@ -95,8 +98,16 @@ ten times the mean spacing): beyond the cap the scheme deliberately
 under-weights the deep wing rather than let one quote carry a tenth of
 the objective.  And the weights are normalized to unit mean, so
 switching schemes redistributes the data term without rescaling it
-against the regularization.  Having said all this, the comparisons in
-this chapter still use equal weights throughout --- deliberately.
+against the regularization.  Time value is one target density among
+several: the reference implementation writes every scheme as
+$\mu_i\propto\varrho(k_i)\,\min(|C_i|/\overline{|C|},10)$, a declared
+shape $\varrho$ times the cell-width correction, with $\varrho$ equal
+to one (uniform in log-strike), to the time value, to the Black vega
+$\phin(d_+)$, or to the out-of-the-money delta; \cref{prop:quadrature}
+holds for each with $\varrho$ in place of $\mathrm{TV}$.  Equal
+weights --- one vote per quote, no cell correction --- remain its
+default, and the comparisons in
+this chapter use equal weights throughout --- deliberately.
 When three families are raced on the same ladder, the simplest shared
 convention is the fair one, and the accidental measure, once
 \emph{recognized} as a measure, is no longer accidental.  The lesson
@@ -215,7 +226,9 @@ the two asymptote slopes.}
 \label{fig:svistructural}
 \end{figure}
 
-Both charts feed the same least-squares solver as
-Chapter~\ref{ch:lqd}'s, with analytic derivatives assembled by the
-chain rule; \cref{app:protocol} records the assembly.  We now have everything needed to fit
+Both charts feed a least-squares solver --- for SVI the reference
+implementation uses Levenberg--Marquardt, unconstrained, since the
+charts have already eliminated the constraints --- with analytic
+derivatives assembled by the chain rule; \cref{app:protocol} records
+the assembly.  We now have everything needed to fit
 one hyperbola well.  What remains is the shape it cannot take.

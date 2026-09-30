@@ -119,9 +119,13 @@ declared state: \emph{unidentified}, with the floor
 that justifies it --- never a silent zero, which is also a borrow
 estimate, just an undeclared one.  The reference implementation
 carries its carry as a per-expiry decomposition in which every leg is
-tagged with its source --- measured, supplied, or unidentified ---
-and lets a fit consume a borrow only where the read clears both its
-floor and a materiality gate.  Two limits bound the estimator,
+tagged with its source --- parity-implied, jointly solved, supplied by
+the desk, or unidentified --- reports the floor \eqref{eq:fwdfloor}
+beside every read, and lets a fit consume a borrow only through the
+joint solve of Chapter~7 (\cref{sec:deamloop}), a switch that is off
+by default, and only when the jointly solved borrow exceeds a
+materiality gate of $25$\,bp; otherwise the parity forward is used as
+it stands.  Two limits bound the estimator,
 each one sentence.  A flat rate error is indistinguishable
 from a borrow error at a single expiry --- both are carry --- so
 splitting them needs an external rate curve, and
@@ -191,7 +195,8 @@ The conversion \eqref{eq:fwddsig} and its corollaries: ATM gap
 error on the frozen node; the naive American-mid forward would
 imprint \MacFwdSkewNaiveGapBp\ vol bp (\cref{fig:fwdskew}). &
 Below its floor a borrow is reported \emph{unidentified}, never
-zero; a read enters fits only past a declared materiality gate.\\
+zero; a read enters fits only through the joint solve, past a declared
+materiality gate.\\
 \bottomrule
 \end{tabular}
 \end{table}

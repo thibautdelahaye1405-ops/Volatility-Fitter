@@ -129,7 +129,13 @@ The shifted band then flows on exactly as Part~I assumed:
 parity conversion to a normalized call (Chapter~2's price in units of
 $DF$), inversion to total variance, fitting.  A quote whose root find failed keeps its raw band and an
 estimate of zero; the ordinary European sanity filters decide its
-fate.
+fate.  (The reference implementation's estimate differs from
+\eqref{eq:deamhat} in one term: it subtracts
+$\max(\mathsf{C}(K)-DF\Black(k,\sigma^{*2}t),0)$, the analytic
+European price at the root in place of the tree's leg, so the
+prepared mid re-inverts to $\sigma^*$ itself and the reported
+volatility is the root; the lattice error it carries is then the
+American leg's own, of the same $1/N_t$ order as the leg gap above.)
 
 One remark about clocks, before the clocks chapter makes it a theme.
 The root $\sigma^*$ is a \emph{calendar-clock} Black volatility: the
@@ -170,9 +176,11 @@ tolerance.
 The reported $\sigma^*$ carries four error sources; they scale
 differently and are worth separating once.
 \begin{itemize}[leftmargin=1.6em,itemsep=2pt]
-\item \emph{Bisection tolerance.}  The working inversion runs $48$
+\item \emph{Bisection tolerance.}  The chapter's inversion runs $48$
 halvings of a bracket at most $4.0$ wide:
 $4\cdot2^{-48}\approx1.4\times10^{-14}$ of volatility.  Nothing.
+(The reference implementation runs $24$ at depth $N_t=192$: $2.4\times
+10^{-7}$, still nothing.)
 \item \emph{The finite tree.}  The control-variate pairing protects
 the root, but the European-leg gap against analytic Black survives.  Its
 measured size on real data: halving the whole-chain depth from

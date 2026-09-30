@@ -87,7 +87,12 @@ detected there, only bounded --- and the bound is
 
 Where we stand: the trim removes quotes whose residuals expose them;
 coherent staleness leaves no residual, corrupts the slope, and
-spares the level.  So the slope needs information that does not come
+spares the level.  (A quote that arrives with its own time stamp and
+the spot it was quoted at can be repaired rather than trimmed --- moved
+to the current spot by the smile's own transport rule and
+down-weighted by its age; the reference implementation does this for
+the smile's quotes, Chapter~9 states the rule, and the parity line
+never sees it.)  So the slope needs information that does not come
 from the chain at all: prior knowledge of where a rate can plausibly
 live.  The next section builds that safeguard, with a stated reach:
 it stops slopes that leave the plausible range, while the

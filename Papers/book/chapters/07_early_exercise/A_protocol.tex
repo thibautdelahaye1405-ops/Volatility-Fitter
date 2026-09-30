@@ -77,8 +77,9 @@ bid--ask midpoints --- Chapter~6's rules verbatim.  Carry convention
 for every real-chain tree: the rate is the stated money-market
 constant $r=4.3\%$ per year, continuously compounded, for the
 snapshot date (the board's own fitted slope,
-$\MacFwdLineRateNaivePct\%$, is discarded per
-\cref{sec:fwdclamp}); the dividend carry is
+$\MacFwdLineRateNaivePct\%$, is discarded --- the chapter's
+convention; the reference implementation keeps the slope clamped to
+\cref{sec:fwdclamp}'s band); the dividend carry is
 $q_d=r-\log(F/S)/t$ from the working forward, so the tree's forward
 matches it exactly; the discount used by the naive European
 comparator is $e^{-rt}$ under the same convention.  The loop of

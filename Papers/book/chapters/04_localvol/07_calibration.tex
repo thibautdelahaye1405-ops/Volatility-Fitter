@@ -55,15 +55,32 @@ The \emph{front tie}, at weight $\lambda_0$, pins the $\tau=0$ row to
 the first quoted row, closing the invisible sub-front subspace of
 \cref{sec:lvinfo}.
 
-Two further row types plug into the same stack when their instruments
-are present, and are only named here.  A variance-swap quote adds one
+Three further row types plug into the same stack, and are only named
+here.  A variance-swap quote adds one
 scalar residual per quoted expiry, constraining the deep-put tail
 integral that vanillas cannot see --- Chapter~5 develops the integral,
 and it is exactly the instrument that justifies releasing the wing
-slope $a$ of \cref{rem:lvhull}.  And prior structures from a previous
-fit enter as reference terms in the same
-$\Gamma$-and-$\theta_{\rm ref}$ position --- Chapter~10 develops when
-and how much to trust them.
+slope $a$ of \cref{rem:lvhull}.  Prior structures from a previous
+fit enter as residual rows on linear functionals of the marched prices
+--- single strikes, signed baskets, the variance-swap integral ---
+each against the value the prior assigns it, reusing the tangent
+sensitivities; Chapter~10 develops when and how much to trust them.
+And the reference implementation's default objective carries a fourth
+block the chapter's fits omit: a \emph{density-smoothness} penalty.
+For each quoted expiry, on the lattice prices across the quoted window
+widened by two ATM standard deviations $s_e=\sigma_{{\rm ATM},e}\sqrt{\tau_e}$,
+every second node contributes a row proportional to the third
+difference of the marched call --- on a uniform lattice
+$\sqrt{2W}\,s_e^{3/2}\Delta y^{-5/2}\,(-U_j+3U_{j+1}-3U_{j+2}+U_{j+3})$,
+with $W=1$ --- so that the block sums to the discrete $H^1$ seminorm
+$\tfrac12 W s_e^{3}\int(\partial_y f_e)^{2}\,\dd y$ of that expiry's
+risk-neutral density (the third difference of the call is the slope of
+the density, by \cref{eq:introBL}), normalized so a Gaussian slice of
+width $s_e$ contributes $O(W)$ at any step or maturity.  The rows are
+linear in the prices, so their Jacobian is the same stencil applied to
+the marched sensitivities; what they price is vertex-scale ringing of
+the field, which shows up as density slope before it shows up in any
+quote.
 
 \subsection{Every derivative from the same factorization}
 
@@ -135,6 +152,11 @@ Read \eqref{eq:lvtangent} twice.  As a computation: the sensitivity
 system has the \emph{same} matrix $\mathcal M^{n+1}$ as the value
 system --- only the right-hand side differs --- so every sensitivity
 marches behind the same tridiagonal factorization as the value solve.
+(The same holds step for step under the two-level BDF2 default of
+\cref{sec:lvlattice}: the sensitivity inherits the scheme's own
+factor and its two-level right-hand side, with the source term
+carrying the scheme's coefficient, $\tfrac23\Delta\tau$ on a uniform
+step, in place of $\Delta\tau$.)
 The entire $n_\theta$-column Jacobian costs one factorization plus
 $n_\theta$ extra back-substitutions per step; the columns form a block
 of right-hand sides that a solver processes together.  As probability:
@@ -168,7 +190,7 @@ full march, over all \MacLvInflVtx\ vertices, and the worst relative
 disagreement is \MacLvInflMaxRel.  The derivative is exact, not
 approximate.
 
-The optimization itself is then standard: a
+The optimization itself is then standard.  This chapter's fits run a
 trust-region reflective least-squares iteration on
 \eqref{eq:lvobjective} --- a method of the Gauss--Newton family
 (linearize the residuals at the current iterate, solve the resulting
@@ -176,7 +198,22 @@ linear least squares, repeat) that handles
 box bounds natively, shrinking its steps rather than leaving the box
 \citep{BranchColemanLi1999} --- with the analytic Jacobian of
 \cref{prop:lvtangent} supplied at every iterate and a flat seed at the
-reference sheet.  The tangent route's Jacobian cost grows linearly
+reference sheet.  The reference implementation's default is a
+\emph{projected} Gauss--Newton iteration on the same objective: each
+step solves the damped linearized problem
+$\min_\Delta\|J\Delta+r\|^{2}+\mu\|\Delta\|^{2}$ matrix-free (an
+iterative least-squares solver that needs only products with $J$ and
+$J^{\top}$, never $J^{\top}J$), projects $\theta+\Delta$ onto the box,
+and accepts or rejects on the ratio of actual to predicted decrease,
+adjusting $\mu$ as Levenberg--Marquardt does; under a band target the
+step is refined without new marches until the set of pinned bounds
+and the side of the band each linearized price lands on are
+self-consistent (an active-set step); and the iteration stops early
+when the data rows' rms has stopped improving.  Its seed is the
+previous calibrated sheet when one exists, else the Dupire field
+extracted from the parametric surface at the vertices, else the flat
+reference; the trust-region method remains the fallback.  The tangent
+route's Jacobian cost grows linearly
 with $n_\theta$; the classical \emph{adjoint} alternative --- run the
 march backward once through its transposed steps, collecting the whole
 gradient in a single sweep, at a cost independent of the

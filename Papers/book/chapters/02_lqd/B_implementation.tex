@@ -75,11 +75,11 @@ def call_price(slc, k, grid):
         cash = exp(k - softplus(z))
         return share - cash
 
-    if k < slc.x[0]:
-        put = left_put_tail(slc, k, grid)
+    if k < 0:
+        put = put_price(slc, k, grid)       # lower-share ledger
         return 1 - exp(k) + put
 
-    z = bracketed_hermite_root(slc.x, slc.dx, k)
+    z = newton_hermite_root(slc.x, slc.dx, k)  # linear seed, 4 steps
     share = hermite_eval(slc.G, slc.dG, z)
     cash = exp(k - softplus(z))
     return share - cash
@@ -87,7 +87,10 @@ def call_price(slc, k, grid):
 
 The right branch uses the same tail law as the martingale normalizer.  A
 separate volatility extrapolation would generally break the density and
-calendar identities.
+calendar identities.  The put branch reads the lower-share ledger
+$1-G$ (accumulated forward from the left tail mass) at the strike
+root, or the analytic left tail beyond the grid, so a left-wing call
+is never the difference of two numbers near one.
 
 \subsection{Sensitivity pass}
 
@@ -126,32 +129,34 @@ adjacent expiry pair.
 
 \begin{lstlisting}[caption={Exchange algorithm for global calendar order.}]
 def fit_surface(nodes):
-    active = initial_calendar_ranks(nodes)
-    while True:
-        surface = constrained_joint_solve(nodes, active)
-        worst = full_line_calendar_minima(surface)
+    slices = [fit_alone(n) for n in nodes]
+    slices = repair_common_support(slices)   # tapered price hinges
+    active = {pair: set() for pair in adjacent_pairs(slices)}
+    for round in range(8):
+        worst = full_line_calendar_minima(slices)
         if worst.value >= -calendar_tol:
-            return surface
-        active[worst.pair].add(worst.rank)
+            return slices
+        active[worst.pair].add(worst.rank)   # hinge (G_near - G_far)^+
+        slices = joint_solve(slices, active, worst.component)
+    return slices  # remaining gaps reported as irreducible
 
 def full_line_calendar_minima(surface):
     out = []
     for near, far in adjacent_pairs(surface):
-        roots = all_piecewise_cubic_roots(far.x - near.x)
-        roots += analytic_tail_roots(far, near)
-        points = [-inf] + roots + [inf]
-        gaps = [0.0] \
-             + [far.ledger(z) - near.ledger(z) for z in roots] \
-             + [0.0]
+        gap = hermite_gap(far.G, near.G)     # a cubic per segment
+        points = gap.nodes + gap.turning_points()
+        points += analytic_tail_crossings(far, near)
+        gaps = [gap(z) for z in points]
         out.append(min_with_location(gaps, points))
     return min(out)
 \end{lstlisting}
 
 If the difference of the two cubic transports vanishes on an entire segment,
 the ledger gap is constant there by \eqref{eq:calgapderivative}; either
-endpoint represents the segment.  Tail root isolation uses
-\eqref{eq:rightcontinuation}.  The final certificate is rerun on the
-publication grid and with tighter tail quadrature than the optimizer uses.
+endpoint represents the segment.  Tail crossings use
+\eqref{eq:rightcontinuation}.  The certificate is run on the
+publication grid, the same object the exchange and the acceptance
+gate read.
 
 \subsection{Failure tests}
 
@@ -166,8 +171,10 @@ modes.
 $\lambda_+\le1-\varepsilon_{\rm wall}$ in a logistic chart.
 \item \emph{Remote light-tail saddle:} for $\alpha_+>0$, apply
 \eqref{eq:operationaltailguard} or use a saddle-centered quadrature.
-\item \emph{Near-zero option prices:} compare calls and calendars in log space
-and obtain plotted remote implied variance from the analytic wing law.
+\item \emph{Near-zero option prices:} price the out-of-the-money
+instrument on each side, invert it by Newton on the logarithm of the
+price, and on a side with $\alpha>0$ obtain plotted remote implied
+variance from the analytic wing law.
 \item \emph{Calendar gaps:} a finite penalty is not an acceptance test; the
 quantile-root certificate must pass for every adjacent expiry pair.
 \end{enumerate}
@@ -182,16 +189,17 @@ Quantity & Default & Quantity & Default\\
 \midrule
 Basis order $N$ & 16 (cap 24) & Order guard & \eqref{eq:orderguard}\\
 Grid & $[-40,40]$ & Nodes & 8001 (fit: 2001)\\
-Tail exponents & stated scenarios & Exponential wall & $1-10^{-6}$\\
-Remote-saddle margin & $10^{-4}$ & Exponent budget & 700\\
+Tail exponents & $(0,0)$; stated per underlier & Exponential wall & $1-10^{-6}$\\
+Remote-saddle margin & $10^{-3}$ & Exponent budget & 700\\
 Ridge $(\omega_{\rm reg},\nu)$ & $(10^{-6},1)$ & Vega floor $\eta$ & $10^{-4}$\\
-Haircut $h$ & 0.005 volatility & Solver & constrained trust region\\
-Slice check & 801 strikes & Calendar check & all quantile crossings\\
-Optimization tolerance & $10^{-10}$ & Publication rebuild & fourfold check\\
+Haircut $h$ & 0.005 volatility & Solver & trust region, unconstrained\\
+Right-tail barrier & centre 0.9, scale 50 & Fit target & mid (band, haircut optional)\\
+Slice check & 801 strikes, $g_{\rm D}\ge-10^{-4}$ & Calendar check & full line, $\Delta G\ge-10^{-6}$\\
+Optimization tolerance & $10^{-10}$ & Exchange rounds & at most 8\\
 \bottomrule
 \end{tabular}
-\captionof{table}{Reference numerical defaults.  Tail exponents and their maturity
-policy are model inputs and are therefore reported with the fit.}
+\captionof{table}{Reference numerical defaults.  Tail exponents are model
+inputs and are therefore reported with the fit.}
 \label{tab:defaults}
 \end{center}
 

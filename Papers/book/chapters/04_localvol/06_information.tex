@@ -129,8 +129,11 @@ class of sheets the data cannot tell apart, and every device in the
 next section's objective is a declared choice of representative.  The
 roughness term selects the smoothest member near a reference.  The box
 clips the unidentified extremes.  The front tie pins the rows below
-the first expiry.  The seed decides which basin a non-convex search
-lands in.  None of this is hidden tuning; it is the ``convention''
+the first expiry.  A density-smoothness term, in the reference
+implementation's default, selects against members whose marginal
+densities ring at the vertex scale.  The seed decides which basin a
+non-convex search lands in.  None of this is hidden tuning; it is the
+``convention''
 column of the book's thesis, operating inside a calibration.  And it
 is why \cref{sec:lvexamples} reports quote error and surface error as
 two separate numbers: the first says how well the representative

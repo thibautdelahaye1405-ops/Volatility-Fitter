@@ -165,12 +165,12 @@
   "section": "mixture"
  },
  "CmpMixMcsRms": {
-  "value": "87.3",
+  "value": "87.2",
   "meaning": "MCS rms on the mixture target, vol bp",
   "section": "mixture"
  },
  "CmpMixMcsGmin": {
-  "value": "-0.066",
+  "value": "-0.067",
   "meaning": "MCS min g_D on the quoted range, mixture fit",
   "section": "mixture"
  },

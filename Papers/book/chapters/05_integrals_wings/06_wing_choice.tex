@@ -10,10 +10,13 @@ demolishes a comfortable inference about them.
 
 Recall the three families' wings; each was derived in its own chapter,
 and here they only need to be set side by side.  The LQD slice of
-Chapter~2 has exponential log-return tails \emph{by construction}, and
+Chapter~2, at the default tail exponents $\alpha_\pm=0$ of every fit in
+this book, has exponential log-return tails \emph{by construction}, and
 its wing slopes are closed functions of its two endpoint speeds
 (\cref{prop:leeclosed}): admissibility is structural, no cap or check
-required.  The SVI slice of Chapter~3 has exactly straight
+required (a positive exponent, stated per underlier, makes the tail
+sub-linear in total variance and the Lee slope zero --- a different
+contract, chosen outside the fit).  The SVI slice of Chapter~3 has exactly straight
 total-variance wings, $\beta_{L,R}=b_S(1\mp\rho_S)$ --- the
 $S$-subscripts mark Chapter~3's raw SVI parameters
 (\cref{prop:svigeom}) --- and its calibration fences them with a cap
@@ -110,7 +113,20 @@ policed.  Conditions that are properties of a \emph{single} curve ---
 density positivity above, call convexity --- must be checked
 \emph{into} the wings: one law is being asserted there, the condition
 needs no second curve to compare against, and abandoning it past the
-last quote is exactly how the hat's dent would go unnoticed.
+last quote is exactly how the hat's dent would go unnoticed.  The
+reference implementation does this in two places.  Its acceptance
+check (Chapter~3, \cref{sec:svibelly}) runs on the traded range, and
+the same $g_{\rm D}$ is measured, and reported, along each wing as far
+as the model's own out-of-the-money value exceeds $10^{-4}$ of the
+forward; the MCS fit carries its wing hinge two $\zeta$-units past the
+quotes.  And at publication every family's wing samples are projected
+into the cone of \cref{prop:vscone}: walking outward from the last
+traded-core sample, each out-of-the-money price is first raised to
+the previous published expiry's price at the same strike, then the
+secant slopes are clipped to be non-increasing and no steeper than the
+core-side slope --- a monotone, convex continuation with the model's
+own belly as reference, an exact no-op on a clean wing, so that
+\cref{fig:winglimit}(b)'s dent cannot reach a consumer.
 Conditions that \emph{compare two} curves reach exactly as far as the
 curves are published.  A calendar inversion at an unquoted strike is
 a disagreement between two chosen conventions --- two entries of
@@ -118,10 +134,11 @@ a disagreement between two chosen conventions --- two entries of
 conventions are published prices, and an inversion between published
 prices is a calendar spread with a negative price.  Chapter~2 draws
 the consequence for a model defined on the whole line: the maturity
-stack is fitted jointly under the full-line ledger constraint
-(\cref{eq:globalledgerconstraint}), with one tail policy stated for
-the stack (\cref{eq:tailscalecalendar}), so the wings inherit the
-order from that policy rather than from a quote.  A model left
+stack is certified under the full-line ledger constraint
+(\cref{eq:globalledgerconstraint}), to a stated tolerance, with one
+tail class stated for the stack; the tail-scale order
+(\cref{eq:tailscalecalendar}) is reported with every stack and can be
+required of it.  A model left
 undefined beyond its quotes has nothing to order there; a model that
 publishes its wings must order them.  One curve: extend the check.
 Two curves: state one tail policy, then extend it too.

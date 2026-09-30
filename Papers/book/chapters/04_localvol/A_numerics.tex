@@ -5,7 +5,10 @@
 \label{app:lvprotocol}
 
 Every fit in this chapter --- synthetic and real --- uses the following
-recipe; no constant is tuned per name.
+recipe; no constant is tuned per name.  It is the chapter's protocol,
+chosen for the theorems it keeps; the reference implementation's
+defaults, which differ in the lattice, the time scheme, the objective
+and the solver, are recorded in \cref{app:lvdefaults}.
 
 \emph{Vertex grid.}  Maturity rows at $\tau=0$ and at every quoted expiry.
 Strike columns delta-spaced: the ladder of put deltas
@@ -43,7 +46,12 @@ v_{\rm hi}=\min\big(\max(0.36,\,(3\,\sigma_{\max})^{2}),\,16\big)
 --- the floor a fraction of the smallest ATM implied per the averaging
 fact, the cap a multiple of the largest implied in view.  Seed and reference
 $\theta^{0}=\theta_{\rm ref}$ flat at the median ATM variance.  Weights
-$\lambda=10^{-2}$, $\lambda_0=1$; residual scale $\eta_q$ equal to one
+$\lambda=10^{-2}$, $\lambda_0=1$ (the nominal tie weight is $10^{-2}$;
+on a chain whose first expiry is under $0.08$ years --- both frozen
+boards --- the tie binds every vertex row below that expiry, here the
+$\tau=0$ row alone, at weight $1$, since those rows are individually
+unidentified).  Residual scale
+$\eta_q$ equal to one
 volatility percent of the quote's Black vega, floored at $10^{-3}$.  The
 snapshot carries no variance-swap quotes, so the wing multiple stays at
 its default $a=0$ (flat clamp) throughout.
@@ -51,9 +59,60 @@ its default $a=0$ (flat clamp) throughout.
 \emph{Solver.}  Trust-region reflective least squares
 \citep{BranchColemanLi1999} with the analytic Jacobian of
 \cref{prop:lvtangent}, termination tolerances $10^{-8}$, at most $200$
-objective evaluations; the fits of \cref{sec:lvexamples} converged in
+objective evaluations, no early stop; the fits of \cref{sec:lvexamples} converged in
 \MacLvSpyEvals\ (SPY), \MacLvNvdaEvals\ (NVDA) and \MacLvRtEvals\
 (synthetic) evaluations from their flat seeds.
+
+\subsection{The reference implementation's defaults}
+\label{app:lvdefaults}
+
+The shipped defaults keep the sheet, the box, the roughness operator,
+the residual scale and the observation operator of the protocol
+above, and change five things.
+
+\emph{Strike lattice, graded per expiry.}  For each quoted expiry $e$
+let $s_e=\sigma_{{\rm ATM},e}\sqrt{\tau_e}$, the target step
+$h_e=\min(0.01,\max(0.15\,s_e,1/800))$, and the region
+$R_e=[\min(y_{\min,e},e^{-6s_e}),\max(y_{\max,e},e^{6s_e})]$.  The
+step function on the axis is the Lipschitz envelope
+\[
+h(y)=\min\Big(0.02,\;\min_e\big[h_e+0.15\,\mathrm{dist}(y,R_e)\big]\Big),
+\]
+the largest step below every expiry's requirement that grows by at
+most a factor $1.15$ per cell --- the nonuniform stencil
+\eqref{eq:lvstencil} carries the difference of neighbouring gaps in
+its truncation error, and the bound keeps it small.  Nodes are laid
+outward from $y=1$ in both directions with $y_{j+1}=y_j+h(y_j)$, the
+wings at step $0.02$, over $[0,\max(2.5,\,1.4\,y_{\rm top})]$.  A
+short-dated expiry no longer sets one step for the whole surface.
+
+\emph{Time grid and scheme.}  Marks at every quoted expiry and every
+vertex row; a first step of one percent of the first mark, then
+$\Delta\tau=\min(0.25\,\tau,\,0.05,\,1.25\,\Delta\tau_{\rm last})$
+with at least eight steps per interval between marks, each mark hit
+exactly --- a geometric front, about twenty steps to the first
+vertex row, and no step ratio above $1.25$.  The march is BDF2
+(\cref{sec:lvlattice}), started by one implicit step.
+
+\emph{Vertex layout.}  Rows at $\tau=0$, at a quarter of the first
+expiry, at every quoted expiry, and at the midpoints in $\sqrt\tau$ of
+the widest gaps until ten positive rows exist; columns at the deltas
+$\{1,2,5,10,25,40,50\}\%$ mapped through the longest expiry's ATM
+volatility as above, clipped to the pooled quoted range (no vertex
+beyond the data), the widest gap split until twelve columns exist,
+and every expiry given at least eight columns inside its own range;
+the front tie then binds the $\tau=0$ row to the quarter-expiry row
+(weight $10^{-2}$), chained at weight $1$ under a short front.
+
+\emph{Objective and solver.}  The density-smoothness block of
+\cref{sec:lvcalib} at $W=1$; the projected Gauss--Newton iteration of
+that section with early stopping, the trust-region method as fallback;
+the seed order previous sheet, parametric Dupire extraction, flat.
+
+\emph{The refined reprice.}  The converged-operator number is still
+marched implicit Euler, on every lattice cell halved and every time
+step quartered, so under the default it compares a second-order march
+on the fitting grid with a first-order march on the refined one.
 
 \subsection{The synthetic market}
 \label{app:lvsynthetic}

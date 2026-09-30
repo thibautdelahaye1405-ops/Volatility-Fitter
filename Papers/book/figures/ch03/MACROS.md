@@ -1,6 +1,6 @@
 # Chapter 3 macro inventory (auto-generated -- do not edit)
 
-Emitted by `scripts/ch03/gen_figures.py` into `ch03_macros.tex`. Last write 2026-08-05.
+Emitted by `scripts/ch03/gen_figures.py` into `ch03_macros.tex`. Last write 2026-09-30.
 
 | Macro | Value | Meaning |
 |---|---|---|
@@ -34,8 +34,8 @@ Emitted by `scripts/ch03/gen_figures.py` into `ch03_macros.tex`. Last write 2026
 | `\MacMcsTargetTailG` | `0.250` | analytic tail limit of the WW target's g_D |
 | `\MacCmpMixLqdGmin` | `0.371` | LQD min g_D on the quoted range, mixture fit |
 | `\MacCmpMixLqdRms` | `3.6` | LQD rms on the mixture target, vol bp |
-| `\MacCmpMixMcsGmin` | `-0.066` | MCS min g_D on the quoted range, mixture fit |
-| `\MacCmpMixMcsRms` | `87.3` | MCS rms on the mixture target, vol bp |
+| `\MacCmpMixMcsGmin` | `-0.067` | MCS min g_D on the quoted range, mixture fit |
+| `\MacCmpMixMcsRms` | `87.2` | MCS rms on the mixture target, vol bp |
 | `\MacCmpMixSviGmin` | `0.431` | SVI min g_D on the quoted range, mixture fit |
 | `\MacCmpMixSviRms` | `166.4` | SVI rms on the mixture target, vol bp |
 | `\MacCmpMixTargetGmin` | `0.369` | min g_D of the mixture target on the quoted range (exact density) |

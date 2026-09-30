@@ -67,14 +67,23 @@ not one short inequality --- it involves a parameter rescaling, root
 finding, and a numerical minimization --- and it is specific to this
 five-parameter family, with no analogue for the superposition family of
 \cref{sec:mcs}.  A family-by-family exact domain is not a strategy a
-multi-family fitter can build on.
+multi-family fitter can build on.  (One sub-family does come with
+short sufficient conditions.  Tie two of the five parameters,
+$m_S=-\rho_Ss_S/q_S$ and $a_S=b_Ss_Sq_S$, and the remaining
+three-parameter slices are butterfly-free on the whole line whenever
+$b_S(1+|\rho_S|)<2$ and $b_S(1+|\rho_S|)\,q_S/s_S\le2$
+\citep{GatheralJacquier2014}.  The reference implementation fits this
+sub-family as a comparison row, with both inequalities as hinges; it
+buys the guarantee with two fewer parameters, and a residual wave of
+the kind \cref{sec:comparison} shows for SVI is the price.)
 
 The reference implementation adopts a different division of labor for
-every family in the volatility chart, and it is the chapter's second
-convention.  \emph{During} the fit, the floor and the cap are enforced
-inside the least-squares residual --- the stacked vector of per-quote
-misfits that the optimizer drives toward zero --- by appending two
-cheap penalty rows to it:
+the families in the volatility chart, and it is the chapter's second
+convention.  \emph{During} the fit, cheap fences keep the optimizer
+near the admissible region.  For SVI the floor and the cap are
+enforced inside the least-squares residual --- the stacked vector of
+per-quote misfits that the optimizer drives toward zero --- by
+appending two cheap penalty rows to it:
 \begin{equation}
 W\,\max\!\big(-(a_S+b_Ss_Sq_S),\,0\big),
 \qquad
@@ -87,20 +96,31 @@ of \eqref{eq:svivertex} goes negative, the second only when the larger
 wing $b_S(1+|\rho_S|)$ exceeds the cap.  A row of this shape is called
 a \emph{hinge}: it is exactly zero whenever its inequality holds, so a
 clean fit is identical with or without it, and it only pushes back when
-the optimizer strays.  \emph{After} the fit, the condition the hinges
-cannot see is checked where it lives: $g_{\rm D}$ is evaluated on a
-dense grid of strikes across the traded range --- always from the
-model's own derivatives \eqref{eq:svideriv}, never by differencing
-prices, which would inject curvature noise at exactly the scale being
-measured --- and the slice is accepted only if the sampled minimum
-clears a small tolerance.  This is the same posture as the numerical
+the optimizer strays.  (The superposition family of \cref{sec:mcs} is
+fenced differently --- by box bounds on its coordinates and by a hinge
+on sampled $g_{\rm D}$ in the wings; \cref{app:protocol} records
+both.)  \emph{After} the fit, the condition the fences cannot see is
+checked where it lives: $g_{\rm D}$ is evaluated on $801$ equally
+spaced strikes across the traded range, from the model's own curve ---
+the reference implementation differences the fitted total variance
+$w(k)$ on that grid, the chapter's figures use the closed forms
+\eqref{eq:svideriv}; either way the curvature is the model's, never a
+finite difference of noisy prices, which would inject curvature noise
+at exactly the scale being measured --- and the slice is accepted if
+the sampled minimum is above $-10^{-4}$, an allowance for the stencil.
+A slice that fails is re-solved once, from the same starting point,
+with a third kind of row appended --- a hinge on $g_{\rm D}$ itself,
+$W\max\!\big(2\cdot10^{-4}-g_{\rm D}(k_j),\,0\big)$ at $101$ points of
+the traded range --- and the re-solved slice replaces the first only
+if it passes the same check; otherwise the first fit stands, flagged,
+and is not published.  This is the same posture as the numerical
 certificates of \cref{sec:certificates}: an analytic guarantee where
 one exists, and where it does not, a computed check on the finished
 object, with its scope (the sampled grid on the traded range, not the
 whole line) stated rather than implied.  The minimum of $g_{\rm D}$
-over that grid is called the fit's \emph{validity margin}; the
+over the grid is called the fit's \emph{validity margin}; the
 comparison of \cref{sec:comparison} reports it for every fit of every
-family.
+family, before any repair.
 
 One could try to push the butterfly condition into the optimizer too,
 as a hinge on sampled values of $g_{\rm D}$ over a grid --- and the

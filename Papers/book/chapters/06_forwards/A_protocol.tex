@@ -23,8 +23,9 @@ mids, $\Pi=\mathsf{C}-\mathsf{P}$ with each mid the bid--ask
 midpoint.  The naive fit is plain least squares over all surviving
 pairs.  The \emph{resolved} forward quoted beside it is the one
 stored with the snapshot --- the reference implementation's
-resolution for that node, which de-Americanizes quotes before
-regressing (Chapter~7) --- and the smile used in
+resolution for that node: the trimmed regression, its slope kept, its
+level re-read from the de-Americanized near-the-money pairs
+(Chapter~7, \cref{sec:deamloop}) --- and the smile used in
 \cref{fig:fwdskew} is the node's stored fit from the same snapshot.
 The re-implied volatilities of \cref{fig:fwdskew}(b) solve the
 one-dimensional Black inversion by bracketing to machine tolerance,

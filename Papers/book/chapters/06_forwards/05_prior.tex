@@ -14,7 +14,8 @@ The answer is a prior --- prior knowledge, imposed as a hard
 constraint.  A financing rate for a US equity has a physical range:
 not below zero by percents, not above by tens.  Fix a band of
 plausible rates (its endpoints are a stated convention, reviewed
-like any other; the reference implementation ships a wide one) and
+like any other; the reference implementation ships a wide one,
+$-5\%$ to $+30\%$ continuously compounded) and
 apply one rule:
 \emph{if the fitted rate $\hat r$ falls inside the band, keep the
 regression's answer untouched; if it falls outside, stop trusting the
@@ -99,7 +100,8 @@ center.  The flat curve is the estimator
 the reference implementation uses when its band bites: weights
 concentrated \emph{at the money} by a Gaussian kernel in
 log-moneyness (centered at spot --- the one anchor that needs no
-estimate), whose center of weight lands at
+estimate --- and, in the implementation, divided by each pair's
+quoted spread, so a wide quote votes less), whose center of weight lands at
 \$\MacFwdLeverKbarKernDollars: a lever of
 \$\MacFwdLeverKernLeverDollars, transmitting
 \MacFwdLeverKernBpPerPct\,bp per percent.  The open circles confirm
@@ -111,7 +113,8 @@ arms on a log scale: \$\MacFwdLeverFwdDollars\ versus
 afford to be crude about the rate because the level estimator it
 hands the problem to barely feels the rate at all.}  A last-resort
 guard remains behind it --- if even the level answer lands absurdly
-far from spot, the estimate falls back to spot itself and says so ---
+far from spot (more than half a unit of log-moneyness away), the
+estimate falls back to spot itself ---
 and on such a chain no smile should be published at all.
 
 \begin{figure}[htbp]
