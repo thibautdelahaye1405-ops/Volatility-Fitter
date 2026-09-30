@@ -14,7 +14,15 @@ same LaTeX pipeline in text style, sized to the surrounding font and sat on the
 text baseline. Titles stay plain text.
 
 Layouts: default (formula + bullets | figure or table), ``cover`` (title slide),
-``close`` (closing slide), ``wide-image``, ``compact``.
+``close`` (closing slide), ``wide-image``, ``narrow-image`` (a portrait capture
+beside a wide table), ``half-image`` (formulas and figure at equal width),
+``compact``.
+
+Formula blocks: ``eq_labels`` (optional, aligned with ``eq``) puts a small label
+above each display — a step name, so the block reads as a sequence.
+
+Speaker notes: a note paragraph that opens with a cue label — "If asked …:" or
+"Transition:" — gets that label in bold, in the overlay and in the Markdown.
 
 Run with the repository venv Python (MiKTeX's latex / dvisvgm on PATH):
     .venv\\Scripts\\python.exe Docs\\deck\\demo_2026-09-24\\rewrite\\build_demo.py
@@ -135,7 +143,9 @@ def inline_math(tex: str, px: float) -> str:
 
 
 def rich(text: str, px: float = 21.0) -> str:
-    """Escape prose and render its ``$...$`` spans as inline maths."""
+    """Escape prose and render its ``$...$`` spans as inline maths; ``\\$`` is a
+    literal dollar sign (a currency amount), never a maths delimiter."""
+    text = text.replace("\\$", "\x00")
     parts = re.split(r"(\$[^$]+\$)", text)
     out = []
     for part in parts:
@@ -143,7 +153,7 @@ def rich(text: str, px: float = 21.0) -> str:
             out.append(inline_math(part[1:-1], px))
         else:
             out.append(html.escape(part))
-    return "".join(out)
+    return "".join(out).replace("\x00", "$")
 
 
 # ---------------------------------------------------------------- fragments
@@ -156,7 +166,14 @@ def render_eqs(s: dict) -> str:
     if not eqs:
         return ""
     title = f'<div class="eqtitle">{rich(s["eq_title"], 15)}</div>' if s.get("eq_title") else ""
-    rows = "".join(f'<div class="eq">{equation(e)}</div>' for e in eqs)
+    labels = s.get("eq_labels") or []
+    rows = ""
+    for i, e in enumerate(eqs):
+        label = labels[i] if i < len(labels) else ""
+        if label:
+            rows += f'<div class="eq labelled"><span class="eqlbl">{rich(label, 14)}</span>{equation(e)}</div>'
+        else:
+            rows += f'<div class="eq">{equation(e)}</div>'
     note = f'<div class="eqnote">{rich(s["eq_note"], 14.5)}</div>' if s.get("eq_note") else ""
     return f'<div class="eqblock core">{title}{rows}{note}</div>'
 
@@ -240,8 +257,24 @@ def render_figure(s: dict) -> str:
 
 
 # ------------------------------------------------------------------- slides
+#: A speaker-note paragraph that opens with one of these cue labels gets it in bold.
+NOTE_CUE = re.compile(r"^((?:If asked[^:]{0,90})|Transition):\s+")
+
+
+def note_html(p: str) -> str:
+    m = NOTE_CUE.match(p)
+    if not m:
+        return f"<p>{esc(p)}</p>"
+    return f"<p><b>{esc(m.group(1))}:</b> {esc(p[m.end():])}</p>"
+
+
+def note_md(p: str) -> str:
+    m = NOTE_CUE.match(p)
+    return f"**{m.group(1)}:** {p[m.end():]}" if m else p
+
+
 def render_notes(s: dict, index: int) -> str:
-    notes = "".join(f"<p>{esc(p)}</p>" for p in s["notes"])
+    notes = "".join(note_html(p) for p in s["notes"])
     if s.get("demo"):
         notes += f"<p><b>In the app.</b> {esc(s['demo'])}</p>"
     notes += '<p class="note-sources">Sources: ' + esc("; ".join(s["sources"])) + "</p>"
@@ -285,7 +318,8 @@ def render_slide(s: dict, index: int, total: int, sec_pos: int, sec_total: int) 
                                                  render_example(s), render_demo(s), render_figure(s))
     compact = " compact" if s.get("layout") == "compact" else ""
     if figure:
-        cols = "cols wider" if s.get("layout") == "wide-image" else "cols"
+        cols = {"wide-image": "cols wider", "narrow-image": "cols narrow",
+                "half-image": "cols half"}.get(s.get("layout"), "cols")
         left = eqs + points + table + example + demo
         body = f'<div class="{cols}{compact}"><div>{left}</div><div>{figure}</div></div>'
     elif table and (eqs or points):
@@ -316,7 +350,10 @@ def write_notes(slides: list[dict]) -> None:
     for i, s in enumerate(slides, 1):
         notes.extend(["", f'<a id="slide-{i:02d}"></a>', "", f"## {i:02d}. {s['title']}", "", f"*{s['section']}*", ""])
         notes.extend([s["lede"], ""])
-        for eq in s.get("eq", []):
+        labels = s.get("eq_labels") or []
+        for i, eq in enumerate(s.get("eq", [])):
+            if i < len(labels) and labels[i]:
+                notes.extend([f"*{labels[i]}*", ""])
             notes.extend(["$$", eq, "$$", ""])
         if s.get("table"):
             table = s["table"]
@@ -324,7 +361,7 @@ def write_notes(slides: list[dict]) -> None:
             notes.append("| " + " | ".join("---" for _ in table["head"]) + " |")
             notes.extend("| " + " | ".join(str(x).replace("|", r"\|") for x in row) + " |" for row in table["rows"])
             notes.append("")
-        notes.extend(p + "\n" for p in s["notes"])
+        notes.extend(note_md(p) + "\n" for p in s["notes"])
         if s.get("example"):
             notes.extend([f"**{s.get('example_label', 'Illustrative calculation')}.** {s['example']}", ""])
         if s.get("image") or s.get("plot"):

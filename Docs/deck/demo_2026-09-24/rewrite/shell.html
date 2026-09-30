@@ -47,6 +47,7 @@
   .cols { display: grid; grid-template-columns: 1fr 1.35fr; gap: 56px; height: 100%; min-height: 0; }
   .cols.half { grid-template-columns: 1fr 1fr; }
   .cols.wider { grid-template-columns: .85fr 1.5fr; }
+  .cols.narrow { grid-template-columns: 1.75fr .7fr; }   /* a portrait capture beside a wide table */
   .cols > div { display: flex; flex-direction: column; justify-content: safe center; min-height: 0; }
   .one { display: flex; flex-direction: column; justify-content: safe center; height: 100%; min-height: 0; max-width: 1640px; }
 
@@ -55,6 +56,8 @@
   .eqblock .eqtitle { font-size: 15px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
   .eq { color: var(--ink); display: flex; justify-content: center; padding: 8px 0; }
   .eq + .eq { border-top: 1px dashed rgba(217,226,236,.9); }
+  .eq.labelled { flex-direction: column; align-items: center; }
+  .eq .eqlbl { align-self: flex-start; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
   .eq svg { max-width: 100%; height: auto; }
   .eq img.equation { max-width: 100%; height: auto; }   /* mathtext fallback only */
   .eqnote { font-size: 14.5px; color: var(--muted); margin-top: 8px; line-height: 1.42; }

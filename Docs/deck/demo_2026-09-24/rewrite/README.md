@@ -31,14 +31,16 @@ captions with a bold lead, the footer with the reference and the slide count.
   prints a warning and falls back to matplotlib mathtext for that one display.
 - **Layout rules** (`build_demo.py`): a slide with an image or plot is two columns
   (formulas + bullets + table + example | figure + caption; `layout: "wide-image"`
-  widens the figure); a slide with a table and formulas or bullets is two equal columns
+  widens the figure, `layout: "narrow-image"` narrows it for a portrait capture
+  beside a wide table, `layout: "half-image"` gives formulas and figure equal width); a slide with a table and formulas or bullets is two equal columns
   (formulas + bullets | table + example); formulas without a table sit left with the
   bullets right; a table alone spans the slide. `layout: "cover"` is the title slide,
   `layout: "close"` the closing slide (brand, title, lede, bullets); `layout: "compact"`
-  shrinks a table. Optional keys `eq_title` and `eq_note` label a formula block; `demo`
+  shrinks a table. Optional keys `eq_title` and `eq_note` label a formula block, and
+  `eq_labels` (aligned with `eq`) puts a step label above each display; `demo`
   renders an "In the app" cue on the slide and in the notes.
 - **Inline maths in prose**: every slide-visible text field (lede, bullet labels and
-  text, example, table cells, captions, demo cues) may carry `$…$` spans. They go
+  text, example, table cells, captions, demo cues) may carry `$…$` spans (write `\$` for a literal dollar sign). They go
   through the same LaTeX pipeline in text style, are scaled to the surrounding font and
   sat on its baseline. The convention since 29 September is LaTeX only — no Unicode
   superscripts, subscripts or Greek for mathematical symbols in those fields. Titles
