@@ -142,7 +142,8 @@ $\min(\cdot,1)$ caps it at one when there is no data at all; and the
 exponent $\gamma$ shapes how fast the gate closes as data
 accumulates.  Each persisted row then receives
 $\lambda_j\propto\operatorname{gate}(\mathcal{I}_j)$: a fixed
-budget of prior weight is split across the rows in proportion to
+budget of prior weight --- half the summed quote weight, in the
+reference implementation --- is split across the rows in proportion to
 their gate values, and a row whose gate is zero is simply dropped.
 
 \begin{proposition}[The no-damp guarantee]

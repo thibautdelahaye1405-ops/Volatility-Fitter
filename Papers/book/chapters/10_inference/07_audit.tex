@@ -56,7 +56,19 @@ by \cref{eq:infprecadd}.
 So the filter, done inside the objective, is one ungated row per
 handle --- and the accounting rule follows: once the fit is
 committed, its handles \emph{are} the posterior, and no second
-update may be applied against the same quotes.  Note the word
+update may be applied against the same quotes.  (The reference
+implementation writes the three rows on a three-point stencil at
+$k\in\{-h,0,h\}$, $h=0.06$ --- the level as $\sigma(0)$, the skew as
+$(\sigma(h)-\sigma(-h))/2h$, the curvature as
+$(\sigma(h)-2\sigma(0)+\sigma(-h))/h^2$, exact on a locally
+quadratic smile --- each against its prediction at weight
+$1/\mathcal{V}^{-}$ in the units of one common per-quote noise, the
+chain's median half-spread; the quote rows keep the fit's relative
+weights, so the objective is the proposition's with every quote
+assigned that one noise.  The posterior variance is then read from
+the joint fit's own information, inflated by the misfit multiple of
+\cref{sec:infbudgets} and never allowed above the prediction's.)
+Note the word
 \emph{ungated}: the prediction row carries its covariance weight
 always, closed gates or no.  This is the chapter's two instruments
 meeting in one objective, each keyed to its own symptom --- the
@@ -67,11 +79,14 @@ overlap, because both pull toward the same transported yesterday.
 Yesterday enters once.  When the filter runs, its prediction rows
 \emph{are} yesterday's belly --- level, skew, curvature, transported
 and priced --- so the shape baskets of
-\cref{sec:infprice,sec:infcoords}, which carry that same yesterday
+\cref{sec:infprice,sec:infcoords}, and the variance-swap row with
+them, which carry that same yesterday
 in other coordinates, are dropped; what persistence keeps is only what
 the filter state does not transport: the deep-tail anchors beyond
 the last basket leg, and --- for a node with no quotes at all ---
-the baseline the next chapter builds.  Anchoring the same handle to
+the baseline the next chapter builds.  (In the overlay mode of
+\cref{sec:inffilter} nothing is dropped, because nothing enters the
+fit.)  Anchoring the same handle to
 yesterday twice --- once through $\hat O^{-}$, once through a
 persistence row --- would count yesterday twice, the mirror image of
 the quote double count.

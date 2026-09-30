@@ -123,24 +123,35 @@ observations the dislocation is believed with a stated memory,
 a half-life decay on the elapsed time, with elapsed time and
 half-life quoted on one clock --- the universe uses
 days, the example above ran in hours.  (And the \emph{variance} of the
-carried value grows as it ages: the longer since the print, the less
-certain what remains of it.)  Panel~(b) of \cref{fig:grstory} draws
+carried value moves as it ages: in the reference implementation it
+relaxes, by the same factor squared, toward a stated resting scale
+--- three volatility points on the level --- so that what remains of
+an old dislocation is believed no more tightly than a typical
+move.)  Panel~(b) of \cref{fig:grstory} draws
 the decay for three settings of the dial on the example's hourly clock:
 half an hour (a dislocation is short-lived noise), two hours, and
 never-forget; the staged universe of \cref{sec:grcomplete} runs the
 same dial in days, its sister name carrying a two-day half-life.  The
 half-life is not estimated from anything in this book --- it is a
 stated desk commitment, exactly like the anchor $\kappa$, and the
-standardized-error test of \cref{sec:grcomplete} is what checks it.
+standardized-error test of \cref{sec:grcomplete} is what checks it;
+the reference implementation's default is never-forget.
 
-How does the state enter the solve?  Through the contract, as an
-offset: a node carrying a dislocation obeys its relations \emph{from
-the dislocated level}, so the factor becomes
+How does the state enter the solve?  This chapter's solver carries
+it in the contract, as an offset: a node carrying a dislocation obeys
+its relations \emph{from the dislocated level}, so the factor becomes
 \[
 p_{ij}\,\bigl(\Theta_i-\beta_{ij}\Theta_j-\mathcal{U}_i\bigr)^{2},
 \]
-with the carried $\mathcal{U}_i$ from \cref{eq:grdecay} and its grown
-variance widening the relation noise.  Everything else --- the
+with the carried $\mathcal{U}_i$ from \cref{eq:grdecay} and its
+variance widening the relation noise.  The reference implementation
+carries it as a belief about the node instead --- one row
+$(\Theta_i-\mathcal{U}_i)^{2}/\mathcal{V}_{\mathcal{U},i}$ in the
+layered solve of \cref{sec:grlayered} --- so that a dark node with a
+memory publishes a precision-weighted vote between what its
+contracts imply and what it remembers, and the staircase of the
+example is obtained exactly when the relation from $A$ to $B$ is
+declared one-way, as below.  Everything else --- the
 assembly, the accounting, the anchors --- is unchanged.
 
 Direction is the remaining assertion, and the algebra cannot supply
@@ -149,16 +160,25 @@ arrived, the desk revised \emph{B's} state only --- it did not mark
 the index down.  That is a structural assertion about the world
 (influence flows one way), and \cref{sec:gredge} showed a symmetric
 contract cannot express it: tight trust binds both directions.  The
-reference implementation therefore cuts the update at the source.
+reference implementation therefore lets the desk declare a relation
+\emph{one-way} --- from an index to its constituents, from a sector
+fund to its members --- and cuts the update at the source on every
+such relation (the one-way relations must form no cycle).
 Concretely: a satellite's print enters the solve as a measurement
 of its \emph{own} residual --- the gap between the print and the
-contemporaneous systematic prediction is booked into
-$\mathcal{U}$ --- and not as an observation row of \cref{eq:grjoint},
-which the joint solve would propagate backward into the informer.
-This is a stated policy layered on top of the Gaussian, not a
+contemporaneous prediction from its one-way informers is booked into
+$\mathcal{U}$ --- and not as an observation row of \cref{eq:grjoint}
+on that relation, which the joint solve would propagate backward
+into the informer; the informer is read, never written.  On a
+relation left reciprocal --- the automatic pairing of
+\cref{sec:grlayered} is reciprocal throughout, and a node with no
+one-way informer books its \emph{whole} innovation as residual ---
+a certified print does move its neighbours through $\Omega$, as the
+Gaussian says it must.  The cut
+is a stated policy layered on top of the Gaussian, not a
 consequence of it.  The policy is one sentence: a
 dark universe must never let its thinnest member mark down its
-benchmark.
+benchmark --- and the desk names the benchmarks.
 
 \subsection{Three priors, one belief}
 
@@ -172,12 +192,14 @@ has become a complete inventory.  Its published handle is
 \underbrace{\text{residual}}_{\text{its own memory}},
 \]
 three parts of decreasing evidence, each with its own uncertainty and
-its own clock.  The \emph{baseline} is Chapter~10's: yesterday's
-posterior, transported by Chapter~9, its variance grown on
-Chapter~8's clock --- what the node would publish if the universe said
+its own clock.  The \emph{baseline} is Chapter~10's: the node's saved
+prior, transported by Chapter~9, its variance grown with age and
+with the transport --- what the node would publish if the universe said
 nothing.  The \emph{systematic} part is this chapter's: what the lit
 universe's innovations imply through the contracts, at the amplitudes
-asserted, shrunk by the anchor, priced by the accountant.  The
+asserted, shrunk by the anchor, priced by the accountant (the
+reference implementation reports it in two lines, the one-way
+relations' prediction and the reciprocal contracts' completion).  The
 \emph{residual} is the node's own remembered dislocation, decaying on
 its half-life.  Nothing else enters, and each part is separately
 attributable --- which is what lets \cref{sec:grcomplete}

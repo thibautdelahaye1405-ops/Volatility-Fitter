@@ -84,9 +84,12 @@ source is next door or three hops away.
 
 The repairs, in order.  The dark node's own information is exactly
 what \cref{ch:infer} already maintains: every node --- lit or dark ---
-carries a \emph{baseline}, yesterday's posterior transported to
-today's market by Chapter~9's rule, with a variance grown on
-Chapter~8's clock.  This is the division of labour drawn at the end
+carries a \emph{baseline}, its saved prior smile transported to
+today's market by Chapter~9's rule, with a variance that grows with
+the prior's age and with the size of the transport (in the reference
+implementation, from a tight stated precision, halving every thirty
+days, shrinking by $e^{-|H|/0.1}$ with the log-forward move, and four
+times wider on a node that has no fit of its own).  This is the division of labour drawn at the end
 of \cref{sec:infaudit}: persistence supplies each dark node's
 baseline; what it cannot supply is this morning's \emph{news}.  So the
 graph should not build dark smiles from scratch --- it should only move

@@ -32,7 +32,9 @@ make it hold exactly, not approximately.
 \subsection{Where a calendar amplitude comes from}
 
 Cross-name amplitudes are desk judgments (a name's beta to its
-index).  Calendar amplitudes --- between two expiries of one name ---
+index; absent a judgment, the reference implementation pairs every
+two names sharing an expiry as peers at amplitude one).  Calendar
+amplitudes --- between two expiries of one name ---
 can be \emph{derived}, and the derivation is two lines.  Recall the
 chart identity in force since Chapter~2: a slice's total implied
 variance is $w=\sigma^{2}\tau$, volatility squared times variance
@@ -63,7 +65,9 @@ the clean form as the stated convention:
 \label{eq:grcalbeta}
 \end{equation}
 Read it on a clean ladder of three expiries with $\tau=0.25$, $0.5$
-and $1.0$ (variance time, as always) --- call the nodes 3M, 6M and 1Y.  A $+1$-point move at 6M implies
+and $1.0$ (variance time, as always; the reference implementation
+takes the ratio of calendar year fractions, which differs only
+across an event) --- call the nodes 3M, 6M and 1Y.  A $+1$-point move at 6M implies
 $+1\times(0.5/0.25)=+2$ points at 3M and $+1\times(0.5/1.0)=+0.5$ at
 1Y.  Short-dated volatility swings hardest --- the same $\delta w$ is a
 bigger share of a smaller $w$ --- which is precisely what

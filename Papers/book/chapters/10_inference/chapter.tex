@@ -22,8 +22,9 @@
 %      with the update a precision-weighted average whose gain is a
 %      computed OUTPUT of two variances -- a measurement variance built
 %      from the fit's own information in stated noise (inflated by
-%      realized contradiction) and a prediction variance grown on the
-%      market's clock.
+%      realized contradiction) and a prediction variance grown with
+%      elapsed time (the market's clock where the chapter argues for
+%      it; the wall clock in the reference implementation's default).
 %   5. Test the stated variances: fitting today's quotes with the
 %      prediction as one extra row IS the filter update (quotes counted
 %      once), and the standardized error Z tests whether stated
@@ -59,8 +60,8 @@ Chapter~9's rule, meets today's noisy reading, and the update is a
 precision-weighted average whose gain is computed, not set --- the
 ratio of two variances: the observation's, from the fit's own
 information in stated bid--ask units, inflated when the chain
-contradicts itself, and the prediction's, from a budget accrued on
-Chapter~8's clock.  The two instruments answer different questions
+contradicts itself, and the prediction's, from a budget accrued
+with the time elapsed.  The two instruments answer different questions
 --- absence and noise --- and an accounting identity keeps them from
 counting any quote twice.  The chapter closes with the
 standardized-error test: the error divided by its stated scale,

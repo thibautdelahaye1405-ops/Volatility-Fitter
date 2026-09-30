@@ -24,7 +24,65 @@ poison for the prose.  Therefore:
   implementation".  No product names, no repo paths, no internal note
   citations — public literature only.
 
-## Status (2026-08-12 — CHAPTER 2 REPLACED; the index pass still pending)
+## Status (2026-09-30 — CONSISTENCY PASS against the reference implementation; the index pass still pending)
+
+The fourteenth session (2026-09-30) re-aligned every chapter with
+the reference implementation AS IT STANDS (backend/volfit at commit
+ab3b1a7): nine read-only sub-agents checked each chapter's
+statements about "the reference implementation" against the code
+and reported discrepancies as mathematics; the lead corrected the
+prose under the style contract.  Three kinds of change:
+
+- CORRECTED ATTRIBUTIONS (ch. 2–7, 10, 11): where the book said the
+  implementation does X and it does Y, the text now says Y, or says
+  "this chapter's protocol is X; the shipped default is Y" (ch. 4's
+  implicit-Euler/uniform-lattice/TRF protocol vs BDF2 + graded grids
+  + density-smoothness block + projected Gauss–Newton; ch. 7's tree
+  depth and pinned rate; ch. 11's precision-message solver vs the
+  layered default with clamped lit nodes, no anchors, residual
+  memory as node rows, one-way relations declared).  Ch. 1 §1.5 now
+  says the book states both when they differ.
+- TWO CHAPTERS REDRAFTED IN CONTENT, figures + macros regenerated:
+  ch. 8 §8.6–8.7 — the inverse problem is the PEAK RULE the package
+  uses (higher-neighbour reference, floors ½ day and 3 %, exact
+  sizes, no objective; clock8.py re-implements it, cross-checked
+  against volfit.calib.event_autocalib to round-off); ch. 9 — the
+  transport is the SLIDE w_new(k) = w_old(k+ℛH) (no vertical level),
+  fixed-strike response and delta gap on the LOCAL slope σ'(k₀),
+  named sticky-local-vol = the ℓ relabeling, new §9.7.1 "What a
+  spot move moves" incl. quote synchronisation.
+- ADDITIONS where a reader would otherwise be misled (short): ch. 3
+  eSSVI comparator + resolution pruning of MCS cores; ch. 5 the
+  publish-time cone projection; ch. 10 the default row set (ATM,
+  RR25, BF25, var-swap level), deficit anchors, filter modes, reset
+  law, wall-clock default; ch. 11 default relation laws.
+
+Build: 243 pages (was 231; the growth is the added implementation
+paragraphs — the contract said "never longer" for the STYLE arc,
+not for content the author asked for), no undefined refs, the one
+pre-existing ch. 3 overfull, banned-grep unchanged.  Boundaries
+(this build): intro 1 / ch2 9 / ch3 39 / ch4 67 / ch5 93 / ch6 115 /
+ch7 133 / ch8 151 / ch9 171 / ch10 189 / ch11 211 / Bibliography
+233 — the INDEX-PASS brief's anchors are these now, and should be
+re-read from a fresh build when that session runs.  The ch. 2 figure scripts were
+not re-run (audit.py's `_residuals` tuple fixed to the 22-argument
+signature so they can be); ch. 3 regenerated (two last-digit
+changes); ch. 8/9 regenerated for the redrafts; 4/5/6/7/10/11
+figures untouched (their scripts pin or self-contain the chapters'
+own protocols, which the text now labels as such).
+
+Known residuals for a later session, none blocking: (a) the ch. 2
+tail-scale rule and joint fit are described as the code does them
+— the author's rewrite had stated hard full-line constraints; if
+the author prefers the book's ORIGINAL policy the code, not the
+text, would have to move; (b) ch. 10's figures still embody three
+experiment rules that differ from the implementation (vol-space
+equal-split anchors, ρ with d = parameter count, per-quote
+whitening in the joint fit) — labelled as the experiment's in the
+appendix, not regenerated; (c) the mixed dividend convention,
+zero-carry pin and the 96-hour reset are stated in one clause each.
+
+## Status (2026-08-12 — CHAPTER 2 REPLACED; superseded above)
 
 CHAPTER 2 WAS REPLACED 2026-08-12 (thirteenth session) by the author's
 rewrite (staged under `chapters/lqd_chapter_rewrite/`, kept as the
@@ -750,3 +808,19 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   the Status block, no undefined refs, 1 pre-existing overfull
   (ch. 3).  REMAINING: the index pass (brief above, page anchors
   refreshed).
+- 2026-09-30 (fourteenth session): CONSISTENCY PASS against the
+  reference implementation (full record in the top Status block).
+  Method: nine parallel read-only sub-agents, one per chapter or
+  pair, each briefed to compare the chapter's implementation
+  statements with backend/volfit as it stands and to report
+  CONTRADICTION / STALE-NUMBER / OMISSION findings as mathematics
+  (no dates, no engineering narrative) — this kept the book session
+  free of the app's history while still answering "is the book
+  consistent with the app".  Commits: ccbb4d3 (ch. 2–7), 675b853
+  (ch. 8–9, figures + clock8/data9 scripts), and this session's
+  closing commit (ch. 10–11, ch. 1 §1.5, roadmap).  Chapter 8's
+  J(N) solver is gone from clock8.py (git history keeps it); the
+  chapter's macro store was pruned of the seven J(N) macros.
+  Chapter 9's data9.transport_vol is the slide; local_slope added;
+  fig_dial/fig_delta/fig_scenario/fig_question rewritten.  Build
+  243 pp, no undefined refs, 1 pre-existing overfull.

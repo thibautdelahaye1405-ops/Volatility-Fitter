@@ -29,7 +29,12 @@ O=\sum_a \omega_a\,\sigma(k_a),
 with fixed coefficients $\omega_a$: the level has one leg with
 $\omega=1$; the risk reversal has $\omega=(+1,-1)$ on its two wing
 legs; the butterfly has
-$\omega=(\tfrac12,\tfrac12,-1)$ on wing, wing, and money.  What is
+$\omega=(\tfrac12,\tfrac12,-1)$ on wing, wing, and money.  The
+reference implementation persists exactly these three by default,
+with the wing legs at the $25$-delta put and call of the transported
+prior smile (the strikes where the prior's own Black delta is a
+quarter, frozen for the day), and a fourth row named in
+\cref{sec:infcoords}.  What is
 the precision of a basket, given the support of its legs?
 
 \begin{proposition}[The harmonic law]
@@ -157,9 +162,13 @@ support, can close on functionals the morning has not truly
 measured.  The consequence is a design rule rather than a repair:
 gated shape baskets cannot be the only mechanism holding a dark
 wing, and \cref{sec:infcoords} pairs them with anchors placed by a
-coverage test that does not radiate (the test is defined there).  The exact alternative ---
+coverage test against a target density (the test is defined
+there).  The exact alternative ---
 measure each functional's realized precision from a data-only fit,
-then gate on that --- exists and costs one extra fit; the support
+then gate on that --- would cost one extra fit; the reference
+implementation gates on support, and its optional two-pass mode
+spends the extra fit on a better starting point for the gated
+solve, not on the gate.  The support
 proxy is the cost of gating before fitting.
 
 We can now price any persisted functional and gate it.  What remains

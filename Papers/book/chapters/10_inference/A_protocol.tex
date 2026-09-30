@@ -66,7 +66,9 @@ worth twenty clean quotes is split over the open gates in proportion
 to their values --- the closed level and moderate-butterfly rows
 (gates \MacPriorJumpGateAtm\ and \MacPriorJumpGateBfMod) are
 dropped.  Absolute anchors: yesterday's volatilities imposed at the
-four wing strikes, the same total budget split equally.  Errors are
+four wing strikes, the same total budget split equally --- the
+experiment's rule; the reference implementation's anchors are the
+price-space, deficit-split rows of \cref{sec:infcoords}.  Errors are
 read at $k=-0.30$.
 
 \paragraph{The observation budget (\cref{fig:infcovar}).}
@@ -78,7 +80,8 @@ whose parameters are the handles (curvature $=2\theta_2$), so
 multiple is
 $\max\bigl(1,\ \chi^2/(m-d)\bigr)$ capped at $25$, with $\chi^2$
 the sum of squared whitened quote residuals, $m$ the quote count
-and $d$ the parameter count.  Panel~(b) kinks the two adjacent
+and $d$ the parameter count (the reference implementation uses
+$d=3$, the number of handles, whatever the family).  Panel~(b) kinks the two adjacent
 strikes nearest $k=+0.03$ by $\pm\epsilon$ with $\epsilon$ swept to
 three vol points, and evaluates gains against a stated prediction
 budget of $(60\,\text{bp},\ 0.03,\ 0.15)$ per handle sd --- the

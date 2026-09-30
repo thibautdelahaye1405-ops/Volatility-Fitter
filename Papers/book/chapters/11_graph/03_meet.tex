@@ -150,7 +150,14 @@ estimates, the calibrated handle minus the transported baseline, and
 the variance of a difference of independent estimates is the sum of
 their variances (the same propagation Chapter~6 used for its error
 bars): $\mathcal{V}_{\mathrm{obs},s}
-=\mathcal{V}_{\mathrm{fit},s}+\mathcal{V}_{\mathrm{base},s}$.  A
+=\mathcal{V}_{\mathrm{fit},s}+\mathcal{V}_{\mathrm{base},s}$.  (The
+reference implementation states $\mathcal{V}_{\mathrm{fit}}$ from
+the calibration's own record: the fit's rms in volatility, squared,
+widened when fewer than eight quotes sit within ten percent of the
+money, when their relative spreads are wide, and as the chain ages,
+clipped to a stated envelope; a rule, declared, in place of the
+information matrix of \cref{sec:infbudgets}, which the smile families
+of Part~I do not all expose.)  A
 node's baseline uncertainty enters the objective exactly once.  For a
 lit node it is folded into $\mathcal{V}_{\mathrm{obs}}$, as just
 shown.  For a dark node the mechanism is at the other end of the
@@ -213,6 +220,48 @@ uncertainty mapped through the amplitude: precisely the chain law
 \cref{eq:grchain} recovered from the joint solve.  (The mean,
 solving the normal equations, is $\hat\Theta^{+}_A=d$,
 $\hat\Theta^{+}_B=\beta d$: the contract at full amplitude.)
+
+\subsection{The reference implementation's solve}
+\label{sec:grlayered}
+
+The reference implementation solves \cref{eq:grjoint} in a form
+worth recording, because it is the same posterior for every dark
+node and a different one for the lit nodes.  A lit node whose chain
+is fresh --- quoted within the last day --- is \emph{clamped}: it
+publishes its own calibration and its own variance
+$\mathcal{V}_{\mathrm{obs},s}$, and the contracts never revise it.
+The dark nodes then receive the exact marginal of \cref{eq:grjoint}
+over the lit ones: with $B$ the contracts' coefficient matrix split
+into its lit and dark columns, $B_S$ and $B_F$, and $P$ the diagonal
+of relation precisions, integrating the lit nodes out of the
+Gaussian replaces the contracts' noise by
+$\Omega=P^{-1}+B_S\,\mathrm{diag}(\mathcal{V}_{\mathrm{obs}})\,B_S^{\top}$
+--- each relation's own noise plus what its lit end is uncertain by,
+the chain law in matrix form --- and the dark posterior is the
+least-squares solution of $B_F\Theta_F=-B_S\hat\Theta_{\mathrm{obs}}$
+under $\Omega^{-1}$, with marginal variances from the inverse of
+$B_F^{\top}\Omega^{-1}B_F$.  On the two-node universe this returns
+$\beta d$ and $1/p+\beta^{2}v$ exactly; on the triangle of
+\cref{sec:graccount} it returns $5/(3p)$.  Every statement this
+chapter makes about a dark node --- the vote, the chain law, the
+silent neighbour, one count per source, the marginal band, the empty
+component --- holds verbatim in this form; what differs is that
+tightly bound lit nodes are not pulled toward one another, a lit
+reading older than a day enters as the soft row of \cref{eq:grjoint}
+rather than a clamp, the anchors of \cref{sec:granchor} are absent
+($\kappa\equiv0$), and beliefs \emph{about a node} --- a remembered
+dislocation (\cref{sec:grbelieve}), a stale reading, a prediction
+along a declared one-way relation --- enter as rows on that node.
+The default relation set is automatic: one calendar contract per
+adjacent pair of a name's expiries at the amplitude
+\cref{eq:grcalbeta}, its precision falling with the gap,
+$p=p_0/(\epsilon+\sqrt{|\Delta T|})$ with $p_0=1.7\times10^{3}$ per
+squared decimal volatility and $\epsilon=0.97$ root-years --- a
+relation noise of $2.4$ volatility points between adjacent rungs,
+$3.4$ a year apart --- and one cross contract per pair of names
+sharing an expiry, at amplitude one and a constant precision
+$1.3\times10^{4}$ ($0.9$ points); the skew and curvature fields
+carry the same precisions scaled to their units.
 
 Now the caution.  The \emph{diagonal of the information matrix} at
 $B$ reads $p$ --- call its reciprocal the \emph{conditional} variance,

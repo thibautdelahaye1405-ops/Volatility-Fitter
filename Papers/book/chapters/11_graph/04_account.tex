@@ -168,9 +168,12 @@ matrix is singular on that component, and no posterior exists there.
 The solver returns, for such a component, exactly what
 \cref{sec:grdark} prescribed for a morning with no evidence ---
 each node's baseline, unchanged ($\Theta=0$), under a stated default
-band (one typical morning's move is the reference implementation's
-convention), with a flag marking the component as having no lit
-path.  The alternative --- regularizing the singularity away and
+band (three volatility points on the level, in the reference
+implementation --- a fixed convention, the size of a typical single
+name's morning move --- plus the baseline's own variance), with a
+flag marking the component as having no lit path.  (A component
+whose nodes carry a remembered dislocation, \cref{sec:grbelieve},
+is not empty in this sense: it publishes the memory.)  The alternative --- regularizing the singularity away and
 publishing the result --- is the averaging assembly's mistake in
 another form: a tie-break the desk never chose, published as
 inference.

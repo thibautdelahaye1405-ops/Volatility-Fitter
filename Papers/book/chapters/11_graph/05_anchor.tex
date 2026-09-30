@@ -108,7 +108,14 @@ precision instead, and \cref{eq:grcorr}'s ratio freezes at its
 one-source value: a legal prior, but one that flatly denies
 corroboration.  Which behaviour a desk wants is a statement about the
 world, and the fixed anchor --- corroboration lifts transfer --- is the
-convention this book adopts.
+convention this book adopts.  The reference implementation states it
+through the transfer itself rather than through $\kappa$: the desk
+declares, per relation class, the fraction $\rho$ of one clamped
+source's message a receiver should carry, and the anchor is derived,
+$\kappa_i=p_i^{\rm primary}(1-\rho)/\rho$ --- so that
+\cref{eq:grcorr} at $k=1$ returns exactly $\rho$.  Its default is
+$\rho=1$: no anchor, full force, and the layered solve of
+\cref{sec:grlayered} carries none at all.
 
 \begin{figure}[htbp]
 \centering

@@ -14,7 +14,11 @@ The observation is not a quote; it is a number read off a
 sit and how noisy each is, how precisely is this handle determined?
 
 Warm up with one strike.  A single quote at the money, with stated
-noise $\varepsilon$ (its bid--ask half-spread, read in volatility),
+noise $\varepsilon$ (its bid--ask half-spread, read in volatility;
+the reference implementation floors it at one vol bp and, on an
+expiry under thirty days, multiplies it by $\sqrt{30/\text{days}}$,
+since a short-dated quote's half-spread understates how far its
+volatility moves between snapshots),
 measures the level with variance $\varepsilon^2$; $n$ such quotes,
 independently noisy, measure it with variance $\varepsilon^2/n$.
 Precision is quote count over noise squared --- support again, now
@@ -79,7 +83,11 @@ assign that direction either an infinite variance --- harmless ---
 or, after aggressive rounding, \emph{zero}: a stated certainty
 about a direction the data never measured; the reference
 implementation floors the small eigenvalues so unidentified
-directions come out large-but-finite.)
+directions come out large-but-finite, keeps the fit's own
+regularization rows in the information at their own scale --- they
+are part of what pins $\theta$ --- and clips each handle's variance
+to a stated envelope, $[10^{-7},10^{-2}]$ for the level and skew,
+$[10^{-5},1]$ for the curvature.)
 
 \begin{figure}[htbp]
 \centering
@@ -173,16 +181,27 @@ $\Delta t_{\mathrm{days}}$ should be counted on the market's clock,
 not the wall's: Chapter~8 measured that a closed weekend moves the
 smile about as much as one overnight, so a calendar count pays three
 days of variance for one overnight's worth of movement and no
-single $q_{\mathrm{walk}}$ can then be right at every cadence.  And
+single $q_{\mathrm{walk}}$ can then be right at every cadence.  (The
+reference implementation's default is nevertheless the wall clock;
+its session clock --- each trading day worth one unit, $0.60$ of it
+during the session, a closed day worth nothing --- is the stated
+alternative.)  And
 the scale $q_{\mathrm{walk}}$ itself is an empirical commitment ---
+$30$ vol bp, $0.02$ and $0.05$ per root-day for level, skew and
+curvature in the reference implementation --- and
 the standardized-error test of \cref{sec:infaudit} is precisely the
-instrument that detects a wrong one.  The remaining widenings are event-shaped and
+instrument that detects a wrong one.  The remaining widenings are
 listed in words: a spot move of size $H$ adds transport uncertainty
 in proportion to $\lvert H\rvert$ (the transported prediction leans
-on Chapter~9's dial, which is itself a convention); a scheduled
-event inside the interval widens the budget while it resolves; a
-change of data source resets the state outright rather than
-pretending continuity.
+on Chapter~9's dial, which is itself a convention); and a
+change of data source, a re-sourced or edited chain, or a gap of
+more than four days resets the state outright rather than
+pretending continuity --- the state is re-seeded from the node's
+transported saved prior with a stated tight covariance, and that
+snapshot's observation combined with the seed by the ordinary
+update.  A scheduled event inside the interval is not a widening:
+its variance is already in the transported prior's own clock
+(Chapter~8), and the filter's clock term does not count event days.
 
 One last mechanism guards the tails of real life.  A genuine
 five-point overnight jump is, under a $30$-bp-per-$\sqrt{\text{day}}$
@@ -196,7 +215,10 @@ $\lvert\hat O_{\mathrm{obs}}-\hat O^{-}\rvert
 /\sqrt{\mathcal{V}^{-}+\mathcal{V}_{\mathrm{obs}}}$ exceeds a few
 standard deviations, multiply $\mathcal{V}^{-}$ up until the
 surprise reads as merely unusual, and let the gain rise toward the
-data.  (A widening, not another gate: nothing here switches off ---
+data --- three standard deviations, the factor being the square of
+the standardized innovation over three, capped at $25$, in the
+reference implementation.  (A widening, not
+another gate: nothing here switches off ---
 a variance is enlarged.)  Below its threshold the update is
 untouched; and a \emph{contradictory} chain does not trip it,
 because its own inflated $\mathcal{V}_{\mathrm{obs}}$ already

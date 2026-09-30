@@ -150,23 +150,41 @@ last leg pair, in the truly deep tail, shape baskets run out --- and
 \cref{sec:infblind}'s kernel bleed makes their gates unreliable
 just past the band edge besides.  There, and only there, absolute
 anchors are the tool, and they are placed by a different test than
-the gate's.  Instead of radiated support, each candidate anchor
-strike is scored by its \emph{coverage deficit}: compare the quote
-mass actually present in that strike's own neighbourhood against
-the mass a desired even coverage of the smile would put there, and
-give the anchor weight only in proportion to the shortfall.  A
-dense band a few strikes away contributes nothing to a wing
-anchor's neighbourhood, so this test --- unlike the kernel sum of
-\cref{eq:infsupport} --- cannot be talked out of a deficit by
-nearby liquidity; where quotes already meet the desired coverage
-the deficit, and the anchor, is zero.  The anchors then hold the
-deep tail at yesterday's transported prices.  Their known cost is
-exactly what panel~(b) displays --- across a level jump the deep
-tail is pulled toward yesterday's absolute prices --- and the
+the gate's.  Each candidate anchor strike is scored by its
+\emph{coverage deficit}: the quote density at that strike --- the
+same kernel sum as \cref{eq:infsupport}, unweighted --- is compared
+with the density an even coverage of the smile would put there,
+$n$ quotes spread over the anchors' span, and the anchor receives
+weight in proportion to the shortfall, times the stretch of axis it
+represents; where quotes meet the desired coverage the deficit, and
+the anchor, is zero --- not small.  The reference implementation
+places these anchors at the $2$-, $5$- and $10$-delta strikes of
+each wing, beyond the shallowest basket leg, gives them a fifth of
+the summed quote weight split by their deficits, and writes each as
+a row in normalized \emph{price} --- the call at the anchor, against
+its value on the transported prior, divided by the prior's vega
+there (capped at twenty-five times the smallest such divisor across
+the anchors) --- because a vol residual at a $2$-delta strike would
+be a residual on a number the market never quotes.  The anchors then
+hold the deep tail at yesterday's transported prices.  Their known
+cost is exactly what panel~(b) displays --- across a level jump the
+deep tail is pulled toward yesterday's absolute prices --- and the
 division of labour confines that cost to strikes where no
 alternative information exists at all.  Shape on baskets as far as
 legs reach; absolute anchors only beyond; the level always to the
 market.
+
+One row of the reference implementation's default set sits outside
+this division and is named here so that it is not mistaken for a
+basket: a persisted \emph{variance-swap level} (Chapter~5's fair
+strike, in volatility), gated on the support at three probe points
+$k\in\{-1.4,0,+1.4\}\times\sigma_{\rm atm}\sqrt\tau$ with the
+harmonic law, and weighted from the operator budget beside the split
+rather than inside it.  As an absolute level it is not annihilated
+by a uniform lift, so on a morning whose quotes do not reach $\pm1.4$
+ATM standard deviations it does pull the tail integral toward
+yesterday's; a spread carrier, the fair strike minus the ATM level,
+is available in its place and restores the basket property.
 
 Half of the chapter's program is now complete: \emph{along each
 coordinate, the published smile is today's data where today's data

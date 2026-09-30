@@ -125,7 +125,16 @@ the node itself.  Third, the repair: a node's neighbours can never
 know its private scatter, so the published band can never be
 narrower than it --- add the node's own scatter variance to the band
 (the \emph{idiosyncratic floor}; it touches no mean, only bands).
-The test lands at \MacGrAuditFloor.  Twelve residuals make a
+The test lands at \MacGrAuditFloor.  (The reference implementation
+writes the floor as a floor: a dark node's level variance is raised
+to at least $0.30$ times the name's own scatter variance, where that
+scatter is the root-mean-square of the name's recorded day-over-day
+innovations, exponentially weighted with a five-day half-life over
+the past sixty days and shrunk toward the pool of all names, four
+pooled days' worth; and for a quoted node held out of the solve it
+adds the held-out measurement's own variance under the root of
+$\mathcal{Z}$, since there the truth is itself a reading.)
+Twelve residuals make a
 coarse instrument, but the ordering is the lesson:
 overconfidence is a configuration property, stated variances are
 testable, and the test is the one Chapter~10 taught --- run at
@@ -170,7 +179,8 @@ The corroboration law \cref{eq:grcorr}; amplitude scaling and
 doubled shrunk factors both fail (\cref{sec:granchor}). &
 Solver on the law to \MacGrAnchorLawGap\ (\cref{fig:granchor}). &
 The anchor $\kappa_i$ --- how strongly a node holds its baseline ---
-is a stated, fixed-per-node commitment.\\
+is a stated, fixed-per-node commitment; the reference implementation
+states it as a transfer fraction, one by default (no anchor).\\
 \addlinespace
 No constant amplitude imitates a decaying dislocation (the
 $0.5$-versus-$0.75$ contradiction); mean reversion can only close a
@@ -179,7 +189,8 @@ The staged universe: dark rms \MacGrRmsGraph\ against the baseline's
 \MacGrRmsBase; the withheld December node reconstructed to
 \MacGrNvdaDecPost\ against \MacGrNvdaDecTrue\ under a
 \MacGrNvdaDecBand-point band (\cref{fig:grcomplete}). &
-The half-life $t_{1/2}$, the one-way cut at the source, and the
+The half-life $t_{1/2}$ (never-forget by default), the one-way cut
+at the source on declared relations, and the
 handles-only carrier (wings ride the baseline) are stated policies.\\
 \addlinespace
 --- (this row is empirical by design) &
@@ -187,7 +198,8 @@ The standardized-error test: std$(\mathcal{Z})$ \MacGrAuditOver\
 overtrusted / \MacGrAuditStated\ stated / \MacGrAuditFloor\ floored
 (\cref{fig:grcomplete}c). &
 The idiosyncratic floor: a band never narrower than the node's own
-scatter; mean-invariant by construction.\\
+scatter (its multiple, $0.30$, and the scatter's estimator stated);
+mean-invariant by construction.\\
 \bottomrule
 \end{tabular}
 \end{table}

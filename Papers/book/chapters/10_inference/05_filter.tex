@@ -28,7 +28,12 @@ guarantee.  The reference implementation filters the smile's three
 the fitted volatility at the money) --- read off a fitted,
 arbitrage-checked smile.  Three numbers, model-agnostic, stable in
 meaning from day to day: a small state that summarizes what the
-belly of the smile is doing.
+belly of the smile is doing.  The filter runs in one of two modes,
+or not at all (its default): as an \emph{overlay}, in which the
+state is predicted and updated at every snapshot and drawn beside
+the fit, which it never touches; or \emph{active}, in which the
+prediction enters the fit as rows and the published smile is the
+joint minimizer (\cref{sec:infaudit}).
 
 Each handle then lives the same three-step cycle at every snapshot.
 Write $O$ for the handle's true (unknown) value today.
@@ -47,7 +52,12 @@ no temporal prior --- and the handle is read off the fit: the
 \emph{observation} $\hat O_{\mathrm{obs}}$, with a variance
 $\mathcal{V}_{\mathrm{obs}}$ that must reflect how precisely, and
 how consistently, today's quotes actually pin this handle
-(\cref{sec:infbudgets} again).
+(\cref{sec:infbudgets} again).  (The reference implementation reads
+the handles off the committed fit, gated prior rows included; on a
+morning dense enough at the money the gates of the level and
+butterfly rows are closed exactly where the handles are read, so the
+two readings coincide there, and the data-only pass is an option
+for the mornings where they would not.)
 
 \emph{Update.}  Two independent, unbiased estimates of the same
 number, with variances: this is \cref{sec:infcombine} verbatim.
