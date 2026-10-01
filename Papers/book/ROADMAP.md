@@ -71,16 +71,22 @@ changes); ch. 8/9 regenerated for the redrafts; 4/5/6/7/10/11
 figures untouched (their scripts pin or self-contain the chapters'
 own protocols, which the text now labels as such).
 
-Known residuals for a later session, none blocking: (a) the ch. 2
-tail-scale rule and joint fit are described as the code does them
-— the author's rewrite had stated hard full-line constraints; if
-the author prefers the book's ORIGINAL policy the code, not the
-text, would have to move; (b) ch. 10's figures still embody three
-experiment rules that differ from the implementation (vol-space
-equal-split anchors, ρ with d = parameter count, per-quote
-whitening in the joint fit) — labelled as the experiment's in the
-appendix, not regenerated; (c) the mixed dividend convention,
-zero-carry pin and the 96-hour reset are stated in one clause each.
+Residuals, DECIDED by the author 2026-10-01: (a) ch. 2 — "move the
+code": the implementation now follows the book's ORIGINAL policy
+(hard full-line constraints: the exchange's rank rows are made hard
+by weight continuation ×10 up to three times before a pair is
+irreducible; the tail-scale order λ±,j+1 ≥ λ±,j is imposed in the
+joint solve always and REQUIRED by the certificate — the tail-order
+gate is on by default, with a RELATIVE tolerance 1e-6 matching the
+log-chart hinge rows; the band-relaxation diagnostic runs by default
+on an uncertified pair), and §2.7 / App. B were restored to the
+author's wording with the continuation and the diagnostic stated
+(backend commit of the same day; tests in test_symmetric_exchange /
+test_tail_order_gate / test_symmetric_surface relocked); (b) ch. 10
+— "keep as is": the figures' three experiment rules stay, labelled
+as the experiment's in the appendix; (c) the mixed dividend
+convention, zero-carry pin and the 96-hour reset are stated in one
+clause each (unchanged).
 
 ## Status (2026-08-12 — CHAPTER 2 REPLACED; superseded above)
 

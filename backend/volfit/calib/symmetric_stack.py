@@ -49,8 +49,11 @@ TAIL_ROW_FRAC = 0.25
 #: coefficient (eq. rightsublinearwing) is monotone in the tail scale at
 #: every alpha, so these same rows ARE the eq. tailscalecalendar lambda_+-/
 #: monotonicity rows — no alpha-specific rows are needed; exact ties are
-#: delegated to the full-line calendar certificate (Phase 0).
-SLOPE_TOL = 1e-6
+#: delegated to the full-line calendar certificate (Phase 0). The slack sits
+#: one decade INSIDE the certificate's relative tail tolerance
+#: (calendar_certificate.TAIL_ORDER_TOL = 1e-6): a row that parks the pair
+#: at exactly its own slack still certifies.
+SLOPE_TOL = 1e-7
 
 
 def _spec_params(theta: np.ndarray, fit_kwargs: dict) -> LQDParams:

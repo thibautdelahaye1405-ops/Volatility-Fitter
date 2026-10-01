@@ -244,7 +244,7 @@ def test_flag_on_records_pair_diagnostic_on_the_wire(monkeypatch):
     key = (TICKER, isos[1], "haircut")
     assert list(state._band_relaxation) == [key]
     assert len(calls) == 1
-    assert calls[0][2] is False  # the (default-off) tail gate is threaded through
+    assert calls[0][2] is True  # the (default-on) tail gate is threaded through
     assert calls[0][0].fit_kwargs.get("band") is not None  # a band mode reached it
 
     report = quality.build_quality_report(state, "haircut")

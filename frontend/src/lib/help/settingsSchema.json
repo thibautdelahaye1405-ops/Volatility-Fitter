@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-24",
+  "generatedAt": "2026-10-01",
   "models": {
     "fit": {
       "title": "FitSettings",
@@ -273,12 +273,12 @@
         {
           "name": "ledgerTailOrderGate",
           "type": "bool",
-          "default": false
+          "default": true
         },
         {
           "name": "bandRelaxationDiagnostic",
           "type": "bool",
-          "default": false
+          "default": true
         },
         {
           "name": "calendarFloorPadZ",

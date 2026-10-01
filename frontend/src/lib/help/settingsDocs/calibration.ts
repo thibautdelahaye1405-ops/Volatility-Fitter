@@ -102,10 +102,10 @@ export const CALIBRATION_DOCS: SettingDoc[] = [
     model: "options",
     section: "opt-calibration",
     label: "Extrapolation guard",
-    summary: "Tapered no-arbitrage enforcement beyond the quoted strikes for the SVI / MCS overlays, plus the LQD tail contract under the symmetric solver.",
+    summary: "Tapered no-arbitrage enforcement beyond the quoted strikes for the SVI / MCS overlays.",
     details:
-      "The overlay fits gain three hinge blocks in the extrapolated region: a butterfly hinge on the time-value envelope, a tapered calendar hinge against the previous displayed slice, and the wing-slope-order hinge — weighted like a handful of extra quotes, so they lean on the fit without outvoting the data. With the `symmetric` solver it also adds the LQD tail contract to the joint repair: per-interface seam price ordering and linear wing-slope (log endpoint scale) ordering rows.\n\n" +
-      "Off (default) is byte-identical; the Quality tab's advisory measurement of the extrapolated region runs either way. Bumps the options version.",
+      "The overlay fits gain three hinge blocks in the extrapolated region: a butterfly hinge on the time-value envelope, a tapered calendar hinge against the previous displayed slice, and the wing-slope-order hinge — weighted like a handful of extra quotes, so they lean on the fit without outvoting the data. (The LQD tail contract of the `symmetric` joint repair — per-interface seam price ordering and linear wing-slope ordering rows in the log endpoint chart — is always on since the book's calendar policy was adopted, and no longer rides this switch.)\n\n" +
+      "Off (default) is byte-identical for the overlays; the Quality tab's advisory measurement of the extrapolated region runs either way. Bumps the options version.",
     example:
       "Turn `extrapEnforce` on for a `svi` surface whose 1-month and 2-month put wings cross 3σ out: the 1-month wing bends under the 2-month one in the extrapolated zone of the smile chart, the Quality extrapolated-region calendar flag clears, and the quoted strikes move by under 1 bp.",
     cacheEffect: "options-version",
@@ -118,12 +118,12 @@ export const CALIBRATION_DOCS: SettingDoc[] = [
     model: "options",
     section: "opt-calibration",
     label: "Tail-order gate",
-    summary: "Promote the full-line certificate's tail-order clause from advisory to a gate that the repair, Quality readiness and the publish export enforce.",
+    summary: "The full-line certificate's tail-order clause as a gate that the repair, Quality readiness and the publish export enforce (on by default — the book's calendar policy).",
     details:
-      "The full-line calendar certificate carries a tail-order clause (`ledgerTailOrderOk`): the limiting tail order of adjacent slices. With the gate on, the active-set exchange treats a tail-order failure like a ledger-gap failure — the λ± seam rows at common α are its repair path (unequal α between the two slices is irreducible by construction) — the Quality readiness list names it and the publish export blocks on it.\n\n" +
-      "Off (default) is the Phase-0 advisory policy, byte-identical. It affects the surface repair, so it bumps the options version. Keep α common across a ticker's expiries (`tailAlphaByTicker`) so the seam rows have a repair path.",
+      "The full-line calendar certificate carries a tail-order clause (`ledgerTailOrderOk`): the limiting tail order of adjacent slices — the book's rule that a farther expiry's tail scales λ± must not be lighter than the nearer one's. With the gate on, the active-set exchange treats a tail-order failure like a ledger-gap failure — the λ± seam rows at common α are its repair path, tightened by continuation until the clause holds to a relative tolerance of 1e-6 (unequal α between the two slices is irreducible by construction) — the Quality readiness list names it and the publish export blocks on it.\n\n" +
+      "On is the default (the book's policy: the inequalities are imposed in the endpoint chart). Off is the earlier advisory reading: the clause is reported, never enforced. It affects the surface repair, so it bumps the options version. Keep α common across a ticker's expiries (`tailAlphaByTicker`) so the seam rows have a repair path.",
     example:
-      "Turn `ledgerTailOrderGate` on for a ticker whose 6-month slice has a heavier put tail than its 9-month: the repair adds seam rows that shorten the 6-month wing by a few bp, Quality shows the node ready again, and the export no longer stops on it.",
+      "A ticker whose 6-month slice has a heavier put tail than its 9-month: under the gate the repair's seam rows shorten the 6-month wing by a few bp until the tails are ordered, Quality shows the node ready, and the export passes. Switch the gate off and the same node is ready with an amber tail-order advisory instead.",
     cacheEffect: "options-version",
     surfaced: true,
     related: ["surfaceSolver", "extrapEnforce", "tailAlphaByTicker", "help:guides:quality"],
@@ -137,9 +137,9 @@ export const CALIBRATION_DOCS: SettingDoc[] = [
     summary: "After the surface pass, report the smallest symmetric quote-band widening under which each uncertified adjacent pair would certify.",
     details:
       "For every adjacent pair the active-set exchange could not certify, the diagnostic bisects the smallest symmetric widening of the quote bands (in vol) that makes the pair calendar-feasible and reports it as `bandRelaxationVol` on the Quality node and in the export notes — the book's smallest quote-band relaxation needed for feasibility.\n\n" +
-      "Advisory only: the accepted surface is untouched and it never bumps the options version. It runs only in the band fit targets on uncertified pairs, so on a clean surface it costs nothing.",
+      "Advisory only: the accepted surface is untouched and it never bumps the options version. On by default (the book's policy: when the hard calendar constraints are inconsistent with the quote bands, the meaningful diagnostic is the smallest band relaxation that restores feasibility); it runs only in the band fit targets on uncertified pairs, so on a clean surface it costs nothing.",
     example:
-      "Turn `bandRelaxationDiagnostic` on in Bid-Ask mode on a surface with one stubborn front pair: the Quality card shows a band relaxation of 0.8 vol pt on that node — the quotes themselves are inconsistent by that much — while every certified pair shows nothing.",
+      "In Bid-Ask mode on a surface with one stubborn front pair, the Quality card shows a band relaxation of 0.8 vol pt on that node — the quotes themselves are inconsistent by that much — while every certified pair shows nothing. Switch the diagnostic off to skip the bisection on a slow box.",
     activation: "Runs only in the band fit targets (`bidask` / `haircut`), on adjacent pairs the exchange could not certify.",
     cacheEffect: "display-only",
     surfaced: true,

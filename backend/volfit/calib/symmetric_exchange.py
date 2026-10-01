@@ -35,23 +35,30 @@ ranks are few: adjacent smooth quantile curves cross only a few times
 Seeding: the exchange enters AFTER the penalty+escalation repair
 (volfit.calib.symmetric.repair_surface — round "1" of the book loop, the
 empty active set), so the first refit here already carries the failing
-certificates' minimizers. A pair whose certificate minimizer repeats to
-within the dedupe tolerance makes no progress under more rows and is
-recorded IRREDUCIBLE — genuinely inconsistent inputs, reported, never
-silently flattened (the book's feasibility diagnostic lives in
-volfit.calib.band_relaxation, opt-in).
+certificates' minimizers.
 
-Tail-order gate (V3.0 rider, ``tail_gate``): with the gate armed the
-failing-pair predicate also requires the certificate's tolerance-aware tail
-clause (``LedgerCertificate.tail_certified`` — eq. tailscalecalendar,
+HARD constraints (book policy, 2026-10-01): the rank rows are hinges in a
+least-squares stack, so "hard" is realized by continuation — a pair whose
+certificate minimizer REPEATS to within the dedupe tolerance has its
+active rank, and the row is simply not stiff enough to pin it: the
+component's rank weight is escalated x RANK_ESCALATION (cap
+RANK_ESCALATION_CAP, i.e. up to EXCHANGE_W * 1e3) and the component is
+re-solved. Only a pair that repeats AT the cap is recorded IRREDUCIBLE —
+genuinely inconsistent inputs, reported, never silently flattened; the
+book's feasibility diagnostic (volfit.calib.band_relaxation, the smallest
+quote-band widening that certifies) then runs on it by default.
+
+Tail-order gate (``tail_gate``, ON by default — eq. tailscalecalendar,
 Papers/book/chapters/02_lqd/07_calendar.tex "These inequalities are imposed
-in the endpoint chart"). Its repair path is the lambda_+- seam rows every
-exchange interface already carries: a tail-only failure at common alpha
-escalates THAT pair's interface weight x TAIL_ESCALATION per round (capped
-at TAIL_ESCALATION_CAP) so the soft rows tighten, while a pair whose tail
-clause is decided by unequal exponents (``tail_irreducible``) is marked
-irreducible at once — no round can move an exponent. ``tail_gate=False``
-(the default) is byte-identical to the pre-rider driver.
+in the endpoint chart"): the failing-pair predicate also requires the
+certificate's tolerance-aware tail clause
+(``LedgerCertificate.tail_certified``). Its repair path is the lambda_+-
+seam rows every exchange interface carries: a tail-only failure at common
+alpha escalates THAT pair's interface weight x TAIL_ESCALATION per round
+(capped at TAIL_ESCALATION_CAP) so the slope rows tighten, while a pair
+whose tail clause is decided by unequal exponents (``tail_irreducible``)
+is marked irreducible at once — no round can move an exponent.
+``tail_gate=False`` reproduces the earlier advisory driver.
 
 Import discipline: pool-worker importable — depends only on volfit.calib /
 volfit.models / volfit.core (see volfit.calib.fit_task).
@@ -85,9 +92,13 @@ _CAL_TOL = 1e-6
 
 #: Book: "in practice the active ranks are few" — adjacent smooth quantile
 #: curves cross only a few times, so a violating pair certifies within a few
-#: exchanged ranks; 8 rounds is generous headroom before declaring the pair
-#: irreducible and returning the best iterate.
-MAX_EXCHANGE_ROUNDS = 8
+#: exchanged ranks; 8 rank rounds plus the RANK_ESCALATION_STEPS continuation
+#: rounds is generous headroom before declaring the pair irreducible and
+#: returning the best iterate.
+RANK_ESCALATION = ESCALATION_FACTOR
+RANK_ESCALATION_STEPS = 3
+RANK_ESCALATION_CAP = RANK_ESCALATION ** RANK_ESCALATION_STEPS
+MAX_EXCHANGE_ROUNDS = 8 + RANK_ESCALATION_STEPS
 
 #: Per-rank ledger row weight. Scale anchor: the escalated interface weight
 #: IFACE_BASE_WEIGHT * ESCALATION_FACTOR**MAX_ESCALATIONS (= 1e3) times one
@@ -114,10 +125,11 @@ TAIL_ESCALATION = ESCALATION_FACTOR
 TAIL_ESCALATION_CAP = ESCALATION_FACTOR ** (MAX_ESCALATIONS + 1)
 
 
-def pair_ok(cert: LedgerCertificate, tail_gate: bool = False) -> bool:
+def pair_ok(cert: LedgerCertificate, tail_gate: bool = True) -> bool:
     """The exchange's per-pair acceptance predicate: the ledger gap clause at
     the acceptance tolerance, plus the tolerance-aware tail clause when the
-    tail-order gate is armed (``tail_gate=False`` = the Phase-0 predicate)."""
+    tail-order gate is armed (the default; ``tail_gate=False`` = the earlier
+    advisory predicate)."""
     return cert.certified(_CAL_TOL) and (not tail_gate or cert.tail_certified())
 
 
@@ -129,9 +141,11 @@ class ExchangeResult:
     ``certificates`` are its full-grid per-pair certificates; ``rounds``
     counts the joint refits performed (0 = the input stack already
     certified — the exchange never entered); ``active_ranks`` are the
-    exchanged ranks per adjacent pair; ``irreducible`` lists pair indices
-    whose certificate minimizer repeated (no progress possible — the caller
-    decides, and publish stays blocked by the certificate downstream).
+    exchanged ranks per adjacent pair; ``rank_boost`` is the continuation
+    multiplier the component's rank rows ended at (1.0 = never escalated);
+    ``irreducible`` lists pair indices whose certificate minimizer repeated
+    at the escalation cap (no progress possible — the caller decides, and
+    publish stays blocked by the certificate downstream).
     """
 
     thetas: list[np.ndarray]
@@ -140,6 +154,7 @@ class ExchangeResult:
     rounds: int
     active_ranks: list[np.ndarray]
     irreducible: tuple[int, ...]
+    rank_boost: float = 1.0
 
 
 def _full_grid_certificates(
@@ -197,7 +212,7 @@ def exchange_refit(
     thetas0: list[np.ndarray],
     ifaces: list[Interface | None],
     iface_weight: float,
-    tail_gate: bool = False,
+    tail_gate: bool = True,
 ) -> ExchangeResult:
     """Run the book's exchange loop on one component until it certifies.
 
@@ -209,20 +224,26 @@ def exchange_refit(
     returns the best iterate by worst ledger gap plus its failing
     certificates — the caller decides; publish remains blocked downstream.
 
-    ``tail_gate`` (V3.0 rider) adds the certificate's tolerance-aware tail
-    clause to the acceptance predicate (``pair_ok``). A pair failing ONLY
-    that clause at common alpha has its interface weight escalated
+    Rank rows are HARD by continuation: a minimizer that returns within
+    Z_DEDUPE of an active rank means the rank row at the current weight did
+    not pin the gap to tolerance, so the component's rank weight is
+    escalated x RANK_ESCALATION (cap RANK_ESCALATION_CAP) and the component
+    re-solved; a repeat at the cap marks the pair irreducible.
+
+    ``tail_gate`` (on by default) adds the certificate's tolerance-aware
+    tail clause to the acceptance predicate (``pair_ok``). A pair failing
+    ONLY that clause at common alpha has its interface weight escalated
     x TAIL_ESCALATION per round (cap TAIL_ESCALATION_CAP) so its lambda_+-
     seam rows tighten; a pair whose tail clause is decided by unequal
     exponents (``tail_irreducible``), or that has no interface to tighten,
-    or that is already at the cap, is marked irreducible at once. Off (the
-    default) the driver is byte-identical to the pre-rider one.
+    or that is already at the cap, is marked irreducible at once.
     """
     m = len(specs)
     thetas = [np.asarray(t, dtype=float).copy() for t in thetas0]
     certs = _full_grid_certificates(specs, thetas)
     active: list[list[float]] = [[] for _ in range(m - 1)]
     boost = [1.0] * (m - 1)  # tail-gate interface escalation per pair
+    rank_boost = 1.0  # continuation multiplier on the component's rank rows
     irreducible: set[int] = set()
     best = (thetas, certs)
     rounds = 0
@@ -233,13 +254,16 @@ def exchange_refit(
             return ExchangeResult(
                 thetas=thetas, certificates=certs, converged=True,
                 rounds=rounds, active_ranks=_rank_arrays(active),
-                irreducible=tuple(sorted(irreducible)),
+                irreducible=tuple(sorted(irreducible)), rank_boost=rank_boost,
             )
         # Exchange step: each failing pair's certificate minimizer enters its
         # active set ("active[worst.pair].add(worst.rank)"); a repeat within
-        # Z_DEDUPE marks the pair irreducible instead of re-adding forever.
-        # Gated tail-only failures escalate the pair's interface instead.
+        # Z_DEDUPE escalates the component's rank weight (the row is active
+        # but not yet hard enough), and only a repeat AT the cap marks the
+        # pair irreducible. Gated tail-only failures escalate the pair's
+        # interface instead.
         progressed = False
+        escalate_ranks = False
         for j in failing:
             if j in irreducible:
                 continue
@@ -249,7 +273,11 @@ def exchange_refit(
             if not certs[j].certified(_CAL_TOL):
                 z_star = float(certs[j].z_star)
                 if any(abs(z_star - z) <= Z_DEDUPE for z in active[j]):
-                    irreducible.add(j)
+                    if rank_boost >= RANK_ESCALATION_CAP:
+                        irreducible.add(j)
+                        continue
+                    escalate_ranks = True
+                    progressed = True
                     continue
                 active[j].append(z_star)
                 progressed = True
@@ -261,10 +289,13 @@ def exchange_refit(
                 progressed = True
         if not progressed:
             break
+        if escalate_ranks:
+            rank_boost = min(rank_boost * RANK_ESCALATION, RANK_ESCALATION_CAP)
         rounds += 1
         thetas, _ok = joint_refit(
             specs, thetas, _boosted(ifaces, boost), iface_weight,
-            active_ranks=_rank_arrays(active), rank_weight=EXCHANGE_W,
+            active_ranks=_rank_arrays(active),
+            rank_weight=EXCHANGE_W * rank_boost,
         )
         certs = _full_grid_certificates(specs, thetas)
         if _score(certs, tail_gate) > _score(best[1], tail_gate):
@@ -275,7 +306,7 @@ def exchange_refit(
         thetas=thetas, certificates=certs,
         converged=all(pair_ok(c, tail_gate) for c in certs),
         rounds=rounds, active_ranks=_rank_arrays(active),
-        irreducible=tuple(sorted(irreducible)),
+        irreducible=tuple(sorted(irreducible)), rank_boost=rank_boost,
     )
 
 
@@ -289,7 +320,7 @@ def certify_ladder(
 def exchange_ladder(
     specs: list[SliceSpec],
     thetas: list[np.ndarray],
-    tail_gate: bool = False,
+    tail_gate: bool = True,
 ) -> tuple[list[np.ndarray], list[bool], list[LedgerCertificate]]:
     """Certify a repaired ladder; exchange only its FAILING components.
 
@@ -301,15 +332,16 @@ def exchange_ladder(
     hard rank rows carry the enforcement now). A fully certified ladder
     returns its thetas untouched: byte-identity of the clean path.
 
-    The exchange interfaces are ALWAYS built with the tail contract armed,
-    regardless of the screen-phase extrapolation toggle: the wing-slope rows
-    are eq. tailscalecalendar's lambda_+- monotonicity — which the book
-    imposes in the same constrained solve ("these inequalities are imposed
-    in the endpoint chart") and without which an asymptotic tail-order
-    violation cannot be repaired by finitely many exchanged ranks (the rank
-    chase marches down the tail instead of reordering it). ``tail_gate``
-    (OptionsSettings.ledgerTailOrderGate) makes the tail clause part of the
-    failing-pair predicate — see ``exchange_refit``.
+    The exchange interfaces are ALWAYS built with the tail contract armed
+    (as is the screen/repair phase since the book policy of 2026-10-01):
+    the wing-slope rows are eq. tailscalecalendar's lambda_+- monotonicity
+    — which the book imposes in the same constrained solve ("these
+    inequalities are imposed in the endpoint chart") and without which an
+    asymptotic tail-order violation cannot be repaired by finitely many
+    exchanged ranks (the rank chase marches down the tail instead of
+    reordering it). ``tail_gate`` (OptionsSettings.ledgerTailOrderGate, on
+    by default) makes the tail clause part of the failing-pair predicate —
+    see ``exchange_refit``.
     Returns ``(thetas, exchanged_mask, certificates)``.
     """
     n = len(specs)

@@ -124,30 +124,21 @@ for every adjacent pair of expiries.
 
 The expiries are fitted jointly because changing either member of an adjacent
 pair changes the calendar gap.  The data term is the sum of the slice
-objectives.  The inequalities \eqref{eq:globalledgerconstraint} are
-enforced by an active-set exchange, described in
-\cref{sec:calendarcertificate}: the least-squares solver carries a stiff
-hinge row for each rank the certificate has found violated, the ledger
-sensitivities coming from \eqref{eq:pass3}, and acceptance requires the
-full-line certificate itself, to a stated tolerance ($10^{-6}$ in
-normalized price in the reference implementation).  The rows are stiff
-rather than hard --- a least-squares solver has no other kind --- and
-the certificate, not the solver, is what decides.  The reference
-implementation fits the stack in three stages.  First each expiry is
-fitted alone.  Then adjacent pairs are screened for price-space order
-on their common quoted support: on a grid of strikes covering that
-support, tapered to zero a short distance beyond it, a pair is active
-when $c_j-c_{j+1}$ exceeds half a volatility basis point in vega
-units; maximal runs of active pairs are re-solved jointly with hinge
-rows $\propto(c_j(k)-c_{j+1}(k))^+$ on that grid, the multiplier
-raised tenfold, at most three times, while a violation remains.  Last,
-every adjacent pair is certified on the whole line, and a failing
-component enters the exchange.  Confining the solver's own rows to the
-quoted support is deliberate: a full-line ledger row inside the fit
-lets an acute short-dated wing pull a far expiry off its own quotes,
-because the ledger integrates the extrapolated tail even at quoted
-ranks; the exchange adds full-line rows only at the ranks the
-certificate names.
+objectives.  The inequalities \eqref{eq:globalledgerconstraint} are hard
+constraints, not residuals whose violation can be traded against a slightly
+better quote fit.  Standard constrained solvers use the analytic ledger
+sensitivities from \eqref{eq:pass3}; a least-squares implementation uses
+the active-set exchange described in \cref{sec:calendarcertificate},
+in which a hinge row at each violated rank is made hard by continuation
+--- its weight is raised until the rank holds to the acceptance
+tolerance ($10^{-6}$ in normalized price in the reference
+implementation) --- so that a violation is never accepted in exchange
+for fit.  In either case, acceptance requires the full-line certificate.
+The reference implementation seeds the exchange from the independent
+fits by one cheap stage: adjacent pairs screened for price-space order
+on their common quoted support, maximal runs of violating pairs
+re-solved jointly with tapered hinge rows on that support; the exchange
+then imposes the full line.
 
 Global control necessarily couples unquoted wings across maturity because
 those wings belong to the published surface.  Choose the tail policy for the
@@ -160,23 +151,25 @@ requires
 \label{eq:tailscalecalendar}
 \end{equation}
 apart from exact ties, where the next asymptotic constant decides the order.
-These inequalities are linear in the endpoint chart
-($\log\lambda_\pm$ is affine in the coefficients), and the exchange
-carries them as hinge rows $(\log\lambda_{\pm,j}-\log\lambda_{\pm,j+1})^+$
-beside the ledger rows; the certificate reports the limiting order
-separately, and whether an accepted stack must also satisfy it is a
-stated switch (off by default --- the ledger tolerance is then the
-only requirement in the far tails).  If exponents vary by
+These inequalities are imposed in the endpoint chart, where they are
+linear ($\log\lambda_\pm$ is affine in the coefficients): the joint
+solve carries them as hinge rows
+$(\log\lambda_{\pm,j}-\log\lambda_{\pm,j+1})^+$ beside the ledger rows,
+tightened by the same continuation, and the certificate requires the
+limiting order of every accepted pair to a relative tolerance of
+$10^{-6}$ on the tail scales.  If exponents vary by
 expiry, the farther law cannot have a lighter asymptotic tail: on either side
 $\alpha_{\pm,j+1}>\alpha_{\pm,j}$ forces a calendar reversal sufficiently far
 out.  Common $\alpha_\pm$ across a maturity stack is the simpler policy.
 
-If the constraints are inconsistent with the quote bands, no law stack
+If the hard constraints are inconsistent with the quote bands, no law stack
 can satisfy both those bands and the selected tail policy.  The meaningful
 diagnostic is the smallest quote-band relaxation needed for feasibility:
 widen every band of the failing pair symmetrically by $\delta$ in
 volatility, mids kept, re-run the exchange on the pair alone, and
-bisect $\delta$ on $(0,0.05]$ for the smallest value that certifies.
+bisect $\delta$ on $(0,0.05]$ for the smallest value that certifies; the
+reference implementation runs it on every pair the exchange cannot
+certify and reports $\delta$ with the stack, which is not published.
 Shrinking the calendar domain would merely hide the inconsistency outside the
 chosen interval.
 
@@ -223,11 +216,14 @@ accepts a pair when the minimum exceeds $-10^{-6}$.
 
 During calibration, the current violating minimum is added to the active
 constraint set as a hinge row
-$\sqrt{10^{6}}\,(G_j(z^*)-G_{j+1}(z^*))^+$.  This exchange step is
-repeated until the certificate finds no negative minimum, for at most
-eight rounds; a minimum that returns at the same rank is reported as
-irreducible.  In practice the active ranks are few because adjacent
-smooth quantile curves cross only a few times.
+$\sqrt{W}\,(G_j(z^*)-G_{j+1}(z^*))^+$, $W=10^{6}$.  This exchange step is
+repeated until the certificate finds no negative minimum.  A minimum
+that returns at an active rank means the row at its current weight did
+not pin the gap: $W$ is raised tenfold and the stack re-solved, up to
+three times, and only a return at the last weight is reported as
+irreducible --- inconsistent inputs, for which the band-relaxation
+diagnostic above is computed.  In practice the active ranks are few
+because adjacent smooth quantile curves cross only a few times.
 
 \begin{figure}[htbp]
 \centering

@@ -44,6 +44,7 @@ from volfit.calib.symmetric_exchange import (
     _CAL_TOL,
     EXCHANGE_W,
     IFACE_BASE_WEIGHT,
+    MAX_EXCHANGE_ROUNDS,
     exchange_ladder,
     exchange_refit,
 )
@@ -183,13 +184,15 @@ def test_rigged_wing_pair_screen_blind_repair_leaves_certificate_failing(rigged)
 def test_rigged_wing_pair_exchange_certifies(rigged):
     """exchange_refit clears the pair the penalty pass left: the failing
     certificate's minimizer becomes a hard ledger row and the joint solve
-    reorders the wing ('the active ranks are few' — one round here)."""
+    reorders the wing ('the active ranks are few' — one rank here); the
+    tail clause (gated by default) then binds on this rig's heavy near
+    wings and the lambda_+- rows tighten over a few more rounds."""
     specs, _repair, _iface, result = rigged
     assert result.converged
-    assert 1 <= result.rounds <= 3
+    assert 1 <= result.rounds <= MAX_EXCHANGE_ROUNDS
     assert result.irreducible == ()
     assert result.active_ranks[0].size >= 1
-    assert all(c.certified(_CAL_TOL) for c in result.certificates)
+    assert all(c.certified(_CAL_TOL) and c.tail_certified() for c in result.certificates)
     # The repair is a wing repair: both slices still price their own quotes
     # to a desk-reasonable error (no bulldozed belly).
     for theta, s in zip(result.thetas, specs):
@@ -293,3 +296,41 @@ def test_common_alpha_pair_goes_through_exchange():
     scale = np.abs(fd).max()
     assert scale > 0.0
     assert np.max(np.abs(analytic - fd)) < 1e-4 * scale
+
+
+# --------------------------------------- 7. hard rank rows by continuation
+def test_repeated_minimizer_escalates_rank_weight_before_irreducible(
+    rigged, monkeypatch
+):
+    """Book policy (2026-10-01): the rank rows are HARD constraints. A
+    certificate minimizer that returns within Z_DEDUPE of an active rank is
+    not declared irreducible at once — the component's rank weight is
+    escalated x RANK_ESCALATION per round up to RANK_ESCALATION_CAP, and
+    only a repeat AT the cap marks the pair irreducible. Locked with a
+    joint_refit stub that returns its input (so the minimizer always
+    repeats): the recorded rank weights climb W, 10W, 100W, 1000W, then the
+    pair is irreducible, no further refit is attempted and the best iterate
+    is the (untouched) input."""
+    from volfit.calib import symmetric_exchange as sx
+
+    specs, repair, iface, _result = rigged
+    seen: list[float] = []
+
+    def frozen_refit(specs_, thetas_, ifaces_, iface_weight, **kw):
+        seen.append(float(kw["rank_weight"]))
+        return [np.asarray(t, float).copy() for t in thetas_], True
+
+    monkeypatch.setattr(sx, "joint_refit", frozen_refit)
+    res = sx.exchange_refit(specs, repair.thetas, [iface], IFACE_BASE_WEIGHT)
+    expected = [
+        sx.EXCHANGE_W * sx.RANK_ESCALATION**i
+        for i in range(sx.RANK_ESCALATION_STEPS + 1)
+    ]
+    assert seen == expected
+    assert res.rounds == sx.RANK_ESCALATION_STEPS + 1
+    assert res.rank_boost == sx.RANK_ESCALATION_CAP
+    assert res.irreducible == (0,)
+    assert not res.converged
+    assert res.active_ranks[0].size == 1  # one rank, re-weighted, never re-added
+    for out, orig in zip(res.thetas, repair.thetas):
+        assert out.tobytes() == orig.tobytes()

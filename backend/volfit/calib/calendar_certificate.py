@@ -37,15 +37,16 @@ evaluated in closed form.
 Phase 0 of Docs/generalized_tails_calendar_roadmap.md: this certificate is
 the acceptance/publish authority (api.quality readiness, api.export
 blockers); the stride/window sampled diagnostics in volfit.calib.calendar
-remain as cheap in-loop screens. The limiting tail order is REPORTED but
-does not gate by default (the Phase-0 advisory policy): the raw
-``tail_order_ok`` clause keeps its exact tie bands, while the V3.0 rider's
-OPT-IN gate (OptionsSettings.ledgerTailOrderGate) reads the tolerance-aware
+remain as cheap in-loop screens. The limiting tail order GATES by default
+(OptionsSettings.ledgerTailOrderGate — the book's policy since 2026-10-01,
+"these inequalities are imposed in the endpoint chart"; off = the earlier
+advisory reading): the raw ``tail_order_ok`` clause keeps its exact tie
+bands for reporting, while the gate reads the tolerance-aware
 ``tail_certified`` clause on the signed per-side gaps ``tail_gap_left/right``
 — the eq. tailscalecalendar inequality lambda_{+-,far} >= lambda_{+-,near}
-measured in the endpoint chart, with ``TAIL_ORDER_TOL`` mirroring the ledger
-tolerance's spirit (the soft lambda_+- seam rows of the joint solve leave
-~1e-8 residuals a 1e-12 tie band would cry wolf on). ``tail_irreducible``
+measured in the endpoint chart, with ``TAIL_ORDER_TOL`` RELATIVE to the near
+scale on the decay-rate branches (the joint solve's lambda_+- rows live in
+log scale, so their residual slack is relative). ``tail_irreducible``
 names the case no solver row can repair: unequal exponents across the pair
 (book ch. 2, "the farther law cannot have a lighter asymptotic tail").
 """
@@ -78,11 +79,15 @@ SLOPE_TIE = 1e-12
 CONST_RTOL = 1e-9
 
 #: Tolerance of the GATED tail-order clause (``tail_certified``): both signed
-#: tail gaps must be >= -TAIL_ORDER_TOL. Mirrors the spirit of the ledger
-#: tolerance (symmetric_exchange._CAL_TOL / quality._CAL_TOL): the joint
-#: solve's lambda_+- rows are soft hinges to SLOPE_TOL = 1e-6, so a repaired
-#: pair lands within ~1e-8 of exact order — inside this band, outside the
-#: raw SLOPE_TIE one.
+#: tail gaps must be >= -TAIL_ORDER_TOL times the side's ``tail_scale`` —
+#: the NEAR endpoint scale on the decay-rate branches (so the tolerance is
+#: RELATIVE there, matching the joint solve's lambda_+- hinge rows, which
+#: live in the LOG endpoint chart to symmetric_stack.SLOPE_TOL: a hinge that
+#: parks at log A_far = log A_near - SLOPE_TOL is a relative reversal of
+#: SLOPE_TOL whatever the scale, 1e-4 absolute on a steep-wing fit with
+#: A_L ~ 100), unity on the relative-constant and exponent branches.
+#: Mirrors the spirit of the ledger tolerance (symmetric_exchange._CAL_TOL /
+#: quality._CAL_TOL); outside the raw SLOPE_TIE band.
 TAIL_ORDER_TOL = 1e-6
 
 #: Coefficient degeneracy threshold of the per-segment root problems,
@@ -103,7 +108,7 @@ class LedgerCertificate:
     locate the minimizing rank coordinate / log-moneyness (at a turning
     point the two quantile curves cross, so the strike there is shared).
     ``tail_order_left/right`` report the limiting order at z -> -/+inf
-    (eq. tailscalecalendar; advisory in Phase 0 — see module docstring).
+    (eq. tailscalecalendar; gated by default — see module docstring).
     ``n_turning_points`` counts the interior turning points isolated — the
     discrete quantile-curve crossings of eq. calgapderivative.
 
@@ -136,6 +141,12 @@ class LedgerCertificate:
     #: far tail): irreducible by construction — the exchange marks the pair
     #: without burning rounds, and no band relaxation can help.
     tail_irreducible: bool = False
+    #: Scale the gated clause's tolerance multiplies per side: the NEAR
+    #: endpoint scale on the decay-rate branches (the gap is an absolute
+    #: difference of scales there; the solver's rows are relative), 1.0 on
+    #: the relative-constant and exponent branches.
+    tail_scale_left: float = 1.0
+    tail_scale_right: float = 1.0
 
     @property
     def tail_order_ok(self) -> bool:
@@ -154,10 +165,15 @@ class LedgerCertificate:
         return self.min_gap >= -tol
 
     def tail_certified(self, tol: float = TAIL_ORDER_TOL) -> bool:
-        """Tolerance-aware tail-order clause (the V3.0 rider's GATE reading):
-        both signed tail gaps >= -tol. Unequal exponents give +-inf gaps, so
-        the irreducible reversal fails at every tolerance."""
-        return self.tail_gap_left >= -tol and self.tail_gap_right >= -tol
+        """Tolerance-aware tail-order clause (the GATE reading, on by
+        default): both signed tail gaps >= -tol * tail_scale (relative on
+        the decay-rate branches — see TAIL_ORDER_TOL). Unequal exponents
+        give +-inf gaps, so the irreducible reversal fails at every
+        tolerance."""
+        return (
+            self.tail_gap_left >= -tol * self.tail_scale_left
+            and self.tail_gap_right >= -tol * self.tail_scale_right
+        )
 
 
 def _interior_turning_points(
@@ -243,8 +259,10 @@ def _tail_candidates(
     The limiting order otherwise compares decay rates (tail scales), then
     the asymptotic constants on a tie (eq. tailscalecalendar).
     Returns ([(gap, z, k) candidates], order_left, order_right, gap_left,
-    gap_right) — the signed gaps are the numbers each order decision is
-    made on (units per branch: see ``LedgerCertificate``).
+    gap_right, scale_left, scale_right) — the signed gaps are the numbers
+    each order decision is made on (units per branch: see
+    ``LedgerCertificate``), the scales what the gated tolerance multiplies
+    (the near endpoint scale on the decay-rate branches, 1.0 elsewhere).
     """
     z_max = float(far.z[-1])
     cands: list[tuple[float, float, float]] = []
@@ -255,9 +273,11 @@ def _tail_candidates(
     c_n, c_f = float(near.a_z[-1]), float(far.a_z[-1])
     ds = far.a_right - near.a_right
     gap_right = ds  # decay-rate branches: the endpoint-scale difference
+    scale_right = float(near.a_right)
     if ar_n != ar_f:
         order_right = ar_f < ar_n  # heavier-or-equal far tail required
         gap_right = math.inf if order_right else -math.inf  # exponent sentinel
+        scale_right = 1.0
     elif ar_n == 0.0:
         # gap(Z + t) = C_f e^{(A_Rf - 1) t} - C_n e^{(A_Rn - 1) t}.
         if abs(ds) > SLOPE_TIE:
@@ -272,6 +292,7 @@ def _tail_candidates(
         else:
             order_right = c_f >= c_n * (1.0 - CONST_RTOL)
             gap_right = _rel_gap(c_f - c_n, c_n)
+            scale_right = 1.0
     else:
         # Equal positive exponents: power continuations, crossing at
         # (z*+1)^p = (Z+1)^p + p (q_n(Z) - q_f(Z)) / (lam_f - lam_n).
@@ -288,13 +309,16 @@ def _tail_candidates(
         else:
             order_right = c_f >= c_n * (1.0 - CONST_RTOL)
             gap_right = _rel_gap(c_f - c_n, c_n)
+            scale_right = 1.0
 
     # ------------------------------------------------------------- left tail
     dsl = far.a_left - near.a_left
     gap_left = dsl  # decay-rate branches: the endpoint-scale difference
+    scale_left = float(near.a_left)
     if al_n != al_f:
         order_left = al_f < al_n  # heavier-or-equal far tail required
         gap_left = math.inf if order_left else -math.inf  # exponent sentinel
+        scale_left = 1.0
     elif al_n == 0.0:
         # gap(-Z + t) = D_n e^{(1 + A_Ln) t} - D_f e^{(1 + A_Lf) t}, t <= 0,
         # with D = e^{Q(-Z) - Z}/(1 + A_L) the left tail dollar mass.
@@ -312,6 +336,7 @@ def _tail_candidates(
         else:
             order_left = d_f <= d_n * (1.0 + CONST_RTOL)
             gap_left = _rel_gap(d_n - d_f, d_n)
+            scale_left = 1.0
     else:
         # Equal positive exponents: mirrored power crossing at
         # (1-z*)^p = (Z+1)^p + p (q_f(-Z) - q_n(-Z)) / (lam_f - lam_n).
@@ -333,8 +358,9 @@ def _tail_candidates(
         else:
             order_left = d_f <= d_n * (1.0 + CONST_RTOL)
             gap_left = _rel_gap(d_n - d_f, d_n)
+            scale_left = 1.0
 
-    return cands, order_left, order_right, gap_left, gap_right
+    return cands, order_left, order_right, gap_left, gap_right, scale_left, scale_right
 
 
 def ledger_certificate(near: LQDSlice, far: LQDSlice) -> LedgerCertificate:
@@ -371,7 +397,9 @@ def ledger_certificate(near: LQDSlice, far: LQDSlice) -> LedgerCertificate:
     q_f = hermite_eval(z_star, z0, h, far.q_z, far.dq_dz)
     k_star = 0.5 * float(q_n + q_f)
 
-    tail, order_left, order_right, gap_left, gap_right = _tail_candidates(near, far)
+    (
+        tail, order_left, order_right, gap_left, gap_right, scale_left, scale_right,
+    ) = _tail_candidates(near, far)
     for g, z_t, k_t in tail:
         if g < min_gap:
             min_gap, z_star, k_star = g, z_t, k_t
@@ -392,4 +420,6 @@ def ledger_certificate(near: LQDSlice, far: LQDSlice) -> LedgerCertificate:
         tail_gap_left=float(gap_left),
         tail_gap_right=float(gap_right),
         tail_irreducible=bool(irreducible),
+        tail_scale_left=float(scale_left),
+        tail_scale_right=float(scale_right),
     )

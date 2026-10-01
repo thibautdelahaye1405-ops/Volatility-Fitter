@@ -319,30 +319,35 @@ class OptionsSettings(BaseModel):
     #: Tapered no-arb enforcement in the extrapolated strike region (Notes
     #: 09/10 Phase 2, volfit.calib.extrap): the SVI/MCS overlay fits gain a
     #: butterfly hinge on the time-value envelope, a tapered calendar hinge
-    #: vs the previous displayed slice, and the wing-slope-order hinge. With
-    #: the symmetric surface solver this ALSO arms the LQD tail contract —
-    #: per-interface seam price ordering + linear wing-slope (log endpoint
-    #: scale) ordering rows in the joint repair (volfit.calib.symmetric). OFF
-    #: by default (byte-identical); affects calibration -> bumps the options
-    #: version. Phase 1 (the Quality tab's advisory measurement) is always on.
+    #: vs the previous displayed slice, and the wing-slope-order hinge. (The
+    #: LQD tail contract of the symmetric joint repair — per-interface seam
+    #: price ordering + linear wing-slope (log endpoint scale) ordering rows,
+    #: volfit.calib.symmetric — is ALWAYS armed since the book policy of
+    #: 2026-10-01 and no longer rides this toggle.) OFF by default
+    #: (byte-identical for the overlays); affects calibration -> bumps the
+    #: options version. Phase 1 (the Quality tab's advisory measurement) is
+    #: always on.
     extrapEnforce: bool = False
-    #: Promote the full-line certificate's TAIL-ORDER clause (the limiting
-    #: tail order of adjacent slices, ``ledgerTailOrderOk``) from advisory to
-    #: a gate (V3.0 rider): the active-set exchange treats a tail-order
-    #: failure like a ledger-gap failure (the λ± seam rows at common α are its
-    #: repair path — unequal α is irreducible by construction), the Quality
-    #: readiness issue list names it and the publish export blocks on it.
-    #: OFF by default (byte-identical, Phase-0 advisory policy); affects the
+    #: The full-line certificate's TAIL-ORDER clause (the limiting tail order
+    #: of adjacent slices, ``ledgerTailOrderOk`` — book ch. 2
+    #: eq. tailscalecalendar, "imposed in the endpoint chart") as a GATE:
+    #: the active-set exchange treats a tail-order failure like a ledger-gap
+    #: failure (the λ± seam rows at common α are its repair path — unequal α
+    #: is irreducible by construction), the Quality readiness issue list
+    #: names it and the publish export blocks on it. ON by default (book
+    #: policy, 2026-10-01); off = the earlier advisory reading; affects the
     #: surface repair -> bumps the options version.
-    ledgerTailOrderGate: bool = False
-    #: Quote-band relaxation infeasibility diagnostic (V3.0 rider, book ch. 2
-    #: §calendar): after the surface pass, for every adjacent pair the
-    #: exchange could NOT certify, bisect the smallest symmetric quote-band
-    #: widening (vol units) under which the pair certifies, and report it on
-    #: the Quality node (``bandRelaxationVol``) + export notes. Advisory —
-    #: the accepted surface is untouched (never bumps the options version);
-    #: only runs in band fit modes on uncertified pairs. OFF by default.
-    bandRelaxationDiagnostic: bool = False
+    ledgerTailOrderGate: bool = True
+    #: Quote-band relaxation infeasibility diagnostic (book ch. 2 §calendar:
+    #: "the smallest quote-band relaxation needed for feasibility"): after
+    #: the surface pass, for every adjacent pair the exchange could NOT
+    #: certify, bisect the smallest symmetric quote-band widening (vol
+    #: units) under which the pair certifies, and report it on the Quality
+    #: node (``bandRelaxationVol``) + export notes. Advisory — the accepted
+    #: surface is untouched (never bumps the options version); only runs in
+    #: band fit modes on uncertified pairs. ON by default (book policy,
+    #: 2026-10-01).
+    bandRelaxationDiagnostic: bool = True
     #: Overlay calendar-floor scope (the short-dated upside-crossing fix):
     #: None = the historical per-family grids (SVI floor/ceiling confined to
     #: the COMMON quote support; MCS winged at 2 sigma). A value = BOTH

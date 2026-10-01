@@ -2,8 +2,11 @@
 
 Locks the redesign's contracts:
 - a clean ladder is EXACTLY its independent fits (fast path, no joint solve);
-- the acute-short-slice phantom does not trigger the solver at all
-  (confinement handles it — tests/test_calendar_confinement.py);
+- the acute-short-slice phantom does not trigger the in-support screen
+  (confinement handles it — tests/test_calendar_confinement.py), but it IS a
+  full-line calendar violation and the tail contract (on by default since
+  the book policy of 2026-10-01) orders the wings: the acute near slice's
+  unidentified wings give, the far slice keeps its quotes;
 - a genuine identified violation is repaired SYMMETRICALLY: both slices give,
   allocation follows the data information, and the far slice ends closer to
   its quotes than under the sequential floor (which pins the near slice);
@@ -57,20 +60,47 @@ def test_clean_ladder_is_exactly_the_independent_fits():
     assert all(r.max_iv_error < 5e-4 for r in fit.results)
 
 
-def test_acute_phantom_ladder_does_not_trigger_the_solver():
+def test_acute_phantom_ladder_in_support_screen_silent_tail_contract_orders_wings():
     """The Note-10 phantom case: far quoted wider and far above the acute near
-    slice — the identified screen must stay silent (no joint solve at all)."""
+    slice. The identified in-support screen stays silent (no joint solve
+    without the tail contract) — yet the free pair FAILS the full-line
+    certificate: the acute near slice's extrapolated wings are heavier than
+    the far's (eq. tailscalecalendar reversed). Under the book policy (tail
+    contract on by default) the joint solve orders the wings: the near's
+    unidentified endpoint scales fall below the far's, the far keeps its
+    quotes to within a few bp, and the certificate's tail clause holds."""
+    from volfit.calib.calendar_certificate import ledger_certificate
+    from volfit.models.lqd.basis import endpoint_scales
+
     k_near = np.linspace(-0.06, 0.06, 13)
     k_far = np.linspace(-0.30, 0.30, 25)
-    fit, repair = calibrate_surface_symmetric(
-        [
-            ExpiryQuotes(t=0.02, k=k_near, w=0.0008 + 0.6 * k_near**2),
-            ExpiryQuotes(t=0.25, k=k_far, w=0.010 + 0.004 * k_far**2),
-        ]
-    )
+    w_near = 0.0008 + 0.6 * k_near**2
+    w_far = 0.010 + 0.004 * k_far**2
+    quotes = [
+        ExpiryQuotes(t=0.02, k=k_near, w=w_near),
+        ExpiryQuotes(t=0.25, k=k_far, w=w_far),
+    ]
+    far_free = calibrate_slice(k_far, w_far, t=0.25)
+    near_free = calibrate_slice(k_near, w_near, t=0.02)
+    free_cert = ledger_certificate(near_free.slice, far_free.slice)
+    assert free_cert.min_gap < -1e-3 and not free_cert.tail_certified()
+
+    # In-support screen alone: silent, the independent fits stand.
+    fit, repair = calibrate_surface_symmetric(quotes, tail_contract=False)
     assert not any(repair.refit)
-    far_free = calibrate_slice(k_far, 0.010 + 0.004 * k_far**2, t=0.25)
     assert fit.results[1].max_iv_error < far_free.max_iv_error + 1e-6
+
+    # The policy default: the tail contract fires and orders the wings.
+    fit, repair = calibrate_surface_symmetric(quotes)
+    assert repair.refit == [True, True]
+    assert repair.violations_before[0] > 1.0  # the slope reversal, log units
+    assert repair.max_slack < 5e-5
+    near_scales = endpoint_scales(fit.results[0].params)
+    far_scales = endpoint_scales(fit.results[1].params)
+    assert near_scales[0] <= far_scales[0] * (1.0 + 1e-6)
+    assert near_scales[1] <= far_scales[1] * (1.0 + 1e-6)
+    assert ledger_certificate(fit.results[0].slice, fit.results[1].slice).tail_certified()
+    assert fit.results[1].max_iv_error < far_free.max_iv_error + 5e-4  # far: +5 bp at most
 
 
 def test_stacked_jacobian_matches_finite_differences():
@@ -214,3 +244,34 @@ def test_repair_is_local_to_the_violation_component():
     pair = build_interface(_spec(1.0, K_GRID, 0.8 * W_NEAR), _spec(2.0, K_GRID, 4.0 * W_NEAR))
     lifted = build_slice(sym.results[1].params)
     assert interface_violation(lifted, sym.results[2].slice, pair) <= 5e-5
+
+
+def test_tail_contract_screen_handles_mixed_legendre_orders():
+    """The order guard trims a thin chain's Legendre order, so an adjacent
+    pair may carry theta vectors of different lengths; the tail-contract
+    screen must read each slice's log endpoint scales with its OWN rows
+    (the stacked solver already did). Regression: a mixed-order pair used
+    to raise a matmul shape mismatch inside the surface repair."""
+    from volfit.calib.symmetric import tail_violation
+    from volfit.models.lqd.basis import endpoint_scales
+
+    near = calibrate_slice(K_GRID, W_NEAR, t=0.5, n_order=6)
+    far = calibrate_slice(K_GRID, 2.0 * W_NEAR, t=1.0, n_order=7)
+    assert near.params.order != far.params.order
+    specs = [
+        SliceSpec(t=0.5, k=K_GRID, w=W_NEAR, fit_kwargs=dict(n_order=6)),
+        SliceSpec(t=1.0, k=K_GRID, w=2.0 * W_NEAR, fit_kwargs=dict(n_order=7)),
+    ]
+    iface = build_interface(specs[0], specs[1], tail_contract=True)
+    v = tail_violation(near.slice, far.slice, iface)
+    assert np.isfinite(v) and v >= 0.0
+    # The slope part of the screen is the per-side log-scale reversal.
+    a_n, a_f = endpoint_scales(near.params), endpoint_scales(far.params)
+    reversal = max(np.log(a_n[0]) - np.log(a_f[0]), np.log(a_n[1]) - np.log(a_f[1]))
+    assert v >= max(reversal - 1e-6, 0.0) - 1e-12
+    # And the whole pure-calib pipeline runs through on the mixed pair.
+    fit, repair = calibrate_surface_symmetric([
+        ExpiryQuotes(t=0.5, k=K_GRID, w=W_NEAR),
+        ExpiryQuotes(t=1.0, k=K_GRID, w=2.0 * W_NEAR),
+    ])
+    assert len(fit.results) == 2

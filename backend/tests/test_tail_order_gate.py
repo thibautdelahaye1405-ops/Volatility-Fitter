@@ -2,8 +2,9 @@
 
 The full-line certificate's limiting-order clause (book ch. 2,
 eq. tailscalecalendar: lambda_{+-,far} >= lambda_{+-,near} in the endpoint
-chart) is promoted from advisory to an OPT-IN gate
-(OptionsSettings.ledgerTailOrderGate). Locks:
+chart) is a gate (OptionsSettings.ledgerTailOrderGate) — ON by default
+since the book policy of 2026-10-01 ("these inequalities are imposed in
+the endpoint chart"); off reproduces the earlier advisory reading. Locks:
 
 1. RAW ``tail_order_ok`` is unchanged on the certificate fixtures; the new
    signed per-side gaps carry the sign of each decision.
@@ -13,15 +14,18 @@ chart) is promoted from advisory to an OPT-IN gate
 3. A theta-realizable TAIL-ONLY failure at common alpha (ledger clause
    passes on the whole line, right endpoint scales reversed by 1e-4 in log
    scale) is left alone by the exchange with the gate off (round 0,
-   byte-identical) and repaired with it on — the lambda_+- seam rows
-   tighten under the per-pair interface escalation; no rank row enters.
+   byte-identical) and repaired with it on (the default) — the lambda_+-
+   seam rows tighten under the per-pair interface escalation; no rank row
+   enters.
 4. Unequal exponents (lighter far tail) are irreducible AT ONCE under the
    gate: no round is burned, the thetas are untouched.
-5. ``tail_gate=False`` is byte-identical to the default call on the
-   test_symmetric_exchange rig (driver and ladder entry points).
-6. API: with the gate on, a quality row whose tail clause fails is not
-   ready and names "tail order" (side included); the export raises
-   PublishBlockedError naming it; gate off -> ready, exports as before.
+5. ``tail_gate=True`` is byte-identical to the default call on the
+   test_symmetric_exchange rig (driver and ladder entry points), and the
+   gate makes no difference on a rig whose tails are ordered.
+6. API: with the gate on (the default), a quality row whose tail clause
+   fails is not ready and names "tail order" (side included); the export
+   raises PublishBlockedError naming it; gate off -> ready, exports as
+   before.
 """
 
 from __future__ import annotations
@@ -143,9 +147,14 @@ def test_tail_certified_tolerance_accepts_1e8_rejects_1e5():
     cert2 = ledger_certificate(near, hard)
     assert cert2.certified(_CAL_TOL)
     assert not cert2.tail_certified()  # a genuine reversal
-    assert cert2.tail_certified(tol=1e-4)  # the tolerance knob is honored
+    assert cert2.tail_certified(tol=1e-3)  # the tolerance knob is honored
+    # The gated tolerance is RELATIVE to the near endpoint scale on the
+    # decay-rate branch (the solver's lambda rows live in log scale).
+    assert cert2.tail_scale_right == pytest.approx(near.a_right)
+    assert cert2.tail_certified(tol=1.1e-5 / near.a_right)
+    assert not cert2.tail_certified(tol=0.9e-5 / near.a_right)
     assert not cert2.tail_irreducible
-    assert pair_ok(cert2) and not pair_ok(cert2, tail_gate=True)
+    assert pair_ok(cert2, tail_gate=False) and not pair_ok(cert2)
 
 
 # --------------------------------- 3. tail-only failure: gate off vs gate on
@@ -163,12 +172,12 @@ def test_tail_only_failure_repaired_under_gate_left_alone_without_it():
     assert np.all(specs[1].w >= specs[0].w)
 
     iface = build_interface(specs[0], specs[1], tail_contract=True)
-    off = exchange_refit(specs, thetas, [iface], IFACE_BASE_WEIGHT)
+    off = exchange_refit(specs, thetas, [iface], IFACE_BASE_WEIGHT, tail_gate=False)
     assert off.converged and off.rounds == 0 and off.irreducible == ()
     for out, orig in zip(off.thetas, thetas):
         assert out.tobytes() == orig.tobytes()
 
-    on = exchange_refit(specs, thetas, [iface], IFACE_BASE_WEIGHT, tail_gate=True)
+    on = exchange_refit(specs, thetas, [iface], IFACE_BASE_WEIGHT)  # the default
     assert on.converged
     assert 1 <= on.rounds <= MAX_EXCHANGE_ROUNDS
     assert on.irreducible == ()
@@ -183,11 +192,11 @@ def test_tail_only_failure_repaired_under_gate_left_alone_without_it():
         assert iv_err < 1e-3
 
     # Ladder entry point: gate off passes the ladder through untouched,
-    # gate on touches both slices and certifies the tail clause.
-    l_off, t_off, c_off = exchange_ladder(specs, thetas)
-    assert t_off == [False, False] and pair_ok(c_off[0])
-    l_on, t_on, c_on = exchange_ladder(specs, thetas, tail_gate=True)
-    assert t_on == [True, True] and pair_ok(c_on[0], tail_gate=True)
+    # gate on (the default) touches both slices and certifies the tail clause.
+    l_off, t_off, c_off = exchange_ladder(specs, thetas, tail_gate=False)
+    assert t_off == [False, False] and pair_ok(c_off[0], tail_gate=False)
+    l_on, t_on, c_on = exchange_ladder(specs, thetas)
+    assert t_on == [True, True] and pair_ok(c_on[0])
 
 
 # --------------------------------------------- 4. unequal exponents: irreducible
@@ -220,11 +229,14 @@ def test_unequal_exponents_are_irreducible_at_once():
         assert out.tobytes() == orig.tobytes()
 
 
-# ------------------------------------------------ 5. gate off = byte-identical
-def test_tail_gate_off_is_byte_identical():
+# ------------------------------------------------ 5. gate on = the default
+def test_tail_gate_on_is_the_default_and_does_the_tail_work():
     """The test_symmetric_exchange rig (sampled screens blind, one exchanged
-    rank certifies): the explicit tail_gate=False call reproduces the default
-    call bit for bit, driver and ladder alike."""
+    rank certifies the ledger): the explicit tail_gate=True call reproduces
+    the default call bit for bit, driver and ladder alike. The gate-off
+    call stops after the rank round with the ledger certified but the tail
+    clause failing — the extra rounds under the gate are the lambda_+-
+    rows tightening until the tail clause holds too."""
     k_wide = np.linspace(-0.40, 0.40, 33)
     w_wide = 0.020 + 0.50 * k_wide**2
     k_narrow = np.linspace(-0.15, 0.15, 13)
@@ -239,6 +251,9 @@ def test_tail_gate_off_is_byte_identical():
     iface = build_interface(specs[0], specs[1], tail_contract=True)
     default = exchange_refit(specs, repair.thetas, [iface], IFACE_BASE_WEIGHT)
     explicit = exchange_refit(
+        specs, repair.thetas, [iface], IFACE_BASE_WEIGHT, tail_gate=True
+    )
+    off = exchange_refit(
         specs, repair.thetas, [iface], IFACE_BASE_WEIGHT, tail_gate=False
     )
     assert default.converged and default.rounds >= 1
@@ -248,8 +263,15 @@ def test_tail_gate_off_is_byte_identical():
         assert a.tobytes() == b.tobytes()
     for a, b in zip(default.active_ranks, explicit.active_ranks):
         assert a.tobytes() == b.tobytes()
+    assert default.certificates[0].tail_certified()
+    # Gate off: the ledger certifies after the rank round and the loop
+    # stops there, the tail clause left failing (the advisory reading).
+    assert off.converged and off.rounds == 1
+    assert off.certificates[0].certified(_CAL_TOL)
+    assert not off.certificates[0].tail_certified()
+    assert default.rounds > off.rounds
     l_default = exchange_ladder(specs, repair.thetas)
-    l_explicit = exchange_ladder(specs, repair.thetas, tail_gate=False)
+    l_explicit = exchange_ladder(specs, repair.thetas, tail_gate=True)
     assert l_default[1] == l_explicit[1]
     for a, b in zip(l_default[0], l_explicit[0]):
         assert a.tobytes() == b.tobytes()
@@ -266,9 +288,7 @@ def _tail_only_prev(record):
 
 def test_gate_on_row_not_ready_and_export_blocks_on_tail_order(monkeypatch):
     state = AppState(REF_DATE)
-    state.set_options(
-        state.options().model_copy(update={"ledgerTailOrderGate": True})
-    )
+    assert state.options().ledgerTailOrderGate  # the default (book policy)
     isos = _isos(state)
     near = service.calibrate_node(state, TICKER, isos[0], "mid")
     far = service.calibrate_node(state, TICKER, isos[1], "mid")
@@ -315,7 +335,9 @@ def test_gate_on_row_not_ready_and_export_blocks_on_tail_order(monkeypatch):
 
 def test_gate_off_keeps_tail_clause_advisory(monkeypatch):
     state = AppState(REF_DATE)
-    assert not state.options().ledgerTailOrderGate  # the default
+    state.set_options(
+        state.options().model_copy(update={"ledgerTailOrderGate": False})
+    )
     isos = _isos(state)
     far = service.calibrate_node(state, TICKER, isos[1], "mid")
     node, _ = quality._node_row(

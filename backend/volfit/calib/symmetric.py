@@ -9,11 +9,13 @@ symmetric redesign inverts the pipeline:
    the trajectory but not the optimum).
 2. SCREEN each adjacent interface for an identified calendar violation:
    normalized-call ordering C_near(k) <= C_far(k) on the common quote
-   support, vega-normalized so the number reads as a vol gap. The opt-in
-   TAIL CONTRACT (the extrapolation-guard toggle) adds two low-dimensional
-   checks per interface: price ordering at a seam strike just beyond the
-   union of the quoted spans, and wing-slope ordering via the linear
-   log-endpoint-scale rows (Lee slopes are monotone in A_L/A_R).
+   support, vega-normalized so the number reads as a vol gap. The TAIL
+   CONTRACT (always armed on the production path since the book policy of
+   2026-10-01 — eq. tailscalecalendar's lambda_+- order "imposed in the
+   endpoint chart"; a keyword here for the pure-calib callers) adds two
+   low-dimensional checks per interface: price ordering at a seam strike
+   just beyond the union of the quoted spans, and wing-slope ordering via
+   the linear log-endpoint-scale rows (Lee slopes are monotone in A_L/A_R).
 3. Repair only the VIOLATION-CONNECTED COMPONENTS — contiguous runs of
    violated interfaces (the calendar coupling is a chain, so components are
    intervals). Slices outside a component are never touched: a clean ladder
@@ -174,11 +176,15 @@ def tail_violation(slice_near, slice_far, iface: Interface | None) -> float:
         slice_far.call_price(iface.seam_k)
     )
     seam = float(np.max(iface.seam_inv_vega * gap))
-    c_l, c_r = endpoint_rows(slice_near.params.order)
+    # Per-slice endpoint rows: the two slices may carry different Legendre
+    # orders (the order guard trims thin chains), so each log A_L/log A_R is
+    # read with its own slice's row — as the stacked solver does.
+    cl_n, cr_n = endpoint_rows(slice_near.params.order)
+    cl_f, cr_f = endpoint_rows(slice_far.params.order)
     th_n = slice_near.params.to_vector()
     th_f = slice_far.params.to_vector()
     slope = max(
-        float(c_l @ th_n - c_l @ th_f), float(c_r @ th_n - c_r @ th_f)
+        float(cl_n @ th_n - cl_f @ th_f), float(cr_n @ th_n - cr_f @ th_f)
     ) - SLOPE_TOL
     return float(max(seam, slope, 0.0))
 
@@ -216,9 +222,9 @@ def repair_surface(
 
     ``thetas0`` are the independent fits (ascending expiry). The fast path —
     no identified violation anywhere — returns them untouched.
-    ``tail_contract`` (the extrapolation-guard toggle) adds the seam +
-    wing-slope ordering rows per interface and includes their violations in
-    the screen; the identified in-support constraint is always on.
+    ``tail_contract`` adds the seam + wing-slope ordering rows per interface
+    and includes their violations in the screen (the production path always
+    arms it); the identified in-support constraint is always on.
     ``deadline`` (a ``perf_counter`` epoch, ``volfit.calib.deadline``) is
     checked before every joint refit: past it the repair raises
     ``FitDeadlineExceeded`` instead of grinding on through its escalation and
@@ -313,7 +319,7 @@ def calibrate_surface_symmetric(
     reg_lambda: float = 0.0,
     reg_power: float = 1.0,
     screen_tol: float = SCREEN_TOL_VOL,
-    tail_contract: bool = False,
+    tail_contract: bool = True,
 ):
     """Pure-calib symmetric surface pipeline (the calibrate_surface analogue).
 

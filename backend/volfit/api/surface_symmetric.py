@@ -143,25 +143,28 @@ def phase_b_repair(
         "calibrate", f"Calendar screen + repair {ticker}"
     ):
         # The tail contract (seam + wing-slope ordering of the extrapolated
-        # wings) rides the extrapolation-guard toggle, like the overlay's
-        # Notes-09/10 machinery; the identified in-support screen is always on.
+        # wings — eq. tailscalecalendar, "imposed in the endpoint chart") is
+        # ALWAYS armed in the LQD joint repair (book policy, 2026-10-01); the
+        # extrapolation-guard toggle governs only the overlays' Notes-09/10
+        # machinery now. The identified in-support screen is always on.
         # The frame budget of a series lane (state.fit_deadline, None on the
         # live desk): the repair stops before a joint refit past it.
         repair = repair_surface(
             specs,
             [r.result.params.to_vector() for r in records],
-            tail_contract=state.options().extrapEnforce,
+            tail_contract=True,
             deadline=getattr(state, "fit_deadline", None),
         )
         # Active-set exchange (tails+calendar arc Phase 4 / roadmap V3.0):
         # the EXACT full-line certificate — the same acceptance authority
-        # quality/export consume — now gates the solver too. Pairs the
+        # quality/export consume — gates the solver too. Pairs the
         # penalty+escalation pass leaves (or never sees: dips between
         # constraint nodes or beyond the sampled support) uncertified are
-        # re-solved with hard per-rank ledger rows; a certified ladder passes
+        # re-solved with hard per-rank ledger rows (weight continuation until
+        # the certificate holds to tolerance); a certified ladder passes
         # through untouched, keeping the fast path and every escalation lock.
-        # The tail-order gate (V3.0 rider) widens the exchange's acceptance
-        # predicate to the certificate's tail clause; off = byte-identical.
+        # The tail-order gate (on by default) makes the certificate's tail
+        # clause part of the acceptance predicate.
         tail_gate = bool(state.options().ledgerTailOrderGate)
         ex_thetas, ex_touched, certs = exchange_ladder(
             specs, repair.thetas, tail_gate=tail_gate
@@ -233,12 +236,12 @@ def _record_band_relaxation(
 
     The ticker's previous entries for this fit mode are dropped every pass
     (the dict always mirrors the LAST surface pass). Under the
-    bandRelaxationDiagnostic option, in a band fit mode, every adjacent pair
-    the exchange could NOT certify (gap clause, or the gated tail clause)
-    gets ``relax_pair`` run on its FINAL thetas and the result stored on
-    ``state._band_relaxation[(ticker, far_iso, fit_mode)]`` — read by
-    api.quality / api.export. ADVISORY: the accepted surface is never
-    changed here, and the option never bumps the options version.
+    bandRelaxationDiagnostic option (on by default), in a band fit mode,
+    every adjacent pair the exchange could NOT certify (gap clause, or the
+    gated tail clause) gets ``relax_pair`` run on its FINAL thetas and the
+    result stored on ``state._band_relaxation[(ticker, far_iso, fit_mode)]``
+    — read by api.quality / api.export. ADVISORY: the accepted surface is
+    never changed here, and the option never bumps the options version.
     """
     store = getattr(state, "_band_relaxation", None)
     if store is None:

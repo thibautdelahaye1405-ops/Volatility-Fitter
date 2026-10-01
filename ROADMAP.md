@@ -1990,7 +1990,66 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-09-24d (resume here)
+## STATUS — updated 2026-10-01 (resume here)
+
+### 🧭 SESSION WRAP (2026-10-01) — THE BOOK'S CALENDAR POLICY MOVES INTO THE CODE (ch. 2 "hard full-line constraints")
+
+Context: the 2026-09-30 book consistency pass (Papers/book/ROADMAP.md,
+commits ccbb4d3 / 675b853 / 9fed0eb) found the LQD joint calendar fit
+described in the author's ch. 2 as HARD full-line constraints while the code
+ran stiff hinges with the tail-scale order opt-in; the user ruled "ch 2: move
+the code" (and "ch 10: keep as is"). Shipped, same day:
+
+- **Hard rank rows by continuation (`calib/symmetric_exchange.py`).** A
+  certificate minimiser that returns within `Z_DEDUPE` of an active rank no
+  longer marks the pair irreducible at once: the component's rank weight is
+  escalated ×`RANK_ESCALATION` (10) up to `RANK_ESCALATION_CAP` (10³, i.e.
+  `EXCHANGE_W`·10³) and the component re-solved; only a repeat AT the cap is
+  irreducible. `ExchangeResult.rank_boost` records the multiplier;
+  `MAX_EXCHANGE_ROUNDS` = 8 + 3. Lock: test_symmetric_exchange §7 (a frozen
+  `joint_refit` stub sees W, 10W, 100W, 1000W then irreducible).
+- **Tail-scale order imposed and required.** `ledgerTailOrderGate` default
+  flipped to True (the certificate's tail clause gates the exchange, Quality
+  readiness and the publish export); the LQD tail contract (seam + log-λ±
+  slope rows) is ALWAYS armed in `surface_symmetric.phase_b_repair` and in
+  `calibrate_surface_symmetric` (it no longer rides `extrapEnforce`, which
+  now governs only the overlays). `exchange_refit` / `exchange_ladder` /
+  `pair_ok` default `tail_gate=True`.
+- **The tolerance mismatch that made the gate unreachable.** The λ± rows live
+  in the LOG endpoint chart (`SLOPE_TOL`) while `tail_certified` compared an
+  ABSOLUTE scale difference to 1e-6 — on a steep-wing fit with A_L ≈ 110 the
+  hinge parked at a 1.1e-4 absolute reversal and the gate never closed
+  (diagnosed on the test_symmetric_exchange rig). Fix: `LedgerCertificate`
+  carries `tail_scale_left/right` (the NEAR endpoint scale on the decay-rate
+  branches, 1.0 on the relative-constant / exponent branches) and
+  `tail_certified(tol)` tests `gap ≥ −tol·scale`; `SLOPE_TOL` 1e-6 → 1e-7 so
+  a row parked at its own slack certifies. The rig now certifies, tails
+  included, in 4 rounds (1 rank + 3 tail escalations).
+- **Band-relaxation diagnostic on by default** (`bandRelaxationDiagnostic`
+  True — advisory, band modes, uncertified pairs only).
+- **Consequence to know (test_symmetric_surface, the Note-10 acute phantom):**
+  a 0.02 y slice quoted ±6 % with steep wings above a flat 0.25 y slice is
+  silent on the in-support screen but FAILS the full-line certificate
+  (min ΔG −2e-3 at z* ≈ 5.6: the acute near wings are heavier). Under the
+  policy the joint solve orders the wings: the NEAR's unidentified endpoint
+  scales fall below the far's (0.90/0.38 → 0.024/0.029), the far keeps its
+  quotes (+1.1 bp), the near's in-support error rises 44 → 118 bp — the
+  cost the book names ("the wings belong to the published surface"). The
+  old "phantom does not trigger the solver" lock is retired for the
+  `tail_contract=False` reading only.
+- **Latent bug surfaced by arming the tail contract everywhere:** the screen's
+  `tail_violation` read BOTH slices' log endpoint scales with the NEAR
+  slice's `endpoint_rows`, so a pair of different Legendre orders (the order
+  guard trims thin chains — SX5E in the MCP connector test) raised a matmul
+  shape mismatch inside the surface repair. Fixed: per-slice rows, as the
+  stacked solver already did; lock test_symmetric_surface
+  `test_tail_contract_screen_handles_mixed_legendre_orders`.
+- Settings docs / Calibration-section hints / `useOptions` defaults /
+  `settingsSchema.json` regenerated (`gen_help_schema.py`); test_api_options
+  defaults relocked; book ch. 2 §2.7 + App. B restored to the author's
+  wording with the continuation and the diagnostic stated, ch. 5's two
+  calendar sentences back to "fitted jointly under the full-line ledger
+  constraint with one stated tail policy".
 
 ### 🧭 SESSION WRAP (2026-09-24d) — QUOTE SYNCHRONISATION, THE TWO VENDOR CHECKS, BLOOMBERG BUCKET ROTATION
 

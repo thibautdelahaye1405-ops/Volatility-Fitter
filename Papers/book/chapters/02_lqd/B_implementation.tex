@@ -130,15 +130,19 @@ adjacent expiry pair.
 \begin{lstlisting}[caption={Exchange algorithm for global calendar order.}]
 def fit_surface(nodes):
     slices = [fit_alone(n) for n in nodes]
-    slices = repair_common_support(slices)   # tapered price hinges
+    slices = repair_common_support(slices)   # the seed: tapered price hinges
     active = {pair: set() for pair in adjacent_pairs(slices)}
-    for round in range(8):
-        worst = full_line_calendar_minima(slices)
+    weight = W                               # rank rows + tail-scale rows
+    while True:
+        worst = full_line_calendar_minima(slices)  # incl. the tail clause
         if worst.value >= -calendar_tol:
             return slices
+        if worst.rank in active[worst.pair]:  # active, not yet hard enough
+            if weight >= W * 1e3:
+                return slices  # irreducible: report, run band relaxation
+            weight *= 10
         active[worst.pair].add(worst.rank)   # hinge (G_near - G_far)^+
-        slices = joint_solve(slices, active, worst.component)
-    return slices  # remaining gaps reported as irreducible
+        slices = joint_solve(slices, active, weight, worst.component)
 
 def full_line_calendar_minima(surface):
     out = []
@@ -176,7 +180,9 @@ instrument on each side, invert it by Newton on the logarithm of the
 price, and on a side with $\alpha>0$ obtain plotted remote implied
 variance from the analytic wing law.
 \item \emph{Calendar gaps:} a finite penalty is not an acceptance test; the
-quantile-root certificate must pass for every adjacent expiry pair.
+quantile-root certificate, tail-scale order included, must pass for
+every adjacent expiry pair, and a stack that cannot is reported with
+its band relaxation, not published.
 \end{enumerate}
 
 \subsection{Reference defaults}
@@ -194,8 +200,8 @@ Remote-saddle margin & $10^{-3}$ & Exponent budget & 700\\
 Ridge $(\omega_{\rm reg},\nu)$ & $(10^{-6},1)$ & Vega floor $\eta$ & $10^{-4}$\\
 Haircut $h$ & 0.005 volatility & Solver & trust region, unconstrained\\
 Right-tail barrier & centre 0.9, scale 50 & Fit target & mid (band, haircut optional)\\
-Slice check & 801 strikes, $g_{\rm D}\ge-10^{-4}$ & Calendar check & full line, $\Delta G\ge-10^{-6}$\\
-Optimization tolerance & $10^{-10}$ & Exchange rounds & at most 8\\
+Slice check & 801 strikes, $g_{\rm D}\ge-10^{-4}$ & Calendar check & $\Delta G\ge-10^{-6}$, tails ordered\\
+Optimization tolerance & $10^{-10}$ & Exchange weight & $10^{6}$, $\times10$ up to thrice\\
 \bottomrule
 \end{tabular}
 \captionof{table}{Reference numerical defaults.  Tail exponents are model
